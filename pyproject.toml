@@ -1,0 +1,45 @@
+# Configuración del paquete de Python, de ruff y de pytest.
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "suca"
+version = "0.1.0"
+description = "Sistema de evaluación automática de usabilidad para aplicaciones web."
+readme = "README.md"
+requires-python = ">=3.11"
+# Las dependencias se leen de requirements.txt para tener una sola lista.
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+# Paquetes importables tras `pip install -e .`, sin manipular sys.path.
+[tool.setuptools.packages.find]
+include = ["shared*", "server*", "analysis*", "dashboard*", "scripts*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: estilo, F: errores, I: orden de imports, B: errores frecuentes,
+# UP: sintaxis moderna, D: docstrings.
+select = ["E", "W", "F", "I", "B", "UP", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# En las pruebas el nombre describe el caso; el docstring es opcional.
+"tests/**" = ["D103"]
+# Los notebooks son exploratorios y no siguen las reglas de docstrings.
+"notebooks/**" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# importlib permite archivos de prueba con el mismo nombre en distintas carpetas
+# sin agregar __init__.py en tests/.
+addopts = "--import-mode=importlib"
