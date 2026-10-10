@@ -1,0 +1,48 @@
+# Dueños de cada ruta. GitHub pide la aprobación del dueño en cada pull request.
+# Cuando varias reglas coinciden, gana la última: primero van las generales y
+# después las específicas.
+# Los usuarios @LIDER, @INTEGRANTE_B e @INTEGRANTE_C son marcadores que se
+# reemplazan por los usuarios reales de GitHub.
+
+# Por defecto, todo es del líder: archivos de la raíz y archivos compartidos.
+*                                   @LIDER
+
+# Contratos, configuración, código compartido, servidor y scripts.
+/contracts/                         @LIDER
+/config/                            @LIDER
+/shared/                            @LIDER
+/server/                            @LIDER
+/scripts/                           @LIDER
+/studies/                           @LIDER
+/.github/                           @LIDER
+
+# Extensión: núcleo y cámara del líder; captura y panel lateral de B.
+/extension/                         @LIDER
+/extension/content/capture.js       @INTEGRANTE_B
+/extension/content/capture/         @INTEGRANTE_B
+/extension/content/task-end.js      @INTEGRANTE_B
+/extension/panel/                   @INTEGRANTE_B
+
+# Aplicación de prueba.
+/test-app/                          @INTEGRANTE_B
+
+# Análisis: orquestación del líder; etapas, índice y ML de C.
+/analysis/                          @LIDER
+/analysis/cleaning.py               @INTEGRANTE_C
+/analysis/screens.py                @INTEGRANTE_C
+/analysis/episodes.py               @INTEGRANTE_C
+/analysis/detectors.py              @INTEGRANTE_C
+/analysis/reference.py              @INTEGRANTE_C
+/analysis/usability_index.py        @INTEGRANTE_C
+/analysis/ml/                       @INTEGRANTE_C
+/notebooks/                         @INTEGRANTE_C
+
+# Panel de resultados.
+/dashboard/                         @INTEGRANTE_C
+
+# Pruebas: las aprueba el dueño del código que se prueba. En las carpetas que
+# mezclan código de varios dueños, basta la aprobación de cualquiera de ellos.
+/tests/                             @LIDER
+/tests/analysis/                    @LIDER @INTEGRANTE_C
+/tests/dashboard/                   @INTEGRANTE_C
+/extension/tests/                   @LIDER @INTEGRANTE_B
