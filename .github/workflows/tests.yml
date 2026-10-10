@@ -1,0 +1,39 @@
+# Pruebas automáticas: estilo de Python, pruebas de Python y pruebas de la
+# extensión. Se ejecutan en cada pull request y en cada push a main.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Estilo y pruebas de Python, con el repositorio instalado en modo editable.
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e .
+      - name: Ruff
+        run: ruff check .
+      - name: Pytest
+        run: pytest
+
+  # Pruebas de la extensión con el ejecutor nativo de Node, sin dependencias.
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Node tests
+        run: npm test
