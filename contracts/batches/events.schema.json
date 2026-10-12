@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/events.schema.json",
+  "title": "Registro de evento",
+  "description": "Un evento de interacción del participante, o un intervalo sin datos de cámara ('camera_gap'). Los campos que exige cada tipo de evento están en allOf. Nunca contiene lo que el participante escribe.",
+  "type": "object",
+  "properties": {
+    "t": {
+      "description": "Momento del evento.",
+      "$ref": "../common.json#/$defs/timestamp"
+    },
+    "type": {
+      "description": "Tipo de evento.",
+      "$ref": "../enums.json#/$defs/event_type"
+    },
+    "x": {
+      "description": "Coordenada horizontal del puntero en la ventana, en píxeles CSS (clientX).",
+      "type": "number"
+    },
+    "y": {
+      "description": "Coordenada vertical del puntero en la ventana, en píxeles CSS (clientY).",
+      "type": "number"
+    },
+    "screen": {
+      "description": "Pantalla en la que ocurrió el evento.",
+      "$ref": "../common.json#/$defs/screen"
+    },
+    "task_id": {
+      "description": "Tarea activa en modo guiado, o null si no hay ninguna.",
+      "anyOf": [{ "$ref": "../common.json#/$defs/id" }, { "type": "null" }]
+    },
+    "element": {
+      "description": "Elemento sobre el que ocurrió el evento, o null si no se pudo identificar (por ejemplo, dentro de un canvas).",
+      "anyOf": [{ "$ref": "../element.schema.json" }, { "type": "null" }]
+    },
+    "data": {
+      "description": "Datos propios del tipo de evento. Su forma la fija cada rama de allOf; los tipos sin datos propios solo admiten un objeto vacío.",
+      "type": "object"
+    }
+  },
+  "required": ["t", "type", "screen", "task_id"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "Clics: coordenadas y elemento.",
+      "if": {
+        "properties": { "type": { "enum": ["click", "dblclick", "contextmenu"] } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["x", "y", "element"],
+        "properties": { "data": { "$ref": "../common.json#/$defs/empty_data" } }
+      }
+    },
+    {
+      "description": "Movimiento del cursor: solo coordenadas, sin elemento para no recorrer el DOM a 50 Hz.",
+      "if": { "properties": { "type": { "const": "mousemove" } }, "required": ["type"] },
+      "then": {
+        "required": ["x", "y"],
+        "properties": { "data": { "$ref": "../common.json#/$defs/empty_data" } }
+      }
+    },
+    {
+      "description": "Scroll: posición de desplazamiento de la página.",
+      "if": { "properties": { "type": { "const": "scroll" } }, "required": ["type"] },
+      "then": { "required": ["data"], "properties": { "data": { "$ref": "#/$defs/scroll_data" } } }
+    },
+    {
+      "description": "Selección de texto: solo su longitud.",
+      "if": { "properties": { "type": { "const": "selection" } }, "required": ["type"] },
+      "then": { "required": ["data"], "properties": { "data": { "$ref": "#/$defs/selection_data" } } }
+    },
+    {
+      "description": "Foco, cambio de campo y envío de formulario: el campo o formulario, nunca su valor.",
+      "if": {
+        "properties": {
+          "type": { "enum": ["focus_in", "focus_out", "field_change", "form_submit"] }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["element"],
+        "properties": {
+          "element": { "$ref": "../element.schema.json" },
+          "data": { "$ref": "../common.json#/$defs/empty_data" }
+        }
+      }
+    },
+    {
+      "description": "Error de validación: el campo y el tipo de error.",
+      "if": { "properties": { "type": { "const": "validation_error" } }, "required": ["type"] },
+      "then": {
+        "required": ["element", "data"],
+        "properties": {
+          "element": { "$ref": "../element.schema.json" },
+          "data": { "$ref": "#/$defs/validation_error_data" }
+        }
+      }
+    },
+    {
+      "description": "Cambio de pantalla: la nueva pantalla está en 'screen'.",
+      "if": { "properties": { "type": { "const": "screen_change" } }, "required": ["type"] },
+      "then": { "properties": { "data": { "$ref": "../common.json#/$defs/empty_data" } } }
+    },
+    {
+      "description": "Respuesta a un clic: solo se envía si hubo cambios en la página o navegación en los 1,5 s siguientes. Un clic sin respuesta es un posible dead click.",
+      "if": { "properties": { "type": { "const": "click_response" } }, "required": ["type"] },
+      "then": {
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/$defs/click_response_data" } }
+      }
+    },
+    {
+      "description": "Intervalo sin datos de cámara. 't' es el inicio del intervalo.",
+      "if": { "properties": { "type": { "const": "camera_gap" } }, "required": ["type"] },
+      "then": {
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/$defs/camera_gap_data" } }
+      }
+    }
+  ],
+  "$defs": {
+    "scroll_data": {
+      "description": "Posición de scroll de la página.",
+      "type": "object",
+      "properties": {
+        "scroll_x": { "description": "Desplazamiento horizontal (scrollX), en píxeles CSS.", "type": "number", "minimum": 0 },
+        "scroll_y": { "description": "Desplazamiento vertical (scrollY), en píxeles CSS.", "type": "number", "minimum": 0 }
+      },
+      "required": ["scroll_x", "scroll_y"],
+      "additionalProperties": false
+    },
+    "selection_data": {
+      "description": "Selección de texto. Solo la longitud, nunca el contenido.",
+      "type": "object",
+      "properties": {
+        "length": { "description": "Número de caracteres seleccionados.", "type": "integer", "minimum": 0 }
+      },
+      "required": ["length"],
+      "additionalProperties": false
+    },
+    "validation_error_data": {
+      "description": "Error de validación de un campo.",
+      "type": "object",
+      "properties": {
+        "error_type": { "description": "Tipo u origen del error.", "$ref": "../enums.json#/$defs/validation_error_type" }
+      },
+      "required": ["error_type"],
+      "additionalProperties": false
+    },
+    "click_response_data": {
+      "description": "Cambios observados tras un clic.",
+      "type": "object",
+      "properties": {
+        "click_t": { "description": "Marca de tiempo del clic al que responde.", "$ref": "../common.json#/$defs/timestamp" },
+        "mutation_count": { "description": "Cambios en la página registrados por el MutationObserver.", "type": "integer", "minimum": 0 },
+        "navigated": { "description": "Si hubo navegación o cambio de pantalla.", "type": "boolean" }
+      },
+      "required": ["click_t", "mutation_count", "navigated"],
+      "additionalProperties": false
+    },
+    "camera_gap_data": {
+      "description": "Final y motivo de un intervalo sin datos de cámara.",
+      "type": "object",
+      "properties": {
+        "t_end": {
+          "description": "Fin del intervalo, o null si la cámara no volvió a funcionar antes del cierre de la sesión.",
+          "anyOf": [{ "$ref": "../common.json#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "reason": { "description": "Motivo del intervalo.", "$ref": "../enums.json#/$defs/camera_gap_reason" }
+      },
+      "required": ["t_end", "reason"],
+      "additionalProperties": false
+    }
+  }
+}

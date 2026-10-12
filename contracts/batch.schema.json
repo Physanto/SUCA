@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batch.schema.json",
+  "title": "Lote",
+  "description": "Sobre de todo lote que la extensión envía al servidor. Cada registro se valida con el esquema de su tipo, en contracts/batches/<tipo>.schema.json.",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "description": "Versión semántica de los contratos con la que se armó el lote. Se aceptan todas las versiones de la misma versión mayor; 'default' es la versión actual de los contratos.",
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+      "default": "1.0.0"
+    },
+    "type": {
+      "description": "Tipo de los registros del lote.",
+      "$ref": "enums.json#/$defs/batch_type"
+    },
+    "records": {
+      "description": "Registros del lote, todos del mismo tipo. Un lote se guarda completo o no se guarda.",
+      "type": "array",
+      "minItems": 1
+    }
+  },
+  "required": ["contract_version", "type", "records"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "events" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/events.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "gaze" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/gaze.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "face" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/face.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tasks" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/tasks.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "calibration" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/calibration.schema.json" } } } }
+    }
+  ]
+}

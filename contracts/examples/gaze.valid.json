@@ -1,0 +1,10 @@
+{
+  "t": 1791380123456.2,
+  "x": 812.4,
+  "y": 377.9,
+  "scroll_x": 0,
+  "scroll_y": 1240,
+  "element_selector": "main > div.cart > button:nth-of-type(2)",
+  "zone": "main",
+  "valid": true
+}

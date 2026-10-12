@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/face.schema.json",
+  "title": "Muestra facial",
+  "description": "Valores numéricos de movimientos faciales y orientación de la cabeza. Nunca contiene imágenes.",
+  "type": "object",
+  "properties": {
+    "t": { "description": "Momento de la muestra.", "$ref": "../common.json#/$defs/timestamp" },
+    "values": {
+      "description": "Intensidad de cada movimiento facial registrado, entre 0 y 1, o null si no se detectó el rostro.",
+      "type": ["object", "null"],
+      "propertyNames": { "$ref": "../enums.json#/$defs/face_value" },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "head_yaw": { "description": "Giro horizontal de la cabeza en grados (positivo hacia la derecha del participante), o null.", "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+    "head_pitch": { "description": "Inclinación vertical de la cabeza en grados (positivo hacia arriba), o null.", "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+    "face_detected": { "description": "Si se detectó un rostro en el cuadro.", "type": "boolean" }
+  },
+  "required": ["t", "face_detected"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "Con rostro detectado, llegan todos los valores y la orientación.",
+      "if": { "properties": { "face_detected": { "const": true } }, "required": ["face_detected"] },
+      "then": {
+        "required": ["values", "head_yaw", "head_pitch"],
+        "properties": {
+          "values": { "type": "object", "minProperties": 1 },
+          "head_yaw": { "type": "number" },
+          "head_pitch": { "type": "number" }
+        }
+      }
+    }
+  ]
+}

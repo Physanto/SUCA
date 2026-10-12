@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/calibration.schema.json",
+  "title": "Resultado de calibración",
+  "description": "Resultado de una calibración de mirada con su validación.",
+  "type": "object",
+  "properties": {
+    "t": { "description": "Momento en que terminó la validación.", "$ref": "../common.json#/$defs/timestamp" },
+    "type": { "description": "Calibración inicial o final.", "$ref": "../enums.json#/$defs/calibration_type" },
+    "error_px": { "description": "Error medio de validación en píxeles CSS.", "type": "number", "minimum": 0 },
+    "error_deg": { "description": "Error medio de validación en grados de ángulo visual, a la distancia de referencia.", "type": "number", "minimum": 0 },
+    "accepted": { "description": "Si el error quedó por debajo del umbral y se aceptó la calibración.", "type": "boolean" },
+    "camera_delay_ms": { "description": "Retraso medido del procesamiento de la cámara, en milisegundos, o null si no se midió.", "type": ["number", "null"], "minimum": 0 }
+  },
+  "required": ["t", "type", "error_px", "error_deg", "accepted"],
+  "additionalProperties": false
+}

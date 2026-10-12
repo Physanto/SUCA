@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/gaze.schema.json",
+  "title": "Muestra de mirada",
+  "description": "Punto de mirada estimado por la webcam. Una muestra no válida (por ejemplo, sin rostro detectado) se envía igual, para distinguir 'sin mirada' de 'sin cámara'.",
+  "type": "object",
+  "properties": {
+    "t": { "description": "Momento de la muestra.", "$ref": "../common.json#/$defs/timestamp" },
+    "x": { "description": "Coordenada horizontal en la ventana, en píxeles CSS, o null si la muestra no es válida.", "type": ["number", "null"] },
+    "y": { "description": "Coordenada vertical en la ventana, en píxeles CSS, o null si la muestra no es válida.", "type": ["number", "null"] },
+    "scroll_x": { "description": "Desplazamiento horizontal de la página en ese momento, para pasar a coordenadas de página.", "type": ["number", "null"], "minimum": 0 },
+    "scroll_y": { "description": "Desplazamiento vertical de la página en ese momento.", "type": ["number", "null"], "minimum": 0 },
+    "element_selector": { "description": "Selector del elemento bajo el punto (document.elementFromPoint), o null si no hay.", "type": ["string", "null"] },
+    "zone": {
+      "description": "Zona asignada al punto, o null si la muestra no es válida.",
+      "anyOf": [{ "$ref": "../enums.json#/$defs/gaze_zone" }, { "type": "null" }]
+    },
+    "valid": { "description": "Si la estimación es utilizable.", "type": "boolean" }
+  },
+  "required": ["t", "valid"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "Una muestra válida lleva coordenadas, scroll y zona.",
+      "if": { "properties": { "valid": { "const": true } }, "required": ["valid"] },
+      "then": {
+        "required": ["x", "y", "scroll_x", "scroll_y", "element_selector", "zone"],
+        "properties": {
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "scroll_x": { "type": "number" },
+          "scroll_y": { "type": "number" },
+          "zone": { "$ref": "../enums.json#/$defs/gaze_zone" }
+        }
+      }
+    }
+  ]
+}
