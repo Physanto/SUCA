@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/element.schema.json",
+  "title": "Descriptor de elemento",
+  "description": "Identifica un elemento de la página evaluada con varios datos a la vez, porque el selector cambia con el contenido dinámico y el texto y el rol son más estables. Nunca contiene lo que el participante escribe.",
+  "type": "object",
+  "properties": {
+    "tag": {
+      "description": "Nombre de la etiqueta HTML en minúsculas (button, a, input…).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "id": {
+      "description": "Atributo id del elemento, o null si no tiene.",
+      "type": ["string", "null"]
+    },
+    "role": {
+      "description": "Rol ARIA explícito o implícito del elemento, o null si no tiene.",
+      "type": ["string", "null"]
+    },
+    "text": {
+      "description": "Texto visible del elemento recortado a 50 caracteres, o null. Nunca se toma de campos de entrada (input, textarea, select).",
+      "type": ["string", "null"],
+      "maxLength": 50
+    },
+    "selector": {
+      "description": "Selector CSS que ubica el elemento en la página en el momento del evento.",
+      "type": "string",
+      "minLength": 1
+    },
+    "box": {
+      "description": "Rectángulo del elemento en la ventana, en píxeles CSS (getBoundingClientRect).",
+      "type": "object",
+      "properties": {
+        "x": { "description": "Borde izquierdo.", "type": "number" },
+        "y": { "description": "Borde superior.", "type": "number" },
+        "w": { "description": "Ancho.", "type": "number", "minimum": 0 },
+        "h": { "description": "Alto.", "type": "number", "minimum": 0 }
+      },
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false
+    },
+    "interactive": {
+      "description": "Si el elemento es interactivo (enlace, botón, campo o elemento con un rol o manejador interactivo).",
+      "type": "boolean"
+    }
+  },
+  "required": ["tag", "id", "role", "text", "selector", "box", "interactive"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "Privacidad: en los campos de entrada el texto siempre es null.",
+      "if": {
+        "properties": { "tag": { "enum": ["input", "textarea", "select"] } },
+        "required": ["tag"]
+      },
+      "then": { "properties": { "text": { "type": "null" } } }
+    }
+  ]
+}

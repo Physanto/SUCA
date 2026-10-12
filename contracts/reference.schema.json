@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/reference.schema.json",
+  "title": "Referencia de tarea",
+  "description": "Ruta grabada por el evaluador al hacer una tarea correctamente: sus pasos, las condiciones finales propuestas, la confirmada y los pasos obligatorios. La condición final y el paso se reutilizan en otros contratos mediante $defs.",
+  "type": "object",
+  "properties": {
+    "steps": {
+      "description": "Pasos de la ruta, en orden.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" },
+      "minItems": 1
+    },
+    "candidates": {
+      "description": "Condiciones finales propuestas por el análisis para que el evaluador elija una.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/end_condition" }
+    },
+    "end_condition": {
+      "description": "Condición final confirmada por el evaluador, o null mientras la referencia está en borrador.",
+      "anyOf": [{ "$ref": "#/$defs/end_condition" }, { "type": "null" }]
+    },
+    "required_steps": {
+      "description": "Posiciones (desde 0) dentro de 'steps' de los pasos obligatorios. Que cada posición exista en 'steps' lo comprueba quien la usa.",
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "uniqueItems": true
+    }
+  },
+  "required": ["steps", "candidates", "end_condition", "required_steps"],
+  "additionalProperties": false,
+  "$defs": {
+    "step": {
+      "description": "Paso de una ruta: un clic sobre un elemento interactivo, un envío de formulario o un cambio de pantalla.",
+      "type": "object",
+      "properties": {
+        "t": { "description": "Momento del paso.", "$ref": "common.json#/$defs/timestamp" },
+        "type": { "description": "Tipo de paso.", "$ref": "enums.json#/$defs/step_type" },
+        "screen": { "description": "Pantalla en la que ocurrió el paso; en un cambio de pantalla, la pantalla nueva.", "$ref": "common.json#/$defs/screen" },
+        "element": {
+          "description": "Elemento del clic o formulario enviado; null en un cambio de pantalla.",
+          "anyOf": [{ "$ref": "element.schema.json" }, { "type": "null" }]
+        }
+      },
+      "required": ["t", "type", "screen", "element"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "Clics y envíos de formulario siempre identifican su elemento.",
+          "if": {
+            "properties": { "type": { "enum": ["click", "form_submit"] } },
+            "required": ["type"]
+          },
+          "then": { "properties": { "element": { "$ref": "element.schema.json" } } }
+        },
+        {
+          "description": "Un cambio de pantalla no tiene elemento.",
+          "if": { "properties": { "type": { "const": "screen_change" } }, "required": ["type"] },
+          "then": { "properties": { "element": { "type": "null" } } }
+        }
+      ]
+    },
+    "end_condition": {
+      "description": "Estado de la página que indica que la tarea se completó.",
+      "type": "object",
+      "properties": {
+        "type": { "description": "Tipo de condición.", "$ref": "enums.json#/$defs/end_condition_type" },
+        "text": { "description": "Texto visible que debe aparecer ('visible_text') o texto del elemento ('element_present').", "type": "string", "minLength": 1 },
+        "pattern": { "description": "Patrón de ruta de la URL ('url_pattern'), con {id} en lugar de los identificadores variables. Ejemplo: /order/{id}/confirmation.", "type": "string", "minLength": 1 },
+        "role": { "description": "Rol del elemento ('element_present').", "type": "string", "minLength": 1 }
+      },
+      "required": ["type"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "Texto visible: solo el texto.",
+          "if": { "properties": { "type": { "const": "visible_text" } }, "required": ["type"] },
+          "then": { "required": ["text"], "properties": { "pattern": false, "role": false } }
+        },
+        {
+          "description": "Patrón de URL: solo el patrón.",
+          "if": { "properties": { "type": { "const": "url_pattern" } }, "required": ["type"] },
+          "then": { "required": ["pattern"], "properties": { "text": false, "role": false } }
+        },
+        {
+          "description": "Elemento presente: texto y rol.",
+          "if": { "properties": { "type": { "const": "element_present" } }, "required": ["type"] },
+          "then": { "required": ["text", "role"], "properties": { "pattern": false } }
+        }
+      ]
+    }
+  }
+}

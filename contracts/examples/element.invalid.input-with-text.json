@@ -1,0 +1,14 @@
+{
+  "tag": "input",
+  "id": "email",
+  "role": "textbox",
+  "text": "ana@example.com",
+  "selector": "form#checkout > input#email",
+  "box": {
+    "x": 400,
+    "y": 300,
+    "w": 280,
+    "h": 32
+  },
+  "interactive": true
+}
