@@ -70,6 +70,32 @@ Las cuatro piezas se conectan mediante los **contratos** de `contracts/` (format
 
 La extensión no tiene dependencias de Node: no hace falta `npm install`.
 
+## Configuración
+
+Toda la configuración está en un solo archivo, `config/shared.json`. Python la lee con `shared.config.load_config()`, que valida cada valor al cargarla y falla con un mensaje que nombra la clave errónea. Para usar otro archivo (por ejemplo, en pruebas), indica su ruta en la variable de entorno `SUCA_CONFIG`.
+
+JSON no admite comentarios, así que cada clave se documenta aquí. Todos los números son enteros positivos y no se admiten claves desconocidas.
+
+| Clave | Valor inicial | Descripción |
+|---|---|---|
+| `server.host` | `127.0.0.1` | Dirección del servidor local. Debe ser de loopback: el servidor solo acepta conexiones de la misma computadora |
+| `server.port` | `8765` | Puerto del servidor local |
+| `server.token` | `suca-local-dev-token` | Token que la extensión envía en el encabezado `X-Api-Token`. **Es solo de desarrollo local**: no protege datos frente a terceros, porque el servidor escucha únicamente en `127.0.0.1`; evita que otras páginas abiertas en el navegador escriban en el servidor por accidente |
+| `database.path` | `data/suca.db` | Base de datos SQLite de las sesiones |
+| `database.mock_path` | `data/mock.db` | Base de datos de los datos simulados |
+| `sending.interval_ms` | `2000` | Cada cuánto la extensión entrega los registros acumulados al servidor |
+| `sending.max_batch_records` | `500` | Registros de un mismo tipo a partir de los cuales se entregan sin esperar al intervalo |
+| `sending.retry_initial_ms` | `1000` | Espera antes del primer reintento de un lote que no llegó al servidor |
+| `sending.retry_max_ms` | `30000` | Espera máxima entre reintentos; la espera se duplica hasta este valor |
+| `capture.mousemove_hz` | `50` | Frecuencia máxima de registro del movimiento del cursor |
+| `capture.scroll_hz` | `10` | Frecuencia máxima de registro del scroll |
+| `capture.click_response_wait_ms` | `1500` | Tiempo que se observa la página tras un clic para saber si respondió |
+| `camera.gaze_hz` | `30` | Frecuencia de muestreo de la mirada |
+| `camera.face_hz` | `15` | Frecuencia de muestreo de los movimientos faciales |
+| `test_page.port` | `8766` | Puerto en el que se sirve la página de prueba de la extensión |
+
+Las rutas relativas se resuelven desde la raíz del repositorio. La carpeta `data/` no se versiona.
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:

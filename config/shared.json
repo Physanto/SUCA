@@ -1,0 +1,29 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "token": "suca-local-dev-token"
+  },
+  "database": {
+    "path": "data/suca.db",
+    "mock_path": "data/mock.db"
+  },
+  "sending": {
+    "interval_ms": 2000,
+    "max_batch_records": 500,
+    "retry_initial_ms": 1000,
+    "retry_max_ms": 30000
+  },
+  "capture": {
+    "mousemove_hz": 50,
+    "scroll_hz": 10,
+    "click_response_wait_ms": 1500
+  },
+  "camera": {
+    "gaze_hz": 30,
+    "face_hz": 15
+  },
+  "test_page": {
+    "port": 8766
+  }
+}
