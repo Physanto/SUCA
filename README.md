@@ -106,6 +106,39 @@ python -m scripts.generate_config
 
 El archivo generado se versiona y no se edita a mano. Las pruebas fallan si no coincide con lo que generaría el script.
 
+## Base de datos
+
+El sistema guarda todo en una base SQLite local (por defecto `data/suca.db`). El esquema completo, comentado tabla por tabla, está en `server/schema.sql`.
+
+1. Crea la base:
+
+   ```bash
+   python -m scripts.init_db
+   ```
+
+   Si la base ya existe, no la toca. Si existe con otra versión del esquema, se detiene y explica cómo recrearla. Para crear otra base, usa `--db`:
+
+   ```bash
+   python -m scripts.init_db --db data/otra.db
+   ```
+
+2. Carga el estudio de ejemplo (o el tuyo):
+
+   ```bash
+   python -m scripts.load_study studies/example.yaml
+   ```
+
+   Volver a cargar el mismo archivo actualiza el estudio sin duplicarlo. El formato de los estudios está descrito en `studies/example.yaml` y en `contracts/study.schema.json`.
+
+Para borrar la base y crearla de nuevo, **con pérdida de todos sus datos**:
+
+```bash
+python -m scripts.init_db --reset          # pide confirmación
+python -m scripts.init_db --reset --yes    # sin confirmación
+```
+
+Para retirar a un participante, borra su fila de `participant`: sus sesiones y todos sus datos y resultados se borran en cascada.
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
