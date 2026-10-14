@@ -104,6 +104,8 @@ El participante presionó Empezar en una tarea del modo guiado. `task-end.js` em
 
 Los finales por botón (`done`, `gave_up`) ocurren en el propio panel lateral y no viajan como mensaje.
 
+`task-end.js` solo revisa la condición final, no los pasos obligatorios. Que la tarea termine por `reference` significa que la página llegó al estado final, no que la tarea fue un éxito: el análisis decide el éxito comparando los pasos del participante con los obligatorios de la referencia. Así la comparación de pasos tiene una sola implementación y la tarea termina en el momento real en que el participante llegó al final.
+
 ```json
 { "type": "task.completed", "payload": { "task_id": 3, "ended_by": "reference" } }
 ```
