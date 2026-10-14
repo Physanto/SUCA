@@ -202,10 +202,11 @@ CREATE TABLE usability_index (
 -- =====================================================================
 
 -- Referencia de una tarea, grabada por el evaluador. Los campos JSON siguen
--- contracts/reference.schema.json.
+-- contracts/reference.schema.json. Una tarea con referencias no se puede borrar,
+-- para no perder por accidente el trabajo del evaluador.
 CREATE TABLE reference (
     id                INTEGER PRIMARY KEY,
-    task_id           INTEGER NOT NULL REFERENCES task (id) ON DELETE CASCADE,
+    task_id           INTEGER NOT NULL REFERENCES task (id),
     source_session_id INTEGER REFERENCES session (id) ON DELETE SET NULL,
     steps             TEXT    NOT NULL,  -- JSON: pasos de la ruta
     candidates        TEXT    NOT NULL,  -- JSON: condiciones finales propuestas
