@@ -96,6 +96,16 @@ JSON no admite comentarios, así que cada clave se documenta aquí. Todos los n�
 
 Las rutas relativas se resuelven desde la raíz del repositorio. La carpeta `data/` no se versiona.
 
+### Configuración de la extensión
+
+La extensión no puede leer archivos fuera de su carpeta, así que usa una copia generada, `extension/config.generated.js`. Esa copia solo contiene lo que la extensión necesita: las secciones `server`, `sending`, `capture` y `camera` (en `UX.config`), y la versión y las enumeraciones de los contratos (en `UX.contracts`). Cada vez que cambies `config/shared.json` o `contracts/enums.json`, regenérala:
+
+```bash
+python -m scripts.generate_config
+```
+
+El archivo generado se versiona y no se edita a mano. Las pruebas fallan si no coincide con lo que generaría el script.
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
