@@ -1,0 +1,9 @@
+{
+  "name": "Tienda de ejemplo",
+  "system_under_test": "App de prueba: tienda en línea",
+  "description": null,
+  "tasks": [
+    { "instruction": "Busca unos audífonos inalámbricos y abre el primero de la lista." },
+    { "instruction": "Agrega los audífonos al carrito." }
+  ]
+}

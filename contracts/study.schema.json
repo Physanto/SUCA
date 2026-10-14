@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/study.schema.json",
+  "title": "Estudio",
+  "description": "Definición de un estudio en studies/*.yaml: el sistema evaluado y sus tareas en orden. El nombre identifica al estudio al volver a cargar el archivo, y la posición de cada tarea en la lista la identifica dentro del estudio.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Nombre único del estudio. Cambiarlo crea un estudio nuevo al cargar el archivo.",
+      "type": "string",
+      "minLength": 1
+    },
+    "system_under_test": {
+      "description": "Sistema evaluado, por ejemplo la app de prueba o el sistema del caso de estudio.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "Descripción libre del estudio, o null.",
+      "type": ["string", "null"]
+    },
+    "tasks": {
+      "description": "Tareas del modo guiado, en el orden en que se presentan al participante.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "description": "Una tarea.",
+        "type": "object",
+        "properties": {
+          "instruction": {
+            "description": "Instrucción que ve el participante, en español.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["instruction"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["name", "system_under_test", "tasks"],
+  "additionalProperties": false
+}

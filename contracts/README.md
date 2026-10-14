@@ -12,6 +12,7 @@ Formatos de datos, valores permitidos y mensajes que conectan las piezas del sis
 | `batches/<tipo>.schema.json` | Un registro de cada tipo de lote: `events`, `gaze`, `face`, `tasks`, `calibration` |
 | `element.schema.json` | Descriptor de un elemento de la página |
 | `reference.schema.json` | Referencia de una tarea: pasos, condiciones candidatas, condición final y pasos obligatorios |
+| `study.schema.json` | Definición de un estudio en `studies/*.yaml`: sistema evaluado y tareas en orden |
 | `extension-messages.md` | Mensajes entre las partes de la extensión y reglas de versionado |
 | `examples/` | Un ejemplo válido por esquema y ejemplos inválidos |
 
@@ -48,7 +49,7 @@ for error in errors:
 enums()["incident_type"]                     # ('rage_click', 'dead_click', ...)
 ```
 
-`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`.
+`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`.
 
 ## Ejemplos
 

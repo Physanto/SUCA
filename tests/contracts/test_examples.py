@@ -46,6 +46,10 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
         ("end_condition",),
         "'text' is a required property",
     ),
+    "study.invalid.task-without-instruction.json": (
+        ("tasks", 1),
+        "'instruction' is a required property",
+    ),
     "tasks.invalid.unknown-ended-by.json": (("ended_by",), "'timeout' is not one of"),
 }
 

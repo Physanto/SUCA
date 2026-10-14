@@ -24,6 +24,7 @@ def test_kinds_are_derived_from_schema_files() -> None:
         "face",
         "gaze",
         "reference",
+        "study",
         "tasks",
     )
 
