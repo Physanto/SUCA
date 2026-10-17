@@ -123,7 +123,8 @@ def test_contract_errors_are_listed_by_field(tmp_path: Path) -> None:
     path = tmp_path / "study.yaml"
     path.write_text("name: X\nsystem_under_test: Y\ntasks:\n  - text: Z\n", encoding="utf-8")
 
-    with pytest.raises(StudyFileError, match=r"tasks/0: 'instruction' is a required property"):
+    expected = r"tasks/0/instruction: 'instruction' is a required property"
+    with pytest.raises(StudyFileError, match=expected):
         read_study(path)
 
 

@@ -40,7 +40,8 @@ class ContractError:
 
     Attributes:
         path: Ruta del campo con el problema desde la raíz del documento. Las
-            posiciones en listas son enteros. Vacía si el problema es del
+            posiciones en listas son enteros. Si falta un campo obligatorio,
+            termina en el nombre de ese campo. Vacía si el problema es del
             documento completo.
         message: Motivo, en inglés, como todo mensaje técnico.
     """
@@ -62,14 +63,16 @@ def validate(kind: str, document: Any) -> list[ContractError]:
         document: Documento ya decodificado desde JSON.
 
     Returns:
-        Errores encontrados, ordenados por ruta. Vacía si el documento es válido.
+        Errores encontrados, sin repetidos y ordenados por ruta. Vacía si el
+        documento es válido.
 
     Raises:
         UnknownContractError: Si ``kind`` no tiene esquema.
     """
     validator = _validator(kind)
-    errors = [_to_contract_error(error) for error in validator.iter_errors(document)]
-    return sorted(errors, key=_sort_key)
+    # Un set, porque dos reglas del esquema pueden informar el mismo problema.
+    errors = {_to_contract_error(error) for error in validator.iter_errors(document)}
+    return sorted(errors, key=lambda error: (_sort_key(error), error.message))
 
 
 def kinds() -> tuple[str, ...]:
@@ -187,6 +190,9 @@ def _to_contract_error(error: ValidationError) -> ContractError:
     porque el valor es de otro tipo: así un objeto mal formado en un campo que
     admite ``null`` se informa por su problema real y no como "no es null".
 
+    jsonschema ubica un campo obligatorio faltante en el objeto que lo contiene;
+    aquí la ruta se completa con el nombre del campo, que es el que falta.
+
     Args:
         error: Error de jsonschema.
 
@@ -201,7 +207,15 @@ def _to_contract_error(error: ValidationError) -> ContractError:
             if not (sub.validator == "type" and not sub.relative_path)
         ]
         specific = best_match(same_type or specific.context)
-    return ContractError(path=tuple(specific.absolute_path), message=specific.message)
+    path = tuple(specific.absolute_path)
+    if specific.validator == "required" and isinstance(specific.instance, dict):
+        missing = [
+            name
+            for name in specific.validator_value
+            if name not in specific.instance and specific.message.startswith(repr(name))
+        ]
+        path += tuple(missing[:1])
+    return ContractError(path=path, message=specific.message)
 
 
 def _sort_key(error: ContractError) -> list[tuple[int, int, str]]:

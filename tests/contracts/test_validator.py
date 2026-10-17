@@ -48,8 +48,10 @@ def test_errors_carry_path_and_reason() -> None:
 
     errors = contracts.validate("batch", batch)
 
-    assert errors == [ContractError(path=("records", 3), message="'x' is a required property")]
-    assert str(errors[0]) == "records/3: 'x' is a required property"
+    assert errors == [
+        ContractError(path=("records", 3, "x"), message="'x' is a required property")
+    ]
+    assert str(errors[0]) == "records/3/x: 'x' is a required property"
 
 
 def test_root_error_is_printed_as_root() -> None:
@@ -74,7 +76,17 @@ def test_errors_are_sorted_by_numeric_position() -> None:
 
     errors = contracts.validate("batch", batch)
 
-    assert [error.path for error in errors] == [("records", 2), ("records", 10)]
+    assert [error.path for error in errors] == [("records", 2, "x"), ("records", 10, "element")]
+
+
+def test_the_same_problem_is_reported_once() -> None:
+    """Dos reglas del esquema revisan el elemento de un envío de formulario."""
+    batch = load_example("batch.valid.json")
+    batch["records"][10]["element"]["text"] = "x" * 51
+
+    errors = contracts.validate("batch", batch)
+
+    assert [error.path for error in errors] == [("records", 10, "element", "text")]
 
 
 def test_enums_are_read_only_tuples() -> None:

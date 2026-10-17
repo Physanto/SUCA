@@ -19,12 +19,15 @@ INVALID = sorted(EXAMPLES.glob("*.invalid.*.json"))
 EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
     "batch.invalid.empty-records.json": (("records",), "should be non-empty"),
     "batch.invalid.incompatible-contract-version.json": (("contract_version",), "does not match"),
-    "batch.invalid.record-of-another-type.json": (("records", 0), "'valid' is a required property"),
+    "batch.invalid.record-of-another-type.json": (
+        ("records", 0, "valid"),
+        "'valid' is a required property",
+    ),
     "batch.invalid.unknown-type.json": (("type",), "'clicks' is not one of"),
     "calibration.invalid.negative-error.json": (("error_px",), "less than the minimum"),
     "element.invalid.input-with-text.json": (("text",), "is not of type 'null'"),
     "element.invalid.text-too-long.json": (("text",), "is too long"),
-    "events.invalid.click-without-coordinates.json": ((), "'x' is a required property"),
+    "events.invalid.click-without-coordinates.json": (("x",), "'x' is a required property"),
     "events.invalid.field-change-with-value.json": (("data",), "is expected to be empty"),
     "events.invalid.timestamp-in-seconds.json": (("t",), "less than the minimum"),
     "events.invalid.unknown-event-type.json": (("type",), "'rageclick' is not one of"),
@@ -45,11 +48,11 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
         "'title_contains' is not one of",
     ),
     "reference.invalid.visible-text-without-text.json": (
-        ("end_condition",),
+        ("end_condition", "text"),
         "'text' is a required property",
     ),
     "study.invalid.task-without-instruction.json": (
-        ("tasks", 1),
+        ("tasks", 1, "instruction"),
         "'instruction' is a required property",
     ),
     "sus-answers.invalid.nine-answers.json": (("answers",), "is too short"),
