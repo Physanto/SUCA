@@ -139,6 +139,22 @@ python -m scripts.init_db --reset --yes    # sin confirmación
 
 Para retirar a un participante, borra su fila de `participant`: sus sesiones y todos sus datos y resultados se borran en cascada.
 
+## Servidor local
+
+Con la base creada, inicia el servidor:
+
+```bash
+python -m server
+```
+
+Escucha solo en `http://127.0.0.1:8765` (`server.host` y `server.port`). Cada petición debe llevar el encabezado `X-Api-Token` con `server.token`:
+
+```bash
+curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
+```
+
+Los endpoints, sus errores y cómo extender el servidor están en [server/README.md](server/README.md).
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
