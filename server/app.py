@@ -1,11 +1,13 @@
 """Fábrica de la aplicación FastAPI del servidor local.
 
 ``create_app`` es el punto de composición del servidor: comprueba la base,
-registra los endpoints con la comprobación del token y traduce las excepciones
-de ``services`` a respuestas HTTP. Las pruebas crean la app con otra
-configuración.
+define cómo se abre el repositorio de cada petición, registra los endpoints con
+la comprobación del token y traduce las excepciones de ``services`` a respuestas
+HTTP. Las pruebas crean la app con otra configuración.
 """
 
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict
 
 from fastapi import Depends, FastAPI, Request
@@ -13,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from server import routes
+from server.repositories import SqliteRepository
 from server.security import token_checker
 from server.services import ConflictError, ErrorItem, InvalidRequestError, NotFoundError
 from shared import contracts, db
@@ -41,9 +44,37 @@ def create_app(config: Config) -> FastAPI:
         description="Recibe, valida y guarda los datos de las sesiones.",
     )
     app.state.config = config
+    app.state.open_repository = _repository_factory(config)
     app.include_router(routes.router, dependencies=[Depends(token_checker(config.server.token))])
     _add_error_handlers(app)
     return app
+
+
+def _repository_factory(config: Config) -> Callable[[], AbstractContextManager[SqliteRepository]]:
+    """Crea la función que abre el repositorio de una petición.
+
+    Cada petición usa su propia conexión, que se cierra al terminar. FastAPI
+    abre, usa y cierra esa conexión en hilos distintos; por eso se abre con
+    ``check_same_thread=False``, que es seguro porque la conexión nunca se usa
+    desde dos hilos a la vez.
+
+    Args:
+        config: Configuración con la ruta de la base.
+
+    Returns:
+        Función sin argumentos que devuelve un administrador de contexto con un
+        ``SqliteRepository``.
+    """
+
+    @contextmanager
+    def open_repository() -> Iterator[SqliteRepository]:
+        connection = db.open_database(config.database.path, check_same_thread=False)
+        try:
+            yield SqliteRepository(connection)
+        finally:
+            connection.close()
+
+    return open_repository
 
 
 def _add_error_handlers(app: FastAPI) -> None:

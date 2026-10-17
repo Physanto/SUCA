@@ -213,10 +213,12 @@ CREATE TABLE reference (
     end_condition     TEXT,              -- JSON: condición confirmada; NULL en borrador
     required_steps    TEXT    NOT NULL,  -- JSON: posiciones de los pasos obligatorios
     status            TEXT    NOT NULL,  -- reference_status
-    duration_ms       REAL
+    duration_ms       REAL,
+    -- Una grabación guarda a lo sumo una referencia por tarea: volver a
+    -- guardarla (doble clic, reintento) no crea un duplicado. El índice de esta
+    -- restricción también sirve para buscar las referencias de una tarea.
+    UNIQUE (task_id, source_session_id)
 );
-
-CREATE INDEX reference_task_idx ON reference (task_id);
 
 -- Captura de pantalla de referencia para los fondos de los mapas de calor.
 -- La imagen vive en data/captures/; aquí solo su ruta.
