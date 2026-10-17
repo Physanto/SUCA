@@ -165,7 +165,27 @@ La extensión se carga en modo desarrollador, sin publicarla:
 
 Si cambias `config/shared.json` o `contracts/enums.json`, regenera la configuración de la extensión (`python -m scripts.generate_config`) y recárgala desde `chrome://extensions`. Después de recargarla, recarga también las pestañas abiertas.
 
-Requiere Chrome 116 o superior y el servidor local en marcha. Los permisos, las utilidades comunes y cómo viajan los datos están en [extension/README.md](extension/README.md).
+Requiere Chrome 116 o superior y el servidor local en marcha. Los permisos, los módulos, el panel y cómo viajan los datos están en [extension/README.md](extension/README.md).
+
+### Página de prueba
+
+Los content scripts no corren en las páginas de la propia extensión, así que la página de prueba se sirve como un sitio normal, en el puerto `test_page.port`:
+
+```bash
+python -m scripts.serve_test_page
+```
+
+### Probar el recorrido completo
+
+1. En una terminal, `python -m server`; en otra, `python -m scripts.serve_test_page`.
+2. Abre `http://127.0.0.1:8766/` y, con esa pestaña activa, pulsa el ícono de SUCA para abrir el panel lateral.
+3. Elige el estudio, escribe un código de participante (por ejemplo `P01`) y una versión (`V0`), elige el modo **Libre** y pulsa **Iniciar sesión**.
+4. Haz algunos clics en la página y pulsa **Cerrar sesión** en el panel.
+5. Comprueba los clics en la base:
+
+   ```bash
+   python -c "import sqlite3; c = sqlite3.connect('data/suca.db'); print(c.execute('SELECT session_id, type, x, y FROM event ORDER BY t DESC LIMIT 5').fetchall())"
+   ```
 
 ## Pruebas
 
