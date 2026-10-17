@@ -3,7 +3,8 @@
 Las interfaces (``Protocol``) son pequeñas y por necesidad: cada función de
 ``services`` pide solo la que usa, y una prueba puede sustituirla por otra
 implementación. ``SqliteRepository`` las implementa todas sobre una conexión y
-es el único lugar del servidor con SQL.
+es el único lugar del servidor con SQL y el único que escribe archivos (las
+capturas de pantalla).
 
 Los campos JSON se guardan como texto: quien escribe filas con ``insert`` o
 ``upsert`` ya los entrega serializados.
@@ -11,12 +12,17 @@ Los campos JSON se guardan como texto: quien escribe filas con ``insert`` o
 
 import json
 import sqlite3
+import uuid
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 from shared import db
+
+CAPTURES_FOLDER = "captures"
+"""Carpeta de las capturas de pantalla, dentro de la carpeta de datos."""
 
 
 @dataclass(frozen=True)
@@ -121,12 +127,12 @@ class ReferenceStore(Protocol):
 
 
 class CaptureStore(Protocol):
-    """Registro de capturas de pantalla."""
+    """Guardado de capturas de pantalla."""
 
     def add_capture(
-        self, *, study_id: int, screen: Mapping[str, Any], file_path: str, t: float
-    ) -> int:
-        """Registra una captura ya guardada en disco y devuelve su id."""
+        self, *, study_id: int, screen: Mapping[str, Any], image: bytes, extension: str, t: float
+    ) -> tuple[int, str]:
+        """Guarda la imagen en disco, registra la captura y devuelve su id y su ruta."""
         ...
 
 
@@ -144,15 +150,19 @@ class SqliteRepository:
     Attributes:
         connection: Conexión abierta con ``shared.db``. Quien crea el
             repositorio la cierra.
+        data_dir: Carpeta de datos; las capturas van en su subcarpeta
+            ``captures/``.
     """
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(self, connection: sqlite3.Connection, data_dir: Path) -> None:
         """Crea el repositorio sobre una conexión.
 
         Args:
             connection: Conexión abierta con ``shared.db``.
+            data_dir: Carpeta de datos (la de la base de datos).
         """
         self.connection = connection
+        self.data_dir = data_dir
 
     # --- Estudios ---------------------------------------------------------
 
@@ -326,14 +336,27 @@ class SqliteRepository:
         return row["id"]
 
     def add_capture(
-        self, *, study_id: int, screen: Mapping[str, Any], file_path: str, t: float
-    ) -> int:
-        """Registra una captura ya guardada en disco y devuelve su id."""
-        cursor = self.connection.execute(
-            "INSERT INTO screen_capture (study_id, screen, file_path, t) VALUES (?, ?, ?, ?)",
-            (study_id, to_json(screen), file_path, t),
-        )
-        return cursor.lastrowid
+        self, *, study_id: int, screen: Mapping[str, Any], image: bytes, extension: str, t: float
+    ) -> tuple[int, str]:
+        """Guarda la imagen en disco, registra la captura y devuelve su id y su ruta.
+
+        El nombre del archivo lo genera el servidor; nunca sale de la petición.
+        La ruta registrada es relativa a la carpeta de datos, con ``/``.
+        """
+        file_path = PurePosixPath(CAPTURES_FOLDER, str(study_id), f"{uuid.uuid4().hex}.{extension}")
+        target = self.data_dir.joinpath(*file_path.parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(image)
+        try:
+            cursor = self.connection.execute(
+                "INSERT INTO screen_capture (study_id, screen, file_path, t) VALUES (?, ?, ?, ?)",
+                (study_id, to_json(screen), str(file_path), t),
+            )
+        except BaseException:
+            # Sin fila no hay captura: no se deja un archivo huérfano.
+            target.unlink(missing_ok=True)
+            raise
+        return cursor.lastrowid, str(file_path)
 
 
 def _quote(name: str) -> str:

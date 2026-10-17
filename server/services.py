@@ -5,6 +5,8 @@ los problemas con las excepciones de este módulo, que ``app.py`` traduce a
 códigos de estado. Son funciones y no clases porque no guardan estado.
 """
 
+import base64
+import binascii
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -13,6 +15,7 @@ from typing import Any
 from server import ingestion
 from server.repositories import (
     BatchWriter,
+    CaptureStore,
     ReferenceStore,
     SessionInfo,
     SessionStore,
@@ -31,6 +34,13 @@ DRAFT_REFERENCE = "draft"
 
 CONFIRMED_REFERENCE = "confirmed"
 """Valor de ``reference_status`` de una referencia confirmada por el evaluador."""
+
+MAX_CAPTURE_BYTES = 10 * 1024 * 1024
+"""Tamaño máximo de una captura de pantalla. Una pantalla completa en PNG ocupa
+unos pocos megabytes."""
+
+_IMAGE_FORMATS = {"png": (b"\x89PNG\r\n\x1a\n", "png"), "jpeg": (b"\xff\xd8\xff", "jpg")}
+"""Por tipo de data URL: primeros bytes que debe tener la imagen y extensión del archivo."""
 
 
 @dataclass(frozen=True)
@@ -277,6 +287,68 @@ def create_reference(
         task_id=task_id, source_session_id=session_id, status=DRAFT_REFERENCE
     )
     return {"reference_id": reference_id}
+
+
+def save_capture(
+    body: Any, *, studies: StudyReader, captures: CaptureStore, now: Clock
+) -> dict[str, Any]:
+    """Guarda una captura de pantalla de referencia.
+
+    Args:
+        body: Petición que cumple ``requests/new-capture.schema.json``.
+        studies: Consulta de estudios.
+        captures: Guardado de la imagen y de su registro.
+        now: Reloj para el momento de la captura.
+
+    Returns:
+        ``capture_id`` y ``file_path`` (relativa a la carpeta de datos).
+
+    Raises:
+        InvalidRequestError: Si la petición no cumple el contrato, el estudio no
+            existe o la imagen no es válida o es demasiado grande.
+    """
+    _validate("new-capture", body, "capture request does not match its contract")
+    study_id = body["study_id"]
+    if not studies.study_exists(study_id):
+        raise InvalidRequestError(
+            "unknown study", [ErrorItem(None, "study_id", f"study {study_id} not found")]
+        )
+    image, extension = _decode_image(body["image"])
+    capture_id, file_path = captures.add_capture(
+        study_id=study_id, screen=body["screen"], image=image, extension=extension, t=now()
+    )
+    return {"capture_id": capture_id, "file_path": file_path}
+
+
+def _decode_image(data_url: str) -> tuple[bytes, str]:
+    """Decodifica una imagen en data URL y comprueba que sea lo que dice.
+
+    El contrato ya garantiza la forma ``data:image/<tipo>;base64,<datos>``.
+
+    Returns:
+        Bytes de la imagen y extensión de archivo que le corresponde.
+
+    Raises:
+        InvalidRequestError: Si es demasiado grande, el base64 no es válido o los
+            bytes no son del tipo declarado.
+    """
+    header, encoded = data_url.split(",", 1)
+    image_type = header.removeprefix("data:image/").removesuffix(";base64")
+    signature, extension = _IMAGE_FORMATS[image_type]
+
+    # Se mide antes de decodificar: el base64 ocupa 4/3 del binario.
+    if len(encoded) * 3 // 4 > MAX_CAPTURE_BYTES:
+        problem = f"image is larger than {MAX_CAPTURE_BYTES} bytes"
+    else:
+        try:
+            image = base64.b64decode(encoded, validate=True)
+        except binascii.Error:
+            problem = "image is not valid base64"
+        else:
+            if image.startswith(signature):
+                return image, extension
+            problem = f"image content is not {image_type}"
+    raise InvalidRequestError("invalid image", [ErrorItem(None, "image", problem)])
 
 
 def store_batch(

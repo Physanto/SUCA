@@ -53,7 +53,8 @@ def create_app(config: Config) -> FastAPI:
 def _repository_factory(config: Config) -> Callable[[], AbstractContextManager[SqliteRepository]]:
     """Crea la función que abre el repositorio de una petición.
 
-    Cada petición usa su propia conexión, que se cierra al terminar. FastAPI
+    Cada petición usa su propia conexión, que se cierra al terminar. Las
+    capturas de pantalla se guardan junto a la base, en ``captures/``. FastAPI
     abre, usa y cierra esa conexión en hilos distintos; por eso se abre con
     ``check_same_thread=False``, que es seguro porque la conexión nunca se usa
     desde dos hilos a la vez.
@@ -70,7 +71,7 @@ def _repository_factory(config: Config) -> Callable[[], AbstractContextManager[S
     def open_repository() -> Iterator[SqliteRepository]:
         connection = db.open_database(config.database.path, check_same_thread=False)
         try:
-            yield SqliteRepository(connection)
+            yield SqliteRepository(connection, data_dir=config.database.path.parent)
         finally:
             connection.close()
 
