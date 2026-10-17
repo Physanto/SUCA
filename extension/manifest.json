@@ -27,6 +27,7 @@
         "common/messages.js",
         "common/session.js",
         "common/batcher.js",
+        "common/modules.js",
         "content/capture.js",
         "content/camera.js",
         "content/calibration.js",
