@@ -5,13 +5,32 @@ los problemas con las excepciones de este módulo, que ``app.py`` traduce a
 códigos de estado. Son funciones y no clases porque no guardan estado.
 """
 
-from collections.abc import Sequence
+from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from server import ingestion
-from server.repositories import BatchWriter, SessionInfo, SessionStore, StudyReader
+from server.repositories import (
+    BatchWriter,
+    ReferenceStore,
+    SessionInfo,
+    SessionStore,
+    StudyReader,
+)
 from shared import contracts, db
+
+Clock = Callable[[], float]
+"""Función que devuelve el momento actual en milisegundos desde 1970."""
+
+REFERENCE_MODE = "reference"
+"""Valor de ``session_mode`` de las sesiones que graban referencias."""
+
+DRAFT_REFERENCE = "draft"
+"""Valor de ``reference_status`` de una referencia recién guardada."""
+
+CONFIRMED_REFERENCE = "confirmed"
+"""Valor de ``reference_status`` de una referencia confirmada por el evaluador."""
 
 
 @dataclass(frozen=True)
@@ -68,6 +87,196 @@ def health() -> dict[str, str]:
         "contract_version": contracts.contract_version(),
         "schema_version": db.expected_schema_version(),
     }
+
+
+def list_studies(*, studies: StudyReader) -> list[dict[str, Any]]:
+    """Devuelve todos los estudios.
+
+    Args:
+        studies: Consulta de estudios.
+
+    Returns:
+        Estudios con ``id``, ``name``, ``system_under_test`` y ``description``.
+    """
+    return studies.list_studies()
+
+
+def list_tasks(study_id: int, *, studies: StudyReader) -> list[dict[str, Any]]:
+    """Devuelve las tareas de un estudio con sus referencias confirmadas.
+
+    Args:
+        study_id: Estudio de la ruta.
+        studies: Consulta de estudios.
+
+    Returns:
+        Tareas en orden, cada una con ``references``: lista de ``{id,
+        end_condition}`` de sus referencias confirmadas (vacía si no tiene).
+
+    Raises:
+        NotFoundError: Si el estudio no existe.
+    """
+    if not studies.study_exists(study_id):
+        raise NotFoundError(f"study {study_id} not found")
+    references: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    for reference in studies.list_references(study_id, CONFIRMED_REFERENCE):
+        references[reference["task_id"]].append(
+            {"id": reference["id"], "end_condition": reference["end_condition"]}
+        )
+    return [
+        {**task, "references": references.get(task["id"], [])}
+        for task in studies.list_tasks(study_id)
+    ]
+
+
+def create_session(
+    body: Any, *, studies: StudyReader, sessions: SessionStore, now: Clock
+) -> dict[str, Any]:
+    """Crea una sesión, y su participante si el código es nuevo.
+
+    Args:
+        body: Petición que cumple ``requests/new-session.schema.json``.
+        studies: Consulta de estudios.
+        sessions: Creación de sesiones.
+        now: Reloj para ``started_at``.
+
+    Returns:
+        ``session_id`` y ``started_at``.
+
+    Raises:
+        InvalidRequestError: Si la petición no cumple el contrato o el estudio
+            no existe.
+    """
+    _validate("new-session", body, "session request does not match its contract")
+    if not studies.study_exists(body["study_id"]):
+        raise InvalidRequestError(
+            "unknown study",
+            [ErrorItem(None, "study_id", f"study {body['study_id']} not found")],
+        )
+    started_at = now()
+    session_id = sessions.create_session(
+        study_id=body["study_id"],
+        participant_id=body["participant_id"],
+        version=body["version"],
+        mode=body["mode"],
+        started_at=started_at,
+        screen_info=body["screen_info"],
+    )
+    return {"session_id": session_id, "started_at": started_at}
+
+
+def close_session(session_id: int, *, sessions: SessionStore, now: Clock) -> dict[str, Any]:
+    """Cierra una sesión. Cerrar una sesión ya cerrada no la cambia.
+
+    Args:
+        session_id: Sesión de la ruta.
+        sessions: Consulta y cierre de sesiones.
+        now: Reloj para ``ended_at``.
+
+    Returns:
+        ``session_id`` y ``ended_at``.
+
+    Raises:
+        NotFoundError: Si la sesión no existe.
+    """
+    session = _existing_session(sessions, session_id)
+    if session.ended_at is not None:
+        return {"session_id": session_id, "ended_at": session.ended_at}
+    ended_at = now()
+    sessions.close_session(session_id, ended_at)
+    return {"session_id": session_id, "ended_at": ended_at}
+
+
+def save_sus(session_id: int, body: Any, *, sessions: SessionStore) -> dict[str, float]:
+    """Guarda las respuestas del SUS de una sesión abierta y calcula su puntaje.
+
+    Volver a enviarlas reemplaza las anteriores.
+
+    Args:
+        session_id: Sesión de la ruta.
+        body: Petición que cumple ``requests/sus-answers.schema.json``.
+        sessions: Consulta de sesiones y guardado del SUS.
+
+    Returns:
+        ``score``, de 0 a 100.
+
+    Raises:
+        NotFoundError: Si la sesión no existe.
+        ConflictError: Si la sesión está cerrada.
+        InvalidRequestError: Si las respuestas no cumplen el contrato.
+    """
+    _open_session(sessions, session_id)
+    _validate("sus-answers", body, "sus answers do not match their contract")
+    score = sus_score(body["answers"])
+    sessions.save_sus(session_id, body["answers"], score)
+    return {"score": score}
+
+
+def sus_score(answers: Sequence[int]) -> float:
+    """Calcula el puntaje SUS con la fórmula estándar.
+
+    Los ítems impares (redactados en positivo) aportan ``respuesta - 1``; los
+    pares (en negativo), ``5 - respuesta``. La suma se multiplica por 2,5.
+
+    Args:
+        answers: Las 10 respuestas, de 1 a 5, en orden.
+
+    Returns:
+        Puntaje de 0 a 100.
+    """
+    total = sum(
+        answer - 1 if position % 2 == 0 else 5 - answer
+        for position, answer in enumerate(answers)
+    )
+    return total * 2.5
+
+
+def create_reference(
+    body: Any,
+    *,
+    sessions: SessionStore,
+    studies: StudyReader,
+    references: ReferenceStore,
+) -> dict[str, int]:
+    """Guarda en borrador la referencia grabada en una sesión de modo reference.
+
+    La referencia nace sin pasos ni condiciones candidatas: las agrega el
+    análisis. Guardar dos veces la misma tarea de la misma sesión devuelve la
+    misma referencia.
+
+    Args:
+        body: Petición que cumple ``requests/new-reference.schema.json``.
+        sessions: Consulta de sesiones.
+        studies: Consulta de tareas del estudio.
+        references: Creación de referencias.
+
+    Returns:
+        ``reference_id``.
+
+    Raises:
+        InvalidRequestError: Si la petición no cumple el contrato, la sesión no
+            existe o no es de modo reference, o la tarea es de otro estudio.
+    """
+    _validate("new-reference", body, "reference request does not match its contract")
+    session_id, task_id = body["source_session_id"], body["task_id"]
+    session = sessions.get_session(session_id)
+    if session is None:
+        raise InvalidRequestError(
+            "unknown session",
+            [ErrorItem(None, "source_session_id", f"session {session_id} not found")],
+        )
+    if session.mode != REFERENCE_MODE:
+        message = f"session {session_id} has mode {session.mode!r}, expected {REFERENCE_MODE!r}"
+        raise InvalidRequestError(
+            "session is not a reference recording",
+            [ErrorItem(None, "source_session_id", message)],
+        )
+    if task_id not in studies.task_ids(session.study_id):
+        message = f"task {task_id} does not belong to study {session.study_id}"
+        raise InvalidRequestError("task of another study", [ErrorItem(None, "task_id", message)])
+    reference_id = references.create_draft_reference(
+        task_id=task_id, source_session_id=session_id, status=DRAFT_REFERENCE
+    )
+    return {"reference_id": reference_id}
 
 
 def store_batch(
