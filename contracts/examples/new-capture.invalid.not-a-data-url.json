@@ -1,0 +1,8 @@
+{
+  "study_id": 1,
+  "screen": {
+    "url": "https://shop.local/cart",
+    "title": "Carrito"
+  },
+  "image": "https://shop.local/cart.png"
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/requests/new-session.schema.json",
+  "title": "Petición para crear una sesión",
+  "description": "Cuerpo de POST /sessions. El panel lateral lo envía al iniciar una sesión; el servidor crea al participante si su código no existe.",
+  "type": "object",
+  "properties": {
+    "study_id": {
+      "description": "Estudio de la sesión.",
+      "$ref": "../common.json#/$defs/id"
+    },
+    "participant_id": {
+      "description": "Código anónimo del participante (por ejemplo P07). Nunca un nombre: solo letras, números, guion y guion bajo.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,32}$"
+    },
+    "version": {
+      "description": "Versión del sistema evaluado, por ejemplo V0, V1 o V2.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "mode": {
+      "description": "Modo de la sesión.",
+      "$ref": "../enums.json#/$defs/session_mode"
+    },
+    "screen_info": {
+      "description": "Condiciones de la pantalla al iniciar la sesión.",
+      "type": "object",
+      "properties": {
+        "window_width": { "description": "Ancho interior de la ventana evaluada, en píxeles CSS.", "type": "integer", "minimum": 1 },
+        "window_height": { "description": "Alto interior de la ventana evaluada, en píxeles CSS.", "type": "integer", "minimum": 1 },
+        "screen_width": { "description": "Ancho de la pantalla (screen.width), en píxeles CSS.", "type": "integer", "minimum": 1 },
+        "screen_height": { "description": "Alto de la pantalla (screen.height), en píxeles CSS.", "type": "integer", "minimum": 1 },
+        "device_pixel_ratio": { "description": "Relación entre píxeles físicos y CSS (devicePixelRatio).", "type": "number", "exclusiveMinimum": 0 },
+        "chrome_version": { "description": "Versión completa de Chrome.", "type": "string", "minLength": 1 }
+      },
+      "required": ["window_width", "window_height", "screen_width", "screen_height", "device_pixel_ratio", "chrome_version"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["study_id", "participant_id", "version", "mode", "screen_info"],
+  "additionalProperties": false
+}

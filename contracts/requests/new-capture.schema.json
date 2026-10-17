@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/requests/new-capture.schema.json",
+  "title": "Captura de pantalla de referencia",
+  "description": "Cuerpo de POST /captures. El service worker lo envía cuando el evaluador pide una captura para los fondos de los mapas de calor. Nunca se usa durante sesiones de participantes.",
+  "type": "object",
+  "properties": {
+    "study_id": {
+      "description": "Estudio al que pertenece la captura.",
+      "$ref": "../common.json#/$defs/id"
+    },
+    "screen": {
+      "description": "Pantalla capturada.",
+      "$ref": "../common.json#/$defs/screen"
+    },
+    "image": {
+      "description": "Imagen PNG o JPEG como data URL en base64, tal como la entrega chrome.tabs.captureVisibleTab.",
+      "type": "string",
+      "pattern": "^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$"
+    }
+  },
+  "required": ["study_id", "screen", "image"],
+  "additionalProperties": false
+}

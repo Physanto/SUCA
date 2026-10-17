@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/requests/new-reference.schema.json",
+  "title": "Petición para guardar una referencia",
+  "description": "Cuerpo de POST /references. El panel lateral lo envía cuando el evaluador guarda la grabación de una tarea en una sesión de modo reference. El servidor crea la referencia en borrador y sin pasos; el análisis extrae después los pasos y las condiciones candidatas, y el evaluador confirma la condición final en el panel de resultados.",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "description": "Tarea grabada. Debe pertenecer al estudio de la sesión.",
+      "$ref": "../common.json#/$defs/id"
+    },
+    "source_session_id": {
+      "description": "Sesión de modo reference en la que se grabó la tarea.",
+      "$ref": "../common.json#/$defs/id"
+    }
+  },
+  "required": ["task_id", "source_session_id"],
+  "additionalProperties": false
+}

@@ -23,8 +23,12 @@ def test_kinds_are_derived_from_schema_files() -> None:
         "events",
         "face",
         "gaze",
+        "new-capture",
+        "new-reference",
+        "new-session",
         "reference",
         "study",
+        "sus-answers",
         "tasks",
     )
 

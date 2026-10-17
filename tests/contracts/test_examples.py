@@ -34,6 +34,8 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
         "greater than the maximum",
     ),
     "gaze.invalid.valid-sample-without-zone.json": (("zone",), "None is not one of"),
+    "new-capture.invalid.not-a-data-url.json": (("image",), "does not match"),
+    "new-session.invalid.participant-name.json": (("participant_id",), "does not match"),
     "reference.invalid.screen-change-with-element.json": (
         ("steps", 1, "element"),
         "is not of type 'null'",
@@ -50,6 +52,7 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
         ("tasks", 1),
         "'instruction' is a required property",
     ),
+    "sus-answers.invalid.nine-answers.json": (("answers",), "is too short"),
     "tasks.invalid.unknown-ended-by.json": (("ended_by",), "'timeout' is not one of"),
 }
 

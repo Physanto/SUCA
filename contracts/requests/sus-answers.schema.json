@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/requests/sus-answers.schema.json",
+  "title": "Respuestas del SUS",
+  "description": "Cuerpo de POST /sessions/{id}/sus. El puntaje lo calcula el servidor con la fórmula estándar del SUS.",
+  "type": "object",
+  "properties": {
+    "answers": {
+      "description": "Respuestas a los 10 ítems, en orden, de 1 (muy en desacuerdo) a 5 (muy de acuerdo).",
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 5 },
+      "minItems": 10,
+      "maxItems": 10
+    }
+  },
+  "required": ["answers"],
+  "additionalProperties": false
+}

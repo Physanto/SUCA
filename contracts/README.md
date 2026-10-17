@@ -13,6 +13,7 @@ Formatos de datos, valores permitidos y mensajes que conectan las piezas del sis
 | `element.schema.json` | Descriptor de un elemento de la página |
 | `reference.schema.json` | Referencia de una tarea: pasos, condiciones candidatas, condición final y pasos obligatorios |
 | `study.schema.json` | Definición de un estudio en `studies/*.yaml`: sistema evaluado y tareas en orden |
+| `requests/<nombre>.schema.json` | Cuerpos de las peticiones al servidor: `new-session` (crear sesión), `sus-answers` (respuestas del SUS), `new-reference` (guardar una referencia), `new-capture` (captura de pantalla) |
 | `extension-messages.md` | Mensajes entre las partes de la extensión y reglas de versionado |
 | `examples/` | Un ejemplo válido por esquema y ejemplos inválidos |
 
@@ -49,7 +50,7 @@ for error in errors:
 enums()["incident_type"]                     # ('rage_click', 'dead_click', ...)
 ```
 
-`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`.
+`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference` y `new-capture`.
 
 ## Ejemplos
 
