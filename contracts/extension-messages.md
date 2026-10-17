@@ -10,11 +10,13 @@ Contrato de los mensajes que intercambian las partes de la extensión. Los nombr
 | **Content scripts** | `extension/content/` (`capture.js`, `camera.js`, `calibration.js`, `task-end.js`) | Pestaña de la aplicación evaluada |
 | **Service worker** | `extension/worker.js` | Segundo plano de la extensión |
 
-**El service worker es el mediador.** El panel lateral y los content scripts nunca se hablan directamente: todo mensaje pasa por el worker, que lo reenvía al destino.
+**El service worker es el mediador** entre el panel lateral y la pestaña evaluada:
 
-- Del panel a los content scripts: el worker lo reenvía a la pestaña evaluada de la sesión activa.
-- De los content scripts al panel: el worker lo reenvía al panel lateral.
-- `batch` y `screen_capture.request` terminan en el worker, que habla con el servidor.
+- **Del panel a la pestaña:** `chrome.runtime.sendMessage` no llega a los content scripts, así que el panel envía al worker y el worker reenvía el mensaje **solo a la pestaña evaluada** de la sesión activa (`tab_id` en el estado de la sesión).
+- **De la pestaña al panel:** Chrome entrega el mensaje de un content script a todas las páginas de la extensión, incluido el panel lateral. El worker no lo reenvía: el panel lo recibiría dos veces.
+- **Al worker:** `batch`, `screen_capture.request` y `tab.identify` terminan en el worker, que habla con el servidor.
+
+Solo participa la pestaña evaluada. Los content scripts se cargan en todas las pestañas, pero cada uno pregunta su id con `tab.identify` y solo arranca sus módulos si coincide con `tab_id`.
 
 ## Forma de todo mensaje
 
@@ -30,27 +32,55 @@ Contrato de los mensajes que intercambian las partes de la extensión. Los nombr
 | `type` | string | Uno de los valores de `message_type` |
 | `payload` | object | Datos del mensaje; su forma depende de `type` |
 
-Los mensajes no esperan respuesta. Un content script que se carga después de un mensaje (por ejemplo, tras una navegación) no lo recibe: obtiene el estado actual de la sesión con `UX.session`, que vive en `chrome.storage.session`. Por eso la tarea activa también está en ese estado y no solo en los mensajes.
+### Respuestas
+
+`UX.messages.send` devuelve una promesa. La mayoría de los mensajes no tienen respuesta y la promesa se resuelve con `undefined`. Los que responden:
+
+| Mensaje | Responde | Con | Cuándo |
+|---|---|---|---|
+| `batch` | Worker | `{ "queued": true }` | Después de guardar el lote en la cola persistente (`storage.local`). Si la promesa falla, el lote no quedó guardado y el acumulador lo reintenta |
+| `session.closed` | Worker al panel; pestaña al worker | `{ "closing": true }`; lo que devuelva la pestaña | La pestaña responde después de detener sus módulos y vaciar su acumulador; el worker responde después de poner el cierre en la cola |
+| `screen_capture.request` | Worker | `{ "capture_id", "file_path" }` | Cuando el servidor guardó la captura |
+| `tab.identify` | Worker | `{ "tab_id" }` | De inmediato |
+
+Si el receptor falla, la promesa se rechaza con su mensaje de error.
+
+### Estado de la sesión
+
+Un content script que se carga después de un mensaje (por ejemplo, tras una navegación) no lo recibe. Por eso el estado de la sesión activa vive en `chrome.storage.session` y todos los contextos lo leen con `UX.session`:
+
+```json
+{ "session_id": 17, "mode": "guided", "study_id": 2, "tab_id": 412, "task_id": 3 }
+```
+
+| Campo | Descripción |
+|---|---|
+| `session_id`, `mode`, `study_id` | Los de la sesión creada en el servidor |
+| `tab_id` | Pestaña evaluada: la activa cuando el panel inició la sesión |
+| `task_id` | Tarea activa del modo guiado, o `null` |
+
+Solo el panel lateral lo escribe: `UX.session.start` al iniciar la sesión, `update({ task_id })` al empezar y terminar cada tarea, y `clear` después de cerrarla. No hay sesión activa si el estado es `null`.
 
 ## Resumen
 
 | Mensaje | Lo envía | Lo recibe | Datos |
 |---|---|---|---|
-| `session.started` | Panel lateral | Content scripts | `session_id`, `mode`, `study_id` |
-| `session.closed` | Panel lateral | Content scripts | `session_id` |
-| `task.started` | Panel lateral | `task-end.js`, `capture.js` | `task_id`, `end_condition` (o `null`) |
+| `session.started` | Panel lateral | Content scripts (vía worker) | `session_id`, `mode`, `study_id` |
+| `session.closed` | Panel lateral | Content scripts (vía worker) | `session_id` |
+| `task.started` | Panel lateral | `task-end.js`, `capture.js` (vía worker) | `task_id`, `end_condition` (o `null`) |
 | `task.completed` | `task-end.js` | Panel lateral | `task_id`, `ended_by` |
-| `calibration.request` | Panel lateral | Cámara (`camera.js`, `calibration.js`) | `type` |
+| `calibration.request` | Panel lateral | Cámara (`camera.js`, `calibration.js`) (vía worker) | `type` |
 | `calibration.result` | Cámara | Panel lateral | `error_px`, `error_deg`, `accepted` |
 | `camera.status` | Cámara | Panel lateral | `status` |
 | `screen_capture.request` | Panel lateral | Service worker | `study_id`, `screen` |
-| `batch` | Content scripts, panel lateral | Service worker | `type`, `records` |
+| `batch` | Content scripts, panel lateral | Service worker | `session_id`, `type`, `records` |
+| `tab.identify` | Content scripts | Service worker | — |
 
 ## Detalle de cada mensaje
 
 ### `session.started`
 
-Empieza una sesión. Los content scripts inician sus módulos.
+Empieza una sesión. El panel lo envía después de crear la sesión en el servidor y guardar el estado con `UX.session.start`. El worker lo reenvía a la pestaña evaluada, que inicia sus módulos.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -64,7 +94,14 @@ Empieza una sesión. Los content scripts inician sus módulos.
 
 ### `session.closed`
 
-Termina la sesión. Los content scripts detienen sus módulos y entregan lo que tengan acumulado.
+Termina la sesión. **El cierre en el servidor lo hace el worker**, para que ningún lote llegue después:
+
+1. El panel vacía su propio acumulador (`await UX.batcher.flush()`) y envía `session.closed`.
+2. El worker lo reenvía a la pestaña evaluada y espera su respuesta. La pestaña detiene sus módulos, vacía su acumulador y responde.
+3. El worker pone el cierre (`POST /sessions/{id}/close`) en la cola, detrás de los lotes pendientes, y responde al panel.
+4. El panel borra el estado con `UX.session.clear()`.
+
+Si la pestaña ya no existe o no responde, el worker cierra igual. El panel no llama a `POST /sessions/{id}/close`.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -153,7 +190,7 @@ Estado de la cámara. Se envía al iniciar la cámara y cada vez que el estado c
 
 ### `screen_capture.request`
 
-El evaluador pide una captura de pantalla de referencia para los mapas de calor. El worker captura la pestaña evaluada y la envía al servidor (`POST /captures`). Nunca se usa durante sesiones de participantes.
+El evaluador pide una captura de pantalla de referencia para los mapas de calor. El worker captura la parte visible de la pestaña evaluada y la envía al servidor (`POST /captures`), sin pasar por la cola: si falla, la respuesta lo informa y el evaluador puede repetirla. Nunca se usa durante sesiones de participantes.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -169,10 +206,11 @@ El evaluador pide una captura de pantalla de referencia para los mapas de calor.
 
 ### `batch`
 
-Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batcher`. El worker agrega `contract_version`, los pone en cola y los entrega al servidor (`POST /sessions/{id}/batches`) con reintentos.
+Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batcher`. El worker agrega `contract_version`, guarda el lote en la cola persistente y lo entrega al servidor (`POST /sessions/{id}/batches`) en orden y con reintentos. Un error 4xx del servidor no se reintenta: el lote se descarta y se registra en la consola del worker.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
+| `session_id` | integer | Sesión a la que pertenecen los registros, anotada al acumularlos. Así un lote llega a su sesión aunque el estado ya se haya borrado |
 | `type` | string | `batch_type`: `events`, `gaze`, `face`, `tasks` o `calibration` |
 | `records` | array | Registros que cumplen `batches/<type>.schema.json` |
 
@@ -180,6 +218,7 @@ Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batch
 {
   "type": "batch",
   "payload": {
+    "session_id": 17,
     "type": "events",
     "records": [
       {
@@ -193,6 +232,16 @@ Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batch
     ]
   }
 }
+```
+
+### `tab.identify`
+
+Un content script pregunta el id de su pestaña, que no puede conocer por sí mismo. El worker responde con el id de la pestaña que envió el mensaje. `bootstrap.js` lo compara con `tab_id` del estado de la sesión para saber si está en la pestaña evaluada.
+
+Sin datos (`payload` vacío). Respuesta: `{ "tab_id": 412 }`.
+
+```json
+{ "type": "tab.identify", "payload": {} }
 ```
 
 ## Versionado de los contratos

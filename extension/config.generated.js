@@ -192,7 +192,8 @@
         "calibration.result",
         "camera.status",
         "screen_capture.request",
-        "batch"
+        "batch",
+        "tab.identify"
       ]
     }
   });
