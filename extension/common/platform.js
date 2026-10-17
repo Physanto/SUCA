@@ -107,13 +107,18 @@
         chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }),
 
       /**
-       * Devuelve la pestaña activa de la ventana actual.
+       * Devuelve la pestaña activa de la ventana actual. Desde el panel lateral,
+       * es la página que se ve junto al panel.
        *
-       * @returns {Promise<({id: number, url: string, title: string}|null)>} La pestaña, o `null`.
+       * @returns {Promise<({id: number, url: string, title: string, width: number,
+       *   height: number}|null)>} La pestaña, con el tamaño de su contenido en
+       *   píxeles CSS, o `null`.
        */
       async activeTab() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        return tab ? { id: tab.id, url: tab.url, title: tab.title } : null;
+        return tab
+          ? { id: tab.id, url: tab.url, title: tab.title, width: tab.width, height: tab.height }
+          : null;
       },
 
       /**
