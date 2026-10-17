@@ -155,6 +155,18 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 
 Los endpoints, sus errores y cómo extender el servidor están en [server/README.md](server/README.md).
 
+## Extensión de Chrome
+
+La extensión se carga en modo desarrollador, sin publicarla:
+
+1. Abre `chrome://extensions` y activa **Modo de desarrollador** (arriba a la derecha).
+2. Pulsa **Cargar descomprimida** y elige la carpeta `extension/` del repositorio.
+3. Fija el ícono de SUCA en la barra; al pulsarlo se abre el panel lateral.
+
+Si cambias `config/shared.json` o `contracts/enums.json`, regenera la configuración de la extensión (`python -m scripts.generate_config`) y recárgala desde `chrome://extensions`. Después de recargarla, recarga también las pestañas abiertas.
+
+Requiere Chrome 116 o superior y el servidor local en marcha. Los permisos, las utilidades comunes y cómo viajan los datos están en [extension/README.md](extension/README.md).
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
