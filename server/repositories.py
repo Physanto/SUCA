@@ -194,7 +194,7 @@ class SqliteRepository:
             {
                 "id": row["id"],
                 "task_id": row["task_id"],
-                "end_condition": _from_json(row["end_condition"]),
+                "end_condition": from_json(row["end_condition"]),
             }
             for row in rows
         ]
@@ -236,7 +236,7 @@ class SqliteRepository:
                     (study_id, participant_id, version, mode, started_at, screen_info)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (study_id, participant_id, version, mode, started_at, _to_json(screen_info)),
+                (study_id, participant_id, version, mode, started_at, to_json(screen_info)),
             )
         return cursor.lastrowid
 
@@ -254,7 +254,7 @@ class SqliteRepository:
             ON CONFLICT (session_id) DO UPDATE
                 SET answers = excluded.answers, score = excluded.score
             """,
-            (session_id, _to_json(list(answers)), score),
+            (session_id, to_json(list(answers)), score),
         )
 
     # --- Lotes ------------------------------------------------------------
@@ -331,7 +331,7 @@ class SqliteRepository:
         """Registra una captura ya guardada en disco y devuelve su id."""
         cursor = self.connection.execute(
             "INSERT INTO screen_capture (study_id, screen, file_path, t) VALUES (?, ?, ?, ?)",
-            (study_id, _to_json(screen), file_path, t),
+            (study_id, to_json(screen), file_path, t),
         )
         return cursor.lastrowid
 
@@ -355,11 +355,11 @@ def _column_list(columns: Sequence[str]) -> str:
     return ", ".join(_quote(column) for column in columns)
 
 
-def _to_json(value: Any) -> str:
+def to_json(value: Any) -> str:
     """Serializa un valor para una columna JSON."""
     return json.dumps(value, ensure_ascii=False)
 
 
-def _from_json(text: str | None) -> Any:
+def from_json(text: str | None) -> Any:
     """Decodifica una columna JSON; ``NULL`` se devuelve como ``None``."""
     return None if text is None else json.loads(text)

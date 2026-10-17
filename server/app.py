@@ -101,11 +101,14 @@ def _add_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     def malformed(request: Request, error: RequestValidationError) -> JSONResponse:
-        # El primer elemento de "loc" es la parte de la petición (body, path…).
+        # El primer elemento de "loc" es la parte de la petición (body, path…). En
+        # un JSON mal formado, el resto es la posición en el texto, no un campo.
         items = [
             ErrorItem(
                 record=None,
-                field="/".join(str(part) for part in detail["loc"][1:]),
+                field=""
+                if detail["type"] == "json_invalid"
+                else "/".join(str(part) for part in detail["loc"][1:]),
                 message=detail["msg"],
             )
             for detail in error.errors()

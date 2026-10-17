@@ -5,8 +5,9 @@ función de ``services`` y devuelve su resultado. No contiene reglas.
 """
 
 from collections.abc import Iterator
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Depends, Request
 
 from server import services
 from server.repositories import Repository
@@ -28,3 +29,15 @@ def get_repository(request: Request) -> Iterator[Repository]:
 def get_health() -> dict[str, str]:
     """Comprueba que el servidor está activo."""
     return services.health()
+
+
+@router.post("/sessions/{session_id}/batches")
+def post_batch(
+    session_id: int,
+    body: Annotated[Any, Body()],
+    repository: Annotated[Repository, Depends(get_repository)],
+) -> dict[str, int]:
+    """Recibe un lote de cualquier tipo y lo guarda completo o nada."""
+    return services.store_batch(
+        session_id, body, sessions=repository, studies=repository, writer=repository
+    )
