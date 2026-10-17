@@ -27,7 +27,9 @@ class SchemaVersionError(RuntimeError):
     """La base de datos tiene otra versión del esquema, o no tiene ninguna."""
 
 
-def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
+def connect(
+    path: Path | str, *, create: bool = False, check_same_thread: bool = True
+) -> sqlite3.Connection:
     """Abre una conexión configurada para el sistema.
 
     La conexión usa modo WAL (lectores y un escritor a la vez), claves foráneas
@@ -40,6 +42,10 @@ def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
         create: Si es verdadero, crea el archivo si no existe. Por defecto un
             archivo inexistente es un error, para no crear una base vacía por
             una ruta mal escrita.
+        check_same_thread: Si es falso, la conexión puede usarse desde otro
+            hilo que el que la creó. Lo necesita el servidor, porque FastAPI
+            abre, usa y cierra la conexión de una petición en hilos distintos.
+            Es seguro solo si la conexión no se usa desde dos hilos a la vez.
 
     Returns:
         Conexión abierta. Quien la abre la cierra.
@@ -58,6 +64,7 @@ def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
         uri=True,
         timeout=BUSY_TIMEOUT_S,
         isolation_level=None,
+        check_same_thread=check_same_thread,
     )
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -68,7 +75,7 @@ def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
     return connection
 
 
-def open_database(path: Path | str) -> sqlite3.Connection:
+def open_database(path: Path | str, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Abre una base de datos existente y comprueba la versión de su esquema.
 
     Es la forma de abrir la base para el servidor, el análisis, el panel y los
@@ -76,6 +83,7 @@ def open_database(path: Path | str) -> sqlite3.Connection:
 
     Args:
         path: Archivo de la base de datos.
+        check_same_thread: Igual que en ``connect``.
 
     Returns:
         Conexión abierta.
@@ -84,7 +92,7 @@ def open_database(path: Path | str) -> sqlite3.Connection:
         FileNotFoundError: Si el archivo no existe.
         SchemaVersionError: Si la versión del esquema no es la esperada.
     """
-    connection = connect(path)
+    connection = connect(path, check_same_thread=check_same_thread)
     try:
         check_schema_version(connection)
     except BaseException:
