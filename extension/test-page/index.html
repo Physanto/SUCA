@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Página de prueba · SUCA</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!--
+      Página de prueba de la extensión: reúne los elementos que la captura debe
+      reconocer (botones, enlaces, formularios, menú, búsqueda, regiones
+      semánticas y una aplicación de una sola página). No envía nada por la red.
+      Se sirve por HTTP con `python -m scripts.serve_test_page`, porque los
+      content scripts no corren en las páginas de la extensión.
+    -->
+    <header class="site-header">
+      <a class="brand" href="index.html">Página de prueba</a>
+
+      <!-- Menú con un submenú desplegable. -->
+      <nav aria-label="Menú principal">
+        <ul class="menu">
+          <li><a href="index.html">Inicio</a></li>
+          <li class="has-submenu">
+            <button id="products-menu" type="button" aria-expanded="false" aria-controls="products-submenu">
+              Productos
+            </button>
+            <ul id="products-submenu" class="submenu" hidden>
+              <li><a href="?view=product&amp;id=1#aplicacion">Audífonos inalámbricos</a></li>
+              <li><a href="?view=product&amp;id=2#aplicacion">Teclado mecánico</a></li>
+              <li><a href="?view=product&amp;id=3#aplicacion">Monitor de 27 pulgadas</a></li>
+            </ul>
+          </li>
+          <li><a href="#formulario">Formulario</a></li>
+          <li><a href="#aplicacion">Aplicación</a></li>
+          <li><a href="second-page.html">Otra página</a></li>
+        </ul>
+      </nav>
+
+      <!-- Búsqueda: filtra una lista fija, sin red. -->
+      <form id="search-form" role="search" class="search">
+        <label for="search-input" class="visually-hidden">Buscar productos</label>
+        <input id="search-input" name="q" type="search" placeholder="Buscar productos" />
+        <button type="submit">Buscar</button>
+      </form>
+    </header>
+
+    <div class="layout">
+      <main>
+        <section id="resultados" aria-live="polite" hidden>
+          <h2>Resultados de la búsqueda</h2>
+          <ul id="search-results"></ul>
+        </section>
+
+        <!-- Botones con distintas respuestas, para clics útiles, lentos y sin efecto. -->
+        <section id="botones">
+          <h2>Botones</h2>
+          <div class="row">
+            <button id="counter-button" type="button">Contar clics</button>
+            <span id="counter-output" aria-live="polite">0 clics</span>
+          </div>
+          <div class="row">
+            <button id="slow-button" type="button">Respuesta lenta (2 s)</button>
+            <span id="slow-output" aria-live="polite"></span>
+          </div>
+          <div class="row">
+            <button id="toggle-button" type="button">Mostrar aviso</button>
+            <button id="close-notice" type="button" aria-label="Cerrar aviso">×</button>
+          </div>
+          <p id="notice" class="notice" role="status" hidden>Este aviso aparece y desaparece.</p>
+          <div class="row">
+            <!-- Sin efecto: posibles clics muertos. -->
+            <button id="dead-button" type="button">No hace nada</button>
+            <div id="fake-button" class="fake-button">Parece un botón</div>
+            <button type="button" disabled>Deshabilitado</button>
+          </div>
+        </section>
+
+        <!-- Enlaces internos, a otra página, externos y sin destino. -->
+        <section id="enlaces">
+          <h2>Enlaces</h2>
+          <ul>
+            <li><a href="#formulario">Ir al formulario (misma página)</a></li>
+            <li><a href="second-page.html">Ir a otra página (navegación completa)</a></li>
+            <li><a href="https://example.com/" target="_blank" rel="noopener">Sitio externo (pestaña nueva)</a></li>
+            <li><a>Enlace sin destino</a></li>
+            <li><a id="prevented-link" href="#">Enlace que no lleva a ninguna parte</a></li>
+          </ul>
+        </section>
+
+        <!-- Formulario con validación nativa y una regla propia (confirmar contraseña). -->
+        <section id="formulario">
+          <h2>Formulario con validación</h2>
+          <form id="signup-form" class="form">
+            <label for="name">Nombre</label>
+            <input id="name" name="name" type="text" required minlength="2" autocomplete="off" />
+
+            <label for="email">Correo</label>
+            <input id="email" name="email" type="email" required autocomplete="off" />
+
+            <label for="password">Contraseña (mínimo 8 caracteres)</label>
+            <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password" />
+
+            <label for="password-confirm">Confirmar contraseña</label>
+            <input id="password-confirm" name="password_confirm" type="password" required autocomplete="new-password" />
+
+            <label for="age">Edad</label>
+            <input id="age" name="age" type="number" min="18" max="120" />
+
+            <label for="birth-date">Fecha de nacimiento</label>
+            <input id="birth-date" name="birth_date" type="date" />
+
+            <label for="phone">Teléfono (7 a 10 dígitos)</label>
+            <input id="phone" name="phone" type="tel" pattern="[0-9]{7,10}" autocomplete="off" />
+
+            <label for="country">País</label>
+            <select id="country" name="country" required>
+              <option value="">Elige un país</option>
+              <option value="co">Colombia</option>
+              <option value="mx">México</option>
+              <option value="ar">Argentina</option>
+              <option value="es">España</option>
+            </select>
+
+            <fieldset>
+              <legend>Plan</legend>
+              <label><input type="radio" name="plan" value="basic" required /> Básico</label>
+              <label><input type="radio" name="plan" value="pro" /> Profesional</label>
+            </fieldset>
+
+            <fieldset>
+              <legend>Intereses</legend>
+              <label><input type="checkbox" name="interests" value="audio" /> Audio</label>
+              <label><input type="checkbox" name="interests" value="computers" /> Computadores</label>
+              <label><input type="checkbox" name="interests" value="gaming" /> Juegos</label>
+            </fieldset>
+
+            <label for="comments">Comentarios</label>
+            <textarea id="comments" name="comments" rows="3" maxlength="200"></textarea>
+
+            <label for="satisfaction">Satisfacción</label>
+            <input id="satisfaction" name="satisfaction" type="range" min="1" max="5" value="3" />
+
+            <label class="inline"><input id="terms" name="terms" type="checkbox" required /> Acepto los términos</label>
+
+            <div class="row">
+              <button type="submit">Registrarme</button>
+              <button type="reset">Limpiar</button>
+            </div>
+            <p id="signup-output" role="status" hidden>Registro enviado.</p>
+          </form>
+        </section>
+
+        <!-- Aplicación de una sola página: cambia de pantalla sin recargar (history.pushState). -->
+        <section id="aplicacion">
+          <h2>Aplicación de una sola página</h2>
+          <nav aria-label="Pantallas de la aplicación" class="app-nav">
+            <a href="?view=products#aplicacion" data-view="products">Productos</a>
+            <a href="?view=cart#aplicacion" data-view="cart">Carrito (<span id="cart-count">0</span>)</a>
+          </nav>
+          <div id="app-view" class="app-view"></div>
+        </section>
+      </main>
+
+      <aside aria-label="Ayuda">
+        <h2>Ayuda</h2>
+        <p>Esta página no guarda ni envía lo que escribes. Usa datos inventados.</p>
+        <p>La sección "Aplicación" cambia de pantalla sin recargar la página.</p>
+      </aside>
+    </div>
+
+    <footer class="site-footer">
+      <p>Página de prueba de SUCA · Solo para desarrollo</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
