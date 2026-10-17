@@ -76,8 +76,12 @@
        * @returns {function(): void} Función que deja de escuchar.
        */
       onMessage(listener) {
+        const extensionOrigin = chrome.runtime.getURL('');
         const wrapped = (message, sender, sendResponse) => {
-          const answer = listener(message, { tabId: sender.tab ? sender.tab.id : null });
+          // Una página de la extensión abierta en una pestaña (por ejemplo, el panel
+          // abierto como pestaña al depurarlo) también trae `sender.tab`.
+          const fromExtensionPage = !sender.tab || (sender.url || '').startsWith(extensionOrigin);
+          const answer = listener(message, { tabId: fromExtensionPage ? null : sender.tab.id });
           if (answer === undefined) {
             return false;
           }

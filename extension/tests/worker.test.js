@@ -92,6 +92,25 @@ test('ignores panel-only messages that come from a tab', async () => {
   assert.deepEqual(evaluated, []);
 });
 
+test('treats the panel opened as a tab like the side panel', async () => {
+  const { fake } = await setup();
+  const evaluated = [];
+  fake.onTabMessage(42, (message) => {
+    evaluated.push(message);
+    // Como responde `UX.messages` en el content script.
+    return { ok: true, value: { started: ['capture'], failed: [] } };
+  });
+
+  // Una página de la extensión en una pestaña también trae `sender.tab`.
+  const reply = await fake.sendToWorker(
+    { type: 'session.started', payload: { session_id: 7, mode: 'guided', study_id: 1 } },
+    { tab: { id: 99 }, url: 'chrome-extension://fake-extension/panel/panel.html' },
+  );
+
+  assert.deepEqual(plain(reply), { started: ['capture'], failed: [] });
+  assert.equal(evaluated.length, 1);
+});
+
 test('closes the session on the server after the last batches of the tab', async () => {
   const { fake } = await setup();
   fake.onTabMessage(42, async (message) => {

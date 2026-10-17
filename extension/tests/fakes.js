@@ -201,6 +201,7 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
   const chrome = {
     runtime: {
       id: 'fake-extension',
+      getURL: (resource = '') => `chrome-extension://fake-extension/${resource}`,
       onMessage: {
         addListener: (listener) => runtimeListeners.push(listener),
         removeListener() {},
