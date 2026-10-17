@@ -39,7 +39,8 @@ Solo participa la pestaña evaluada. Los content scripts se cargan en todas las 
 | Mensaje | Responde | Con | Cuándo |
 |---|---|---|---|
 | `batch` | Worker | `{ "queued": true }` | Después de guardar el lote en la cola persistente (`storage.local`). Si la promesa falla, el lote no quedó guardado y el acumulador lo reintenta |
-| `session.closed` | Worker al panel; pestaña al worker | `{ "closing": true }`; lo que devuelva la pestaña | La pestaña responde después de detener sus módulos y vaciar su acumulador; el worker responde después de poner el cierre en la cola |
+| `session.started` | Pestaña evaluada (el worker pasa la respuesta al panel) | `{ "started": [...], "failed": [...] }`: nombres de los módulos que arrancaron y de los que fallaron | Después de iniciar sus módulos. Si la pestaña no tiene content scripts (todavía cargando, o una página de Chrome), la promesa se rechaza; la sesión sigue activa y los módulos arrancan cuando la pestaña cargue una página |
+| `session.closed` | Worker al panel; pestaña al worker | Al panel, `{ "closing": true }`; al worker, `{ "flushed": true }` (`false` si algún lote quedó para reintentar) | La pestaña responde después de detener sus módulos y vaciar su acumulador; el worker responde después de poner el cierre en la cola |
 | `screen_capture.request` | Worker | `{ "capture_id", "file_path" }` | Cuando el servidor guardó la captura |
 | `tab.identify` | Worker | `{ "tab_id" }` | De inmediato |
 
@@ -80,7 +81,9 @@ Solo el panel lateral lo escribe: `UX.session.start` al iniciar la sesión, `upd
 
 ### `session.started`
 
-Empieza una sesión. El panel lo envía después de crear la sesión en el servidor y guardar el estado con `UX.session.start`. El worker lo reenvía a la pestaña evaluada, que inicia sus módulos.
+Empieza una sesión. El panel lo envía después de crear la sesión en el servidor y guardar el estado con `UX.session.start`. El worker lo reenvía a la pestaña evaluada, que inicia sus módulos y responde con los que arrancaron (`{ "started": [...], "failed": [...] }`).
+
+Después de cada navegación la pestaña carga sus content scripts de nuevo y no recibe este mensaje: `bootstrap.js` lee el estado de la sesión, pregunta su pestaña con `tab.identify` y, si es la evaluada, inicia los módulos por su cuenta.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
@@ -97,7 +100,7 @@ Empieza una sesión. El panel lo envía después de crear la sesión en el servi
 Termina la sesión. **El cierre en el servidor lo hace el worker**, para que ningún lote llegue después:
 
 1. El panel vacía su propio acumulador (`await UX.batcher.flush()`) y envía `session.closed`.
-2. El worker lo reenvía a la pestaña evaluada y espera su respuesta. La pestaña detiene sus módulos, vacía su acumulador y responde.
+2. El worker lo reenvía a la pestaña evaluada y espera su respuesta. La pestaña detiene sus módulos, vacía su acumulador y responde `{ "flushed": true }`.
 3. El worker pone el cierre (`POST /sessions/{id}/close`) en la cola, detrás de los lotes pendientes, y responde al panel.
 4. El panel borra el estado con `UX.session.clear()`.
 
