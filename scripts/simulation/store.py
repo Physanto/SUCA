@@ -4,9 +4,10 @@ No hay SQL propio para las sesiones: se usan las funciones del servidor
 (``create_session``, ``store_batch``, ``save_sus``, ``close_session``,
 ``create_reference``), que validan cada registro con los contratos y lo guardan
 como si llegara de la extensión. Los resultados esperados se guardan con el
-repositorio del análisis. Lo único propio es confirmar una referencia, que en
-el sistema real hacen el análisis (pasos y candidatas) y el panel de
-resultados (condición final); se valida con ``reference.schema.json``.
+repositorio del análisis, y las referencias se confirman con la misma función
+que el panel de resultados. Lo único propio es guardar los pasos y las
+candidatas de una referencia, que en el sistema real extrae el análisis; se
+valida con ``reference.schema.json``.
 
 Para las pruebas del análisis::
 
@@ -23,6 +24,7 @@ from typing import Any
 
 from analysis import columns
 from analysis.loader import SessionData, SqliteAnalysisRepository
+from dashboard.data import DashboardData
 from scripts.init_db import init_db
 from scripts.load_study import LoadedStudy, load_study, read_study
 from scripts.simulation.builder import ReferenceRecording, SessionTruth, SimulatedSession
@@ -33,9 +35,6 @@ from shared.config import ROOT_DIR, load_config
 
 EXAMPLE_STUDY = ROOT_DIR / "studies" / "example.yaml"
 """Estudio de los datos simulados."""
-
-CONFIRMED = "confirmed"
-"""Estado de una referencia confirmada (``reference_status``)."""
 
 
 class StoreError(ValueError):
@@ -168,7 +167,11 @@ def confirm_reference(
     required_steps: Sequence[int],
     duration_ms: float,
 ) -> None:
-    """Completa una referencia en borrador y la marca como confirmada.
+    """Completa una referencia en borrador y la confirma.
+
+    Primero guarda lo que en el sistema real extrae el análisis (pasos,
+    candidatas y duración); después la confirma con la misma función que usa
+    el panel de resultados, que valida la referencia completa con su contrato.
 
     Args:
         connection: Conexión a la base.
@@ -180,31 +183,27 @@ def confirm_reference(
         duration_ms: Duración de la grabación.
 
     Raises:
-        StoreError: Si la referencia no cumple ``reference.schema.json``.
+        StoreError: Si los pasos o las candidatas no cumplen ``reference.schema.json``.
+        dashboard.data.InvalidReferenceError: Si la condición o los pasos
+            obligatorios no lo cumplen.
     """
-    document = {
+    draft = {
         "steps": list(steps),
         "candidates": list(candidates),
-        "end_condition": end_condition,
-        "required_steps": list(required_steps),
+        "end_condition": None,
+        "required_steps": [],
     }
-    errors = contracts.validate("reference", document)
+    errors = contracts.validate("reference", draft)
     if errors:
         raise StoreError(f"reference {reference_id} does not match its contract: {errors[0]}")
     with db.transaction(connection):
         connection.execute(
-            "UPDATE reference SET steps = ?, candidates = ?, end_condition = ?,"
-            " required_steps = ?, status = ?, duration_ms = ? WHERE id = ?",
-            (
-                to_json(document["steps"]),
-                to_json(document["candidates"]),
-                to_json(end_condition),
-                to_json(document["required_steps"]),
-                CONFIRMED,
-                duration_ms,
-                reference_id,
-            ),
+            "UPDATE reference SET steps = ?, candidates = ?, duration_ms = ? WHERE id = ?",
+            (to_json(draft["steps"]), to_json(draft["candidates"]), duration_ms, reference_id),
         )
+    DashboardData(connection, _data_dir(connection)).confirm_reference(
+        reference_id, dict(end_condition), list(required_steps)
+    )
 
 
 def store_expected_results(
@@ -306,9 +305,12 @@ _INDEX_FIELDS = ("effectiveness", "time_efficiency", "path_efficiency", "frictio
 
 def _server_repository(connection: sqlite3.Connection) -> SqliteRepository:
     """Repositorio del servidor sobre la misma conexión; las simulaciones no guardan capturas."""
-    return SqliteRepository(
-        connection, Path(connection.execute("PRAGMA database_list").fetchone()[2]).parent
-    )
+    return SqliteRepository(connection, _data_dir(connection))
+
+
+def _data_dir(connection: sqlite3.Connection) -> Path:
+    """Carpeta de la base abierta en la conexión."""
+    return Path(connection.execute("PRAGMA database_list").fetchone()[2]).parent
 
 
 def _chunks(records: Sequence[Mapping[str, Any]], size: int) -> Iterator[list[Mapping[str, Any]]]:
