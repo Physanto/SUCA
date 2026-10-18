@@ -36,6 +36,7 @@ function probe(name, calls, { start, stop } = {}) {
   };
 }
 
+/** Promesa que nunca termina: un `start` o `stop` colgado. */
 const never = () => new Promise(() => {});
 
 test('registers modules and lists their names in order', () => {

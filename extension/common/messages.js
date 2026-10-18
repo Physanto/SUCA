@@ -55,6 +55,7 @@
     const handlers = new Map();
     let listening = false;
 
+    /** Falla de inmediato si el tipo de mensaje no está en el contrato. */
     function check(type) {
       if (!known.has(type)) {
         throw new Error(`unknown message type: ${type}`);

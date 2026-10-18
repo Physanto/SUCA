@@ -9,6 +9,7 @@
 (function () {
   'use strict';
 
+  /** Elemento de la página por su id. */
   const byId = (id) => document.getElementById(id);
 
   /** Productos de la búsqueda y de la tienda. */
@@ -17,6 +18,7 @@
     { id: 2, name: 'Teclado mecánico', price: 250000 },
     { id: 3, name: 'Monitor de 27 pulgadas', price: 1200000 },
   ];
+  /** Precio en pesos colombianos. */
   const money = (value) => `$ ${value.toLocaleString('es-CO')}`;
 
   // Menú desplegable.
@@ -74,6 +76,7 @@
   // Formulario: validación nativa más una regla propia.
   const form = byId('signup-form');
   const confirm = byId('password-confirm');
+  /** Regla propia: la confirmación debe coincidir con la contraseña. */
   const checkPasswords = () => {
     const same = confirm.value === byId('password').value;
     confirm.setCustomValidity(same ? '' : 'Las contraseñas no coinciden.');
@@ -100,6 +103,7 @@
     node.append(...children);
     return node;
   };
+  /** Enlace a otra pantalla de la tienda. */
   const viewLink = (text, view, id) =>
     element('a', { href: `?view=${view}${id ? `&id=${id}` : ''}#aplicacion`, textContent: text, className: 'button-link' });
 

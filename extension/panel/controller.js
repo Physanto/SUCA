@@ -79,6 +79,7 @@
       notice: null,
     });
 
+    /** Publica un estado nuevo, con los cambios dados, a la vista. */
     function setState(changes) {
       state = Object.freeze({ ...state, ...changes });
       for (const listener of [...listeners]) {

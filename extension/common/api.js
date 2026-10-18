@@ -50,6 +50,7 @@
   function createApi({ fetch, server }) {
     const baseUrl = `http://${server.host}:${server.port}`;
 
+    /** Hace una petición con el token y convierte los errores en `ApiError`. */
     async function request(method, path, body) {
       const headers = { [TOKEN_HEADER]: server.token };
       if (body !== undefined) {

@@ -88,6 +88,7 @@
       }
     });
 
+    /** Valida y guarda un estado nuevo, y actualiza la copia en memoria. */
     async function write(next) {
       validate(next, modes);
       await store.set(STORAGE_KEY, next);

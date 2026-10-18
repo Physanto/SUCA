@@ -13,6 +13,7 @@
   const { UX } = root;
   const { document } = root;
   const strings = UX.strings;
+  /** Elemento del panel por su id. */
   const byId = (id) => document.getElementById(id);
 
   /** Busca un texto por su ruta, por ejemplo `modes.free`. */

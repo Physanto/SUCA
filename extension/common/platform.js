@@ -33,6 +33,7 @@
         set: (key, value) => store.set({ [key]: value }),
         remove: (key) => store.remove(key),
         onChanged(key, listener) {
+          /** Avisa solo los cambios de esta área y esta clave. */
           const wrapped = (changes, areaName) => {
             if (areaName === area && key in changes) {
               listener(changes[key].newValue);
@@ -77,6 +78,7 @@
        */
       onMessage(listener) {
         const extensionOrigin = chrome.runtime.getURL('');
+        /** Traduce el remitente y la respuesta de Chrome a la forma del adaptador. */
         const wrapped = (message, sender, sendResponse) => {
           // Una página de la extensión abierta en una pestaña (por ejemplo, el panel
           // abierto como pestaña al depurarlo) también trae `sender.tab`.

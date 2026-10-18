@@ -50,6 +50,7 @@
       session: Object.freeze({ get: session.get, subscribe: session.subscribe }),
     });
 
+    /** Inicia los módulos con el estado de la sesión recién leído. */
     async function start() {
       // El panel acaba de escribir el estado y el aviso puede no haber llegado:
       // sin releerlo, el acumulador descartaría los primeros registros.
@@ -57,6 +58,7 @@
       return modules.startAll(context);
     }
 
+    /** Detiene los módulos y entrega lo que quedaba en el acumulador. */
     async function stop() {
       await modules.stopAll();
       return { flushed: await batcher.flush() };

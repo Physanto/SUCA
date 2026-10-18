@@ -48,9 +48,12 @@
     let draining = false;
     let timer = null;
 
+    /** Copia de los trabajos, para guardarlos o entregarlos sin compartir referencias. */
     const snapshot = () => jobs.map((job) => ({ ...job }));
+    /** Espera antes del reintento número `attempts`: se duplica hasta el máximo. */
     const delayFor = (attempts) => Math.min(retryInitialMs * 2 ** (attempts - 1), retryMaxMs);
 
+    /** Vuelve a intentar el envío dentro de `ms`; reemplaza un intento ya programado. */
     function wakeAfter(ms) {
       if (timer !== null) {
         timers.clearTimeout(timer);

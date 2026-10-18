@@ -53,8 +53,10 @@
     let timer = null;
     let warnedWithoutSession = false;
 
+    /** Clave del grupo de un registro: una sesión y un tipo de lote. */
     const keyOf = (sessionId, type) => `${sessionId}:${type}`;
 
+    /** Programa la próxima entrega por tiempo, si no hay una programada. */
     function schedule() {
       if (timer === null) {
         timer = timers.setTimeout(() => {

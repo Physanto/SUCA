@@ -63,6 +63,7 @@ function createFakeWorld() {
   const storageListeners = new Set();
   const contexts = [];
 
+  /** Avisa un cambio de almacenamiento a los contextos suscritos. */
   function notify(area, key, value) {
     // Chrome avisa los cambios de forma asíncrona, a veces después de que la
     // escritura ya terminó.
@@ -75,6 +76,7 @@ function createFakeWorld() {
     }, 0);
   }
 
+  /** Crea un contexto nuevo (panel, worker o pestaña) con su adaptador. */
   function platform({ tabId = null } = {}) {
     const context = { tabId, listeners: new Set() };
     contexts.push(context);
@@ -181,6 +183,7 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
   const requests = [];
   const calls = { accessLevel: null, panelBehavior: null, captured: [] };
 
+  /** Área de `chrome.storage` falsa, con avisos de cambio. */
   const area = (name) => ({
     get: async (key) => ({ [key]: clone(areas[name].get(key)) }),
     set: async (items) => {
@@ -235,6 +238,7 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
     },
   };
 
+  /** `fetch` falso: anota la petición y responde con `server`. */
   async function fetch(url, init) {
     const request = {
       method: init.method,
@@ -304,6 +308,7 @@ function loadWorker(fake) {
     performance,
     URL,
   });
+  /** Ejecuta un archivo de la extensión en el contexto del worker. */
   const run = (file) =>
     vm.runInContext(fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8'), context, {
       filename: file,
