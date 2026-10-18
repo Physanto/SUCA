@@ -7,7 +7,7 @@ Muestra lo que pasó en cada sesión y dónde están los problemas del sistema e
 Desde la raíz del repositorio, con el entorno virtual activo:
 
 ```bash
-streamlit run dashboard/app.py
+python -m streamlit run dashboard/app.py
 ```
 
 Se abre en `http://127.0.0.1:8501`. La configuración de Streamlit está en `.streamlit/config.toml`, que Streamlit lee de la carpeta desde la que se ejecuta. Escucha solo en esta computadora (el panel muestra datos de participantes) y no envía estadísticas de uso.

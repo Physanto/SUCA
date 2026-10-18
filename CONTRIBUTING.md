@@ -303,6 +303,8 @@ test(analysis): cover rage click detector
 - [ ] Ningún dato real ni carpeta `data/`.
 - [ ] El mensaje del commit está en inglés.
 
+Antes de abrir un *pull request*, `python -m scripts.verify_base` comprueba además la base, el servidor, los datos simulados, el análisis y el panel.
+
 ---
 
 ## 9. Seguimiento
