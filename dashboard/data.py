@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from shared import contracts, db
@@ -150,7 +151,7 @@ class DashboardData:
             "SELECT id, study_id, participant_id, version, mode, started_at, ended_at,"
             " screen_info, calibration_error_start, calibration_error_end"
             " FROM session WHERE id = ?",
-            (session_id,),
+            (_plain(session_id),),
         ).fetchone()
         if row is None:
             return None
@@ -468,7 +469,7 @@ class DashboardData:
                 contrato, o una posición no existe en ``steps``.
         """
         row = self._connection.execute(
-            "SELECT steps, candidates FROM reference WHERE id = ?", (reference_id,)
+            "SELECT steps, candidates FROM reference WHERE id = ?", (_plain(reference_id),)
         ).fetchone()
         if row is None:
             raise NotFoundError(f"reference {reference_id} not found")
@@ -496,7 +497,7 @@ class DashboardData:
                     json.dumps(end_condition, ensure_ascii=False),
                     json.dumps(list(required_steps)),
                     CONFIRMED,
-                    reference_id,
+                    _plain(reference_id),
                 ),
             )
 
@@ -519,7 +520,7 @@ class DashboardData:
         """
         positions = [columns.index(column) for column in json_columns]
         rows = []
-        for row in self._connection.execute(sql, params):
+        for row in self._connection.execute(sql, [_plain(value) for value in params]):
             values = list(row)
             # Se convierten antes de armar el DataFrame: pandas cambiaría NULL por NaN.
             for position in positions:
@@ -533,6 +534,15 @@ class DashboardData:
         for column in bools:
             frame[column] = frame[column].astype("boolean")
         return frame
+
+
+def _plain(value: Any) -> Any:
+    """Convierte un valor de NumPy en el tipo de Python equivalente.
+
+    Los id que salen de un DataFrame son ``numpy.int64``; ``sqlite3`` los
+    enlazaría como datos binarios y la consulta no encontraría nada, sin error.
+    """
+    return value.item() if isinstance(value, np.generic) else value
 
 
 def _json(text: str | None) -> Any:
