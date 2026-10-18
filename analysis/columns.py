@@ -261,7 +261,7 @@ def frame(name: str, records: Iterable[Mapping[str, Any]] = ()) -> pd.DataFrame:
         if unknown:
             problems.append(f"unknown columns {unknown}")
     for column_name, column in table.columns.items():
-        if not column.nullable and any(_is_missing(row.get(column_name)) for row in rows):
+        if not column.nullable and any(is_missing(row.get(column_name)) for row in rows):
             problems.append(f"column {column_name!r} is required")
     if problems:
         raise ColumnValidationError(name, name, problems)
@@ -345,8 +345,16 @@ def _dtype(column: Column) -> str:
     return {"float": "float64", "int": "Int64"}.get(column.kind, "object")
 
 
-def _is_missing(value: Any) -> bool:
-    """Indica si un valor está vacío (``None``, ``NaN`` o ``NA``)."""
+def is_missing(value: Any) -> bool:
+    """Indica si un valor está vacío.
+
+    Args:
+        value: Valor de una celda.
+
+    Returns:
+        ``True`` para ``None``, ``NaN`` y ``NA``; ``False`` para cualquier otro
+        valor, incluidos diccionarios y listas.
+    """
     if isinstance(value, dict | list | tuple):
         return False
     return bool(pd.isna(value))
