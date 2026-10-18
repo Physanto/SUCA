@@ -187,6 +187,17 @@ python -m scripts.serve_test_page
    python -c "import sqlite3; c = sqlite3.connect('data/suca.db'); print(c.execute('SELECT session_id, type, x, y FROM event ORDER BY t DESC LIMIT 5').fetchall())"
    ```
 
+## Análisis
+
+Con sesiones terminadas en la base, analízalas:
+
+```bash
+python -m analysis.run --session 17     # una sesión
+python -m analysis.run --study 1        # las sesiones cerradas de un estudio
+```
+
+Guarda episodios, incidentes, resultados por tarea e índice en las tablas de resultados; volver a ejecutarlo reemplaza los resultados de la sesión. Para usar otra base, agrega `--db RUTA`. Los umbrales están en `analysis/parameters.yaml`. El pipeline y cómo agregar un detector están en [analysis/README.md](analysis/README.md).
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
