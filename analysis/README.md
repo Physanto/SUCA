@@ -142,3 +142,14 @@ pytest tests/analysis
 - `conftest.py` crea una base pequeña: una sesión guiada cerrada con datos de todos los tipos, una sesión libre abierta, y referencias confirmadas y en borrador.
 - Para probar un detector sin dejarlo registrado en las demás pruebas, crea un `Registry` propio, registra la clase y reemplaza el de la etapa con `monkeypatch.setattr(detectors, "DETECTORS", registro)` (ver `test_stages.py`).
 - Para probar `find` directamente, basta con instanciar la clase y pasarle un `SessionData` cargado de la base de prueba.
+- Para armar casos con patrones conocidos (una ráfaga de clics, una pausa por debajo del umbral, un desvío en un paso dado), usa el constructor de sesiones simuladas: `SessionBuilder` de `scripts/simulation/builder.py` y `store.load_session` para obtener el `SessionData`. Cada sesión trae su verdad de referencia (`session.truth`). Ver `scripts/simulation/README.md`.
+
+## Datos simulados
+
+`python -m scripts.generate_mock_data` crea `data/mock.db` con sesiones de problemas conocidos y `data/mock_ground_truth.json` con los resultados esperados. Para comparar el análisis con la verdad de referencia:
+
+```bash
+python -m analysis.run --study 1 --db data/mock.db
+```
+
+Esto reemplaza los resultados esperados que trae la base por los del pipeline. Para recuperarlos, vuelve a generarla.
