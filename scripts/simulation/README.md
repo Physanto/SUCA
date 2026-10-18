@@ -65,7 +65,7 @@ from scripts.simulation.scenarios import ADD_TO_CART, CART, CART_LINK, HOME, ZOO
 
 
 def test_finds_a_dead_click(tmp_path, params):
-    connection = store.create_database(tmp_path / "test.db")   # esquema + estudio de ejemplo
+    connection = store.create_database(tmp_path / "test.db")  # esquema + estudio de ejemplo
     session = (
         SessionBuilder(study_id=1, mode="free", seed=1)
         .on_screen(HOME)
@@ -73,7 +73,7 @@ def test_finds_a_dead_click(tmp_path, params):
         .do(Click(CART_LINK, to=CART))
         .build()
     )
-    data = store.load_session(connection, session)            # SessionData, como lo recibe una etapa
+    data = store.load_session(connection, session)  # SessionData, como lo recibe una etapa
 
     found = DeadClickDetector().find(data, params)
 

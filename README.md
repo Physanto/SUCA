@@ -210,6 +210,16 @@ python -m analysis.run --study 1        # las sesiones cerradas de un estudio
 
 Guarda episodios, incidentes, resultados por tarea e índice en las tablas de resultados; volver a ejecutarlo reemplaza los resultados de la sesión. Para usar otra base, agrega `--db RUTA` (por ejemplo, `--db data/mock.db` para los datos simulados; eso reemplaza sus resultados esperados hasta que vuelvas a generarla). Los umbrales están en `analysis/parameters.yaml`. El pipeline y cómo agregar un detector están en [analysis/README.md](analysis/README.md).
 
+## Panel de resultados
+
+Desde la raíz del repositorio:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Se abre en `http://127.0.0.1:8501`, solo en esta computadora. En la barra lateral se elige la base (real o simulada) y el estudio. Para verlo con datos antes de tener sesiones reales, genera la base simulada (`python -m scripts.generate_mock_data`). Las páginas, las funciones de datos y cómo agregar una página están en [dashboard/README.md](dashboard/README.md).
+
 ## Pruebas
 
 Con el entorno virtual activado, desde la raíz del repositorio:
@@ -224,7 +234,15 @@ Las mismas comprobaciones se ejecutan automáticamente en cada *pull request* y 
 
 ## Uso
 
-Las instrucciones para iniciar el servidor, cargar la extensión, ejecutar el análisis y abrir el panel se agregarán a medida que cada pieza esté disponible.
+El orden de una evaluación, con el detalle en cada sección:
+
+1. Preparar la base y cargar el estudio ([Base de datos](#base-de-datos)).
+2. Iniciar el servidor local ([Servidor local](#servidor-local)).
+3. Cargar la extensión y hacer las sesiones desde el panel lateral ([Extensión de Chrome](#extensión-de-chrome)).
+4. Analizar las sesiones terminadas ([Análisis](#análisis)).
+5. Revisar los resultados ([Panel de resultados](#panel-de-resultados)).
+
+Para trabajar sin sesiones reales, usa los [Datos simulados](#datos-simulados).
 
 ## Privacidad
 
