@@ -1,0 +1,12 @@
+# Configuración de Streamlit para el panel de resultados. Streamlit la lee de la
+# carpeta desde la que se ejecuta: corre el panel desde la raíz del repositorio.
+
+[server]
+# Solo esta computadora: el panel muestra datos de participantes.
+address = "127.0.0.1"
+
+[browser]
+# Abrir el panel en la misma dirección en la que escucha.
+serverAddress = "127.0.0.1"
+# No enviar estadísticas de uso fuera de la computadora.
+gatherUsageStats = false
