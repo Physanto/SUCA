@@ -1,5 +1,7 @@
 # Dependencias de desarrollo: pruebas y estilo.
 -r requirements.txt
 pytest>=8.0
-ruff>=0.6
+# Versión exacta: cada versión de ruff puede cambiar las reglas y el formato,
+# y así el resultado es el mismo en todas las computadoras y en GitHub Actions.
+ruff==0.17.0
 httpx>=0.27
