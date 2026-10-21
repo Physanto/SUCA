@@ -152,7 +152,9 @@ def generate(
         "sessions": [_session_truth(key, built, session_id) for key, built, session_id in sessions],
     }
     path = ground_truth_path(database)
-    path.write_text(json.dumps(truth, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Saltos de línea fijos para que el archivo sea idéntico byte a byte en Windows.
+    text = json.dumps(truth, ensure_ascii=False, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8", newline="\n")
     return truth
 
 

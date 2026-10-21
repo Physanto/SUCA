@@ -86,6 +86,11 @@ def test_the_generator_is_deterministic(mock: Any, tmp_path: Path) -> None:
     assert ground_truth_path(again).read_bytes() == ground_truth_path(mock.path).read_bytes()
 
 
+def test_the_ground_truth_uses_unix_line_endings(mock: Any) -> None:
+    """Así el archivo es idéntico en Windows, macOS y Linux."""
+    assert b"\r\n" not in ground_truth_path(mock.path).read_bytes()
+
+
 def test_every_record_matches_its_contract(context: scenarios.StudyContext) -> None:
     sessions = [scenarios.reference_recording(context)]
     sessions += [scenario(context) for _, scenario in scenarios.PARTICIPANT_SCENARIOS]
