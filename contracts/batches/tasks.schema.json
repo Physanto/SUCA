@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/tasks.schema.json",
+  "title": "Registro de tarea",
+  "description": "Una tarea del modo guiado ya terminada: cuándo empezó, cuándo terminó y cómo. Se envía un registro por tarea al terminarla.",
+  "type": "object",
+  "properties": {
+    "task_id": { "description": "Tarea realizada.", "$ref": "../common.json#/$defs/id" },
+    "t_start": { "description": "Momento en que el participante presionó Empezar.", "$ref": "../common.json#/$defs/timestamp" },
+    "t_end": { "description": "Momento en que terminó la tarea. Debe ser mayor o igual que t_start.", "$ref": "../common.json#/$defs/timestamp" },
+    "ended_by": { "description": "Forma en que terminó la tarea.", "$ref": "../enums.json#/$defs/ended_by" }
+  },
+  "required": ["task_id", "t_start", "t_end", "ended_by"],
+  "additionalProperties": false
+}

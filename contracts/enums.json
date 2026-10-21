@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/enums.json",
+  "title": "Enumeraciones",
+  "description": "Única fuente de los valores permitidos en todo el sistema. Cada definición de $defs es una enumeración; los esquemas la usan con $ref y el código la lee de este archivo, nunca la escribe a mano.",
+  "$defs": {
+    "batch_type": {
+      "description": "Tipo de lote que se envía al servidor. Cada tipo tiene su esquema de registro en contracts/batches/<tipo>.schema.json.",
+      "enum": ["events", "gaze", "face", "tasks", "calibration"]
+    },
+    "event_type": {
+      "description": "Tipo de evento dentro de un lote 'events'. Los de interacción los produce la captura; 'camera_gap' lo produce el módulo de cámara para marcar un intervalo sin datos de cámara.",
+      "enum": [
+        "click",
+        "dblclick",
+        "contextmenu",
+        "mousemove",
+        "scroll",
+        "selection",
+        "focus_in",
+        "focus_out",
+        "field_change",
+        "form_submit",
+        "validation_error",
+        "screen_change",
+        "click_response",
+        "camera_gap"
+      ]
+    },
+    "validation_error_type": {
+      "description": "Origen o tipo de un error de validación de formulario. Los primeros corresponden a las propiedades de ValidityState de HTML; 'aria_invalid' es un campo marcado con aria-invalid=\"true\"; 'visible_message' es un mensaje de error visible asociado al campo.",
+      "enum": [
+        "value_missing",
+        "type_mismatch",
+        "pattern_mismatch",
+        "too_long",
+        "too_short",
+        "range_underflow",
+        "range_overflow",
+        "step_mismatch",
+        "bad_input",
+        "custom_error",
+        "aria_invalid",
+        "visible_message"
+      ]
+    },
+    "camera_gap_reason": {
+      "description": "Motivo de un intervalo sin datos de cámara: 'navigation' cuando una carga de página reinicia la cámara, 'no_permission' cuando se niega el permiso, 'error' ante cualquier otro fallo.",
+      "enum": ["navigation", "no_permission", "error"]
+    },
+    "incident_type": {
+      "description": "Tipo de incidente de fricción que producen los detectores del análisis.",
+      "enum": [
+        "rage_click",
+        "dead_click",
+        "navigation_loop",
+        "long_pause",
+        "hesitation",
+        "form_error",
+        "field_reentry",
+        "form_abandonment",
+        "repeated_search",
+        "task_overtime"
+      ]
+    },
+    "episode_type": {
+      "description": "Tipo de episodio en que el análisis segmenta una sesión.",
+      "enum": ["login", "form", "search", "screen"]
+    },
+    "session_mode": {
+      "description": "Modo de una sesión: libre, guiado o grabación de referencia.",
+      "enum": ["free", "guided", "reference"]
+    },
+    "ended_by": {
+      "description": "Forma en que terminó una tarea: 'reference' cuando se cumplió la condición final de la referencia, 'done' cuando el participante presionó Terminé, 'gave_up' cuando presionó No pude.",
+      "enum": ["reference", "done", "gave_up"]
+    },
+    "end_condition_type": {
+      "description": "Tipo de condición final de una tarea: un texto visible, un patrón de URL o un elemento presente con texto y rol dados.",
+      "enum": ["visible_text", "url_pattern", "element_present"]
+    },
+    "step_type": {
+      "description": "Tipo de paso de una ruta de referencia. Es un subconjunto de event_type: solo cuentan los clics sobre elementos interactivos, los envíos de formulario y los cambios de pantalla.",
+      "enum": ["click", "form_submit", "screen_change"]
+    },
+    "reference_status": {
+      "description": "Estado de una referencia: 'draft' recién grabada, 'confirmed' cuando el evaluador confirmó su condición final.",
+      "enum": ["draft", "confirmed"]
+    },
+    "gaze_zone": {
+      "description": "Zona de la página a la que se asigna un punto de mirada. Primero se intentan las regiones semánticas (header, nav, main, aside, footer y search para role=\"search\"); si la página no las tiene, se usa una cuadrícula de 3 × 3 sobre la ventana.",
+      "enum": [
+        "header",
+        "nav",
+        "main",
+        "aside",
+        "footer",
+        "search",
+        "grid_top_left",
+        "grid_top_center",
+        "grid_top_right",
+        "grid_middle_left",
+        "grid_middle_center",
+        "grid_middle_right",
+        "grid_bottom_left",
+        "grid_bottom_center",
+        "grid_bottom_right"
+      ]
+    },
+    "face_value": {
+      "description": "Movimientos faciales que se registran. Son los valores de MediaPipe Face Landmarker convertidos a snake_case (browDownLeft → brow_down_left).",
+      "enum": [
+        "brow_down_left",
+        "brow_down_right",
+        "brow_inner_up",
+        "eye_squint_left",
+        "eye_squint_right",
+        "eye_blink_left",
+        "eye_blink_right",
+        "mouth_press_left",
+        "mouth_press_right",
+        "mouth_frown_left",
+        "mouth_frown_right",
+        "mouth_smile_left",
+        "mouth_smile_right"
+      ]
+    },
+    "calibration_type": {
+      "description": "Momento de la calibración de mirada: al inicio o al final de la sesión.",
+      "enum": ["initial", "final"]
+    },
+    "camera_status": {
+      "description": "Estado de la cámara que el módulo de cámara informa al panel lateral.",
+      "enum": ["active", "no_permission", "error"]
+    },
+    "message_type": {
+      "description": "Tipo de mensaje entre las partes de la extensión. La forma de cada uno está en contracts/extension-messages.md.",
+      "enum": [
+        "session.started",
+        "session.closed",
+        "task.started",
+        "task.completed",
+        "calibration.request",
+        "calibration.result",
+        "camera.status",
+        "screen_capture.request",
+        "batch",
+        "tab.identify"
+      ]
+    }
+  }
+}

@@ -1,0 +1,266 @@
+{
+  "contract_version": "1.0.0",
+  "type": "events",
+  "records": [
+    {
+      "t": 1791380123456.2,
+      "type": "click",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "x": 845,
+      "y": 560,
+      "element": {
+        "tag": "button",
+        "id": "btn-pay",
+        "role": "button",
+        "text": "Ir a pagar",
+        "selector": "main > div.cart > button:nth-of-type(2)",
+        "box": {
+          "x": 820,
+          "y": 540,
+          "w": 140,
+          "h": 40
+        },
+        "interactive": true
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380123556.2,
+      "type": "dblclick",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "x": 845,
+      "y": 560,
+      "element": {
+        "tag": "button",
+        "id": "btn-pay",
+        "role": "button",
+        "text": "Ir a pagar",
+        "selector": "main > div.cart > button:nth-of-type(2)",
+        "box": {
+          "x": 820,
+          "y": 540,
+          "w": 140,
+          "h": 40
+        },
+        "interactive": true
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380123656.2,
+      "type": "contextmenu",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "x": 845,
+      "y": 560,
+      "element": null,
+      "data": {}
+    },
+    {
+      "t": 1791380123756.2,
+      "type": "mousemove",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "x": 700,
+      "y": 410
+    },
+    {
+      "t": 1791380123856.2,
+      "type": "scroll",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "data": {
+        "scroll_x": 0,
+        "scroll_y": 1240
+      }
+    },
+    {
+      "t": 1791380123956.2,
+      "type": "selection",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "data": {
+        "length": 18
+      }
+    },
+    {
+      "t": 1791380124056.2,
+      "type": "focus_in",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "input",
+        "id": "email",
+        "role": "textbox",
+        "text": null,
+        "selector": "form#checkout > input#email",
+        "box": {
+          "x": 400,
+          "y": 300,
+          "w": 280,
+          "h": 32
+        },
+        "interactive": true
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380124156.2,
+      "type": "field_change",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "input",
+        "id": "email",
+        "role": "textbox",
+        "text": null,
+        "selector": "form#checkout > input#email",
+        "box": {
+          "x": 400,
+          "y": 300,
+          "w": 280,
+          "h": 32
+        },
+        "interactive": true
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380124256.2,
+      "type": "focus_out",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "input",
+        "id": "email",
+        "role": "textbox",
+        "text": null,
+        "selector": "form#checkout > input#email",
+        "box": {
+          "x": 400,
+          "y": 300,
+          "w": 280,
+          "h": 32
+        },
+        "interactive": true
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380124356.2,
+      "type": "validation_error",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "input",
+        "id": "email",
+        "role": "textbox",
+        "text": null,
+        "selector": "form#checkout > input#email",
+        "box": {
+          "x": 400,
+          "y": 300,
+          "w": 280,
+          "h": 32
+        },
+        "interactive": true
+      },
+      "data": {
+        "error_type": "type_mismatch"
+      }
+    },
+    {
+      "t": 1791380124456.2,
+      "type": "form_submit",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "form",
+        "id": "checkout",
+        "role": "form",
+        "text": null,
+        "selector": "main > form#checkout",
+        "box": {
+          "x": 380,
+          "y": 200,
+          "w": 320,
+          "h": 400
+        },
+        "interactive": false
+      },
+      "data": {}
+    },
+    {
+      "t": 1791380124556.2,
+      "type": "click_response",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "data": {
+        "click_t": 1791380123456.2,
+        "mutation_count": 12,
+        "navigated": false
+      }
+    },
+    {
+      "t": 1791380124656.2,
+      "type": "screen_change",
+      "screen": {
+        "url": "https://shop.local/order/8812/confirmation",
+        "title": "Pedido confirmado"
+      },
+      "task_id": 3,
+      "data": {}
+    },
+    {
+      "t": 1791380124756.2,
+      "type": "camera_gap",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "data": {
+        "t_end": 1791380126156.2,
+        "reason": "navigation"
+      }
+    }
+  ]
+}

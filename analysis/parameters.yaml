@@ -1,0 +1,46 @@
+# Parámetros del análisis: umbrales de detección y valores del índice.
+#
+# Se ajustan en el piloto y se congelan antes del experimento. Cada índice
+# calculado guarda la "version" con que se calculó, así que cualquier cambio de
+# un umbral debe ir acompañado de una versión nueva.
+#
+# Se cargan con analysis.parameters.load_parameters(), que rechaza claves
+# faltantes o desconocidas y valores fuera de rango. Tiempos en milisegundos,
+# distancias en píxeles CSS.
+
+# Versión de este conjunto de parámetros (texto libre, no vacío).
+version: "pilot-1"
+
+# Ráfaga de clics rápidos en un área pequeña (rage click).
+rage_click:
+  min_clicks: 3          # clics mínimos de la ráfaga
+  window_ms: 1000        # ventana de tiempo en que deben ocurrir
+  radius_px: 30          # distancia máxima entre clics
+
+# Clic sin respuesta de la página (dead click).
+dead_click:
+  wait_ms: 1500          # espera sin cambios en la página; no puede superar capture.click_response_wait_ms
+
+# Pausa prolongada: inactividad con la página visible, sin eventos de interacción.
+long_pause_ms: 5000
+
+# Vacilación: cursor detenido sobre un elemento interactivo sin activarlo.
+hesitation_ms: 2000
+
+# Navegación circular: últimas pantallas en las que se busca el patrón A → B → A.
+navigation_loop_window: 3
+
+# Búsqueda repetida: varias búsquedas seguidas sin abrir resultados.
+repeated_search:
+  min_searches: 2        # búsquedas mínimas para considerarla repetida
+  window_ms: 60000       # ventana de tiempo en que deben ocurrir
+
+# Tarea excedida (modo guiado): veces el tiempo de la referencia a partir de las cuales se marca.
+task_overtime_factor: 3
+
+# Normalización de la fricción del índice: incidentes por minuto de tarea con los que la
+# fricción llega a 0. null hasta fijarlo con el piloto (propuesta: percentil 95).
+friction_i_max: null
+
+# Retraso de la cámara respecto de los eventos; la limpieza lo resta a la mirada y al rostro. Se mide en el piloto.
+camera_delay_ms: 0

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otra página · SUCA</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!--
+      Segunda página de la página de prueba: llegar aquí es una navegación
+      completa, así que los content scripts se cargan de nuevo y, si hay una
+      sesión activa en esta pestaña, sus módulos vuelven a arrancar.
+    -->
+    <header class="site-header">
+      <a class="brand" href="index.html">Página de prueba</a>
+      <nav aria-label="Menú principal">
+        <ul class="menu">
+          <li><a href="index.html">Inicio</a></li>
+          <li><a href="index.html#formulario">Formulario</a></li>
+          <li><a href="index.html#aplicacion">Aplicación</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Otra página</h1>
+      <p>Esta página se cargó con una navegación completa.</p>
+      <button id="second-page-button" type="button">Botón de la otra página</button>
+      <p><a href="index.html">Volver a la página principal</a></p>
+    </main>
+
+    <footer class="site-footer">
+      <p>Página de prueba de SUCA · Solo para desarrollo</p>
+    </footer>
+  </body>
+</html>

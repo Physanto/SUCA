@@ -1,0 +1,26 @@
+{
+  "t": 1791380124156.2,
+  "type": "field_change",
+  "screen": {
+    "url": "https://shop.local/cart",
+    "title": "Carrito"
+  },
+  "task_id": 3,
+  "element": {
+    "tag": "input",
+    "id": "email",
+    "role": "textbox",
+    "text": null,
+    "selector": "form#checkout > input#email",
+    "box": {
+      "x": 400,
+      "y": 300,
+      "w": 280,
+      "h": 32
+    },
+    "interactive": true
+  },
+  "data": {
+    "value": "ana@example.com"
+  }
+}

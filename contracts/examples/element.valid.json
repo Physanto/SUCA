@@ -1,0 +1,14 @@
+{
+  "tag": "button",
+  "id": "btn-pay",
+  "role": "button",
+  "text": "Ir a pagar",
+  "selector": "main > div.cart > button:nth-of-type(2)",
+  "box": {
+    "x": 820,
+    "y": 540,
+    "w": 140,
+    "h": 40
+  },
+  "interactive": true
+}

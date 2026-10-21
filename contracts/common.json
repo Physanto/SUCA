@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/common.json",
+  "title": "Definiciones comunes",
+  "description": "Tipos que comparten varios esquemas. No es un documento que se valide por sí solo: los esquemas lo usan con $ref.",
+  "$defs": {
+    "timestamp": {
+      "description": "Marca de tiempo en milisegundos desde 1970, calculada como performance.timeOrigin + performance.now(). El mínimo (año 2001) rechaza marcas enviadas por error en segundos.",
+      "type": "number",
+      "minimum": 1000000000000
+    },
+    "id": {
+      "description": "Identificador numérico asignado por la base de datos.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "screen": {
+      "description": "Pantalla de la aplicación evaluada en la que ocurre algo.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "URL completa de la pantalla, sin normalizar. La normaliza el análisis.",
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "description": "Título del documento (document.title). Puede estar vacío.",
+          "type": "string"
+        }
+      },
+      "required": ["url", "title"],
+      "additionalProperties": false
+    },
+    "empty_data": {
+      "description": "Datos adicionales de un tipo que no lleva ninguno: objeto vacío.",
+      "type": "object",
+      "maxProperties": 0
+    }
+  }
+}

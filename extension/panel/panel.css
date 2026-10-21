@@ -1,0 +1,117 @@
+/* Estilos del panel lateral: sobrios y legibles en un panel angosto. */
+
+:root {
+  --text: #1f2328;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --accent: #0b57d0;
+  --error: #b3261e;
+  --error-bg: #fce8e6;
+  --notice-bg: #e6f4ea;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  padding: 12px 16px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 16px 0 8px;
+}
+
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+label {
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Campo marcado por el servidor como inválido. */
+[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+button.primary {
+  margin-top: 12px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.field-error {
+  color: var(--error);
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.status {
+  color: var(--muted);
+}
+
+/* Mensaje general: error o aviso. */
+.message {
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.message.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.message.notice {
+  background: var(--notice-bg);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+dt {
+  font-weight: 600;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

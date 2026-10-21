@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>SUCA</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <!--
+      Panel lateral del evaluador y del participante. Este archivo solo tiene la
+      estructura: los textos los pone panel.js desde strings.js (atributos
+      data-string y data-placeholder), y la lógica está en controller.js.
+    -->
+    <header>
+      <h1 data-string="title"></h1>
+    </header>
+
+    <main>
+      <p id="status" class="status" role="status" hidden></p>
+      <p id="message" class="message" role="alert" hidden></p>
+      <button id="retry" type="button" data-string="retryButton" hidden></button>
+
+      <!-- Inicio de sesión: estudio, participante, versión y modo. -->
+      <section id="start-section" hidden>
+        <h2 data-string="newSession"></h2>
+        <form id="start-form" novalidate>
+          <fieldset id="start-fields">
+            <label for="study" data-string="studyLabel"></label>
+            <select id="study" name="study_id"></select>
+            <p id="no-studies" class="hint" data-string="noStudies" hidden></p>
+            <p class="field-error" data-field="study_id" hidden></p>
+
+            <label for="participant" data-string="participantLabel"></label>
+            <input id="participant" name="participant_id" autocomplete="off" spellcheck="false" />
+            <p class="hint" data-string="participantHint"></p>
+            <p class="field-error" data-field="participant_id" hidden></p>
+
+            <label for="version" data-string="versionLabel"></label>
+            <input id="version" name="version" autocomplete="off" data-placeholder="versionPlaceholder" />
+            <p class="field-error" data-field="version" hidden></p>
+
+            <label for="mode" data-string="modeLabel"></label>
+            <select id="mode" name="mode"></select>
+            <p class="field-error" data-field="mode" hidden></p>
+
+            <button type="submit" class="primary" data-string="startButton"></button>
+          </fieldset>
+        </form>
+        <p class="hint" data-string="startHint"></p>
+      </section>
+
+      <!-- Sesión en curso: datos de la sesión, estado de la captura y cierre. -->
+      <section id="active-section" hidden>
+        <h2 data-string="activeSession"></h2>
+        <dl>
+          <dt data-string="sessionLabel"></dt>
+          <dd id="active-session"></dd>
+          <dt data-string="studyLabel"></dt>
+          <dd id="active-study"></dd>
+          <dt data-string="modeLabel"></dt>
+          <dd id="active-mode"></dd>
+          <dt data-string="tabLabel"></dt>
+          <dd id="active-tab"></dd>
+          <dt data-string="captureLabel"></dt>
+          <dd id="active-capture"></dd>
+        </dl>
+        <button id="close" type="button" class="primary" data-string="closeButton"></button>
+      </section>
+    </main>
+
+    <!-- Utilidades comunes, en el mismo orden que en el resto de la extensión. -->
+    <script src="../config.generated.js"></script>
+    <script src="../common/platform.js"></script>
+    <script src="../common/clock.js"></script>
+    <script src="../common/messages.js"></script>
+    <script src="../common/session.js"></script>
+    <script src="../common/batcher.js"></script>
+    <script src="../common/api.js"></script>
+    <!-- Panel: textos, lógica y vista. -->
+    <script src="strings.js"></script>
+    <script src="controller.js"></script>
+    <script src="panel.js"></script>
+  </body>
+</html>

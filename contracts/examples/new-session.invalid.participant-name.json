@@ -1,0 +1,14 @@
+{
+  "study_id": 1,
+  "participant_id": "Ana Gómez",
+  "version": "V1",
+  "mode": "guided",
+  "screen_info": {
+    "window_width": 1920,
+    "window_height": 969,
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "device_pixel_ratio": 1,
+    "chrome_version": "141.0.7390.55"
+  }
+}

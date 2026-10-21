@@ -1,0 +1,32 @@
+{
+  "contract_version": "2.0.0",
+  "type": "events",
+  "records": [
+    {
+      "t": 1791380123456.2,
+      "type": "click",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "x": 845,
+      "y": 560,
+      "element": {
+        "tag": "button",
+        "id": "btn-pay",
+        "role": "button",
+        "text": "Ir a pagar",
+        "selector": "main > div.cart > button:nth-of-type(2)",
+        "box": {
+          "x": 820,
+          "y": 540,
+          "w": 140,
+          "h": 40
+        },
+        "interactive": true
+      },
+      "data": {}
+    }
+  ]
+}
