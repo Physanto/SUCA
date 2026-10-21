@@ -227,6 +227,4 @@ def _sort_key(error: ContractError) -> list[tuple[int, int, str]]:
     Returns:
         Clave comparable aunque la ruta mezcle textos y enteros.
     """
-    return [
-        (0, part, "") if isinstance(part, int) else (1, 0, part) for part in error.path
-    ]
+    return [(0, part, "") if isinstance(part, int) else (1, 0, part) for part in error.path]

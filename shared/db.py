@@ -159,9 +159,7 @@ def schema_version(connection: sqlite3.Connection) -> str | None:
         o esa clave (no es una base del sistema).
     """
     try:
-        row = connection.execute(
-            "SELECT value FROM meta WHERE key = 'schema_version'"
-        ).fetchone()
+        row = connection.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
     except sqlite3.OperationalError:
         return None
     return None if row is None else row[0]

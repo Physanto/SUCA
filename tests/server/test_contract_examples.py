@@ -73,9 +73,7 @@ def test_example_record_is_stored(
 ) -> None:
     record = example(f"{batch_type}.valid.json")
 
-    response = client.post(
-        f"/sessions/{session_id}/batches", json=make_batch(batch_type, [record])
-    )
+    response = client.post(f"/sessions/{session_id}/batches", json=make_batch(batch_type, [record]))
 
     assert response.status_code == 200, response.json()
     assert count(BATCH_RECORD_TABLES[batch_type]) == 1

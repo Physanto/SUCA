@@ -47,9 +47,7 @@ def test_a_participant_can_have_several_sessions(
     assert count("participant") == 1
 
 
-def test_unknown_study_is_reported_in_the_body_field(
-    client: TestClient, example: Example
-) -> None:
+def test_unknown_study_is_reported_in_the_body_field(client: TestClient, example: Example) -> None:
     response = client.post("/sessions", json={**example("new-session.valid.json"), "study_id": 9})
 
     assert response.status_code == 422

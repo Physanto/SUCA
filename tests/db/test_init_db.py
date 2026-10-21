@@ -79,9 +79,7 @@ def test_cli_reset_asks_and_can_be_cancelled(
     assert count_participants(database) == 1
 
 
-def test_cli_reset_runs_after_confirmation(
-    database: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_reset_runs_after_confirmation(database: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     add_participant(database)
     monkeypatch.setattr("builtins.input", lambda prompt: "s")
 
@@ -98,9 +96,7 @@ def test_cli_reset_with_yes_does_not_ask(database: Path, monkeypatch: pytest.Mon
     assert main(["--db", str(database), "--reset", "--yes"]) == 0
 
 
-def test_cli_reports_version_mismatch(
-    database: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_reports_version_mismatch(database: Path, capsys: pytest.CaptureFixture[str]) -> None:
     with closing(db.connect(database)) as connection:
         connection.execute("UPDATE meta SET value = '0' WHERE key = 'schema_version'")
 

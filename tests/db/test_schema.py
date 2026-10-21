@@ -170,7 +170,7 @@ def test_task_with_reference_cannot_be_deleted(
 def test_face_values_column_works_when_quoted(
     connection: sqlite3.Connection, session_id: int
 ) -> None:
-    """"values" es palabra reservada de SQL; entre comillas dobles funciona."""
+    """La columna "values" es palabra reservada de SQL; entre comillas dobles funciona."""
     connection.execute(
         'INSERT INTO face_sample (session_id, t, "values", face_detected) VALUES (?, 1, ?, 1)',
         (session_id, '{"brow_inner_up": 0.1}'),

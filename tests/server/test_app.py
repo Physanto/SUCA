@@ -119,9 +119,7 @@ def test_main_serves_on_the_configured_loopback_address(
     config_path.write_text(json.dumps(data), encoding="utf-8")
     monkeypatch.setenv(CONFIG_ENV_VAR, str(config_path))
     calls: list[dict[str, Any]] = []
-    monkeypatch.setattr(
-        server_main.uvicorn, "run", lambda app, **options: calls.append(options)
-    )
+    monkeypatch.setattr(server_main.uvicorn, "run", lambda app, **options: calls.append(options))
 
     assert server_main.main() == 0
     assert calls == [{"host": "127.0.0.1", "port": data["server"]["port"]}]

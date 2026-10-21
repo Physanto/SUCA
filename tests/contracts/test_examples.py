@@ -98,6 +98,4 @@ def test_batch_example_covers_every_event_type() -> None:
     """El lote de ejemplo sirve de referencia para la captura: trae un evento de cada tipo."""
     batch = load(EXAMPLES / "batch.valid.json")
 
-    assert {record["type"] for record in batch["records"]} == set(
-        contracts.enums()["event_type"]
-    )
+    assert {record["type"] for record in batch["records"]} == set(contracts.enums()["event_type"])

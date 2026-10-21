@@ -47,9 +47,7 @@ def test_saving_the_same_recording_twice_returns_the_same_reference(
     assert count("reference") == 1
 
 
-def test_only_reference_sessions_can_save_references(
-    client: TestClient, session_id: int
-) -> None:
+def test_only_reference_sessions_can_save_references(client: TestClient, session_id: int) -> None:
     response = client.post("/references", json={"task_id": 3, "source_session_id": session_id})
 
     assert response.status_code == 422

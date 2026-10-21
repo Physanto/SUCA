@@ -236,4 +236,3 @@ def test_enum_values_used_by_the_server_exist_in_the_contracts() -> None:
     assert {services.DRAFT_REFERENCE, services.CONFIRMED_REFERENCE} == set(
         enums["reference_status"]
     )
-

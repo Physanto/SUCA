@@ -102,7 +102,9 @@ Las pruebas crean una base temporal con el estudio de ejemplo, fijan el reloj de
 
   ```python
   @register("new_type")
-  def store_new_type(writer: BatchWriter, session_id: int, records: Sequence[Mapping[str, Any]]) -> None:
+  def store_new_type(
+      writer: BatchWriter, session_id: int, records: Sequence[Mapping[str, Any]]
+  ) -> None:
       """Guarda registros de new_type en new_table."""
       writer.insert("new_table", [{"session_id": session_id, "t": record["t"]} for record in records])
   ```

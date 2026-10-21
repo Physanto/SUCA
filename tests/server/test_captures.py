@@ -81,9 +81,7 @@ def test_too_large_images_are_rejected(
     assert "larger than 10 bytes" in response.json()["errors"][0]["message"]
 
 
-def test_unknown_study_is_reported_in_the_body_field(
-    client: TestClient, example: Example
-) -> None:
+def test_unknown_study_is_reported_in_the_body_field(client: TestClient, example: Example) -> None:
     response = client.post("/captures", json={**example("new-capture.valid.json"), "study_id": 9})
 
     assert response.status_code == 422

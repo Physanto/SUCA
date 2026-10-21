@@ -43,11 +43,11 @@ Toda validación pasa por `shared/contracts.py`, el único módulo que usa jsons
 ```python
 from shared.contracts import enums, validate
 
-errors = validate("batch", document)       # [] si es válido
+errors = validate("batch", document)  # [] si es válido
 for error in errors:
-    print(error.path, error.message)         # ('records', 3, 'x') "'x' is a required property"
+    print(error.path, error.message)  # ('records', 3, 'x') "'x' is a required property"
 
-enums()["incident_type"]                     # ('rage_click', 'dead_click', ...)
+enums()["incident_type"]  # ('rage_click', 'dead_click', ...)
 ```
 
 `validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference` y `new-capture`.

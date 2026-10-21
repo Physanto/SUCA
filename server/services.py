@@ -234,8 +234,7 @@ def sus_score(answers: Sequence[int]) -> float:
         Puntaje de 0 a 100.
     """
     total = sum(
-        answer - 1 if position % 2 == 0 else 5 - answer
-        for position, answer in enumerate(answers)
+        answer - 1 if position % 2 == 0 else 5 - answer for position, answer in enumerate(answers)
     )
     return total * 2.5
 

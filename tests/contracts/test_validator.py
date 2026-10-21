@@ -48,9 +48,7 @@ def test_errors_carry_path_and_reason() -> None:
 
     errors = contracts.validate("batch", batch)
 
-    assert errors == [
-        ContractError(path=("records", 3, "x"), message="'x' is a required property")
-    ]
+    assert errors == [ContractError(path=("records", 3, "x"), message="'x' is a required property")]
     assert str(errors[0]) == "records/3/x: 'x' is a required property"
 
 

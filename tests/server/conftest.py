@@ -81,9 +81,7 @@ def connection(config: Config) -> Iterator[sqlite3.Connection]:
 
 
 @pytest.fixture
-def create_session(
-    client: TestClient, example: Callable[[str], Any]
-) -> Callable[..., int]:
+def create_session(client: TestClient, example: Callable[[str], Any]) -> Callable[..., int]:
     """Función que crea una sesión a partir del ejemplo del contrato y devuelve su id."""
 
     def create(**changes: Any) -> int:

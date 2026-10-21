@@ -95,6 +95,7 @@ Reglas:
       with open_data(path) as data:
           return data.get_events(session_id)
 
+
   events = load_events(str(ui.selected_path()), session_id)
   ```
 
