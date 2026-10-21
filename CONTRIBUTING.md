@@ -220,16 +220,18 @@ Cada integrante modifica solo sus carpetas. `.github/CODEOWNERS` hace que GitHub
 | `extension/manifest.json`, `extension/common/`, `extension/worker.js`, `extension/content/bootstrap.js`, `extension/test-page/` | Líder |
 | `analysis/run.py`, `analysis/loader.py`, `analysis/columns.py`, `analysis/registry.py`, `analysis/parameters.py`, `analysis/parameters.yaml` | Líder |
 | `extension/content/camera.js`, `extension/content/calibration.js`, `extension/lib/` | Líder (cámara) |
+| `test-app/` | Líder (app de prueba) |
+| `dashboard/` | Líder (panel de resultados) |
 | `extension/content/capture.js` | Integrante B (captura) |
 | `extension/panel/`, `extension/content/task-end.js` | Integrante B (sesión y modos) |
-| `test-app/` | Integrante B (app de prueba) |
 | `analysis/cleaning.py`, `analysis/screens.py`, `analysis/episodes.py`, `analysis/detectors.py` | Integrante C (fricción) |
 | `analysis/reference.py`, `analysis/usability_index.py` | Integrante C (referencia e índice) |
-| `dashboard/` | Integrante C (panel) |
 | `analysis/ml/`, `notebooks/` | Integrante C (aprendizaje automático) |
 | `tests/` | El dueño del código que se prueba |
 
 Los archivos de la raíz (`README.md`, `CONTRIBUTING.md`, `pyproject.toml`, `requirements*.txt`, `package.json`, `.gitignore`) también son del líder.
+
+GitHub no cuenta la aprobación del autor de un *pull request*. Por eso, en `CODEOWNERS` el líder figura también como dueño de las carpetas de B y C: así revisa y aprueba sus cambios. Los *pull requests* del líder los aprueba otro integrante o los fusiona el líder como administrador del repositorio.
 
 ### 5.1 Cambios en archivos compartidos
 

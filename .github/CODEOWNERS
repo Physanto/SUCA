@@ -1,48 +1,53 @@
-# Dueños de cada ruta. GitHub pide la aprobación del dueño en cada pull request.
+# Dueños de cada ruta. GitHub pide la aprobación de un dueño en cada pull request.
 # Cuando varias reglas coinciden, gana la última: primero van las generales y
 # después las específicas.
-# Los usuarios @LIDER, @INTEGRANTE_B e @INTEGRANTE_C son marcadores que se
-# reemplazan por los usuarios reales de GitHub.
+#
+# Líder: @Physanto. Integrante B: @hiTimmyy. Integrante C: @marlon890.
+#
+# GitHub no cuenta la aprobación del autor de un pull request. Por eso el líder
+# figura junto a B y C en sus carpetas: así revisa y aprueba sus cambios. Los
+# pull requests del líder los aprueba otro integrante o los fusiona el líder
+# como administrador del repositorio.
 
 # Por defecto, todo es del líder: archivos de la raíz y archivos compartidos.
-*                                   @LIDER
+*                                   @Physanto
 
 # Contratos, configuración, código compartido, servidor y scripts.
-/contracts/                         @LIDER
-/config/                            @LIDER
-/shared/                            @LIDER
-/server/                            @LIDER
-/scripts/                           @LIDER
-/studies/                           @LIDER
-/.github/                           @LIDER
+/contracts/                         @Physanto
+/config/                            @Physanto
+/shared/                            @Physanto
+/server/                            @Physanto
+/scripts/                           @Physanto
+/studies/                           @Physanto
+/.github/                           @Physanto
 
 # Extensión: núcleo y cámara del líder; captura y panel lateral de B.
-/extension/                         @LIDER
-/extension/content/capture.js       @INTEGRANTE_B
-/extension/content/capture/         @INTEGRANTE_B
-/extension/content/task-end.js      @INTEGRANTE_B
-/extension/panel/                   @INTEGRANTE_B
+/extension/                         @Physanto
+/extension/content/capture.js       @hiTimmyy @Physanto
+/extension/content/capture/         @hiTimmyy @Physanto
+/extension/content/task-end.js      @hiTimmyy @Physanto
+/extension/panel/                   @hiTimmyy @Physanto
 
-# Aplicación de prueba.
-/test-app/                          @INTEGRANTE_B
+# Aplicación de prueba (líder).
+/test-app/                          @Physanto
 
 # Análisis: orquestación del líder; etapas, índice y ML de C.
-/analysis/                          @LIDER
-/analysis/cleaning.py               @INTEGRANTE_C
-/analysis/screens.py                @INTEGRANTE_C
-/analysis/episodes.py               @INTEGRANTE_C
-/analysis/detectors.py              @INTEGRANTE_C
-/analysis/reference.py              @INTEGRANTE_C
-/analysis/usability_index.py        @INTEGRANTE_C
-/analysis/ml/                       @INTEGRANTE_C
-/notebooks/                         @INTEGRANTE_C
+/analysis/                          @Physanto
+/analysis/cleaning.py               @marlon890 @Physanto
+/analysis/screens.py                @marlon890 @Physanto
+/analysis/episodes.py               @marlon890 @Physanto
+/analysis/detectors.py              @marlon890 @Physanto
+/analysis/reference.py              @marlon890 @Physanto
+/analysis/usability_index.py        @marlon890 @Physanto
+/analysis/ml/                       @marlon890 @Physanto
+/notebooks/                         @marlon890 @Physanto
 
-# Panel de resultados.
-/dashboard/                         @INTEGRANTE_C
+# Panel de resultados (líder).
+/dashboard/                         @Physanto
 
 # Pruebas: las aprueba el dueño del código que se prueba. En las carpetas que
 # mezclan código de varios dueños, basta la aprobación de cualquiera de ellos.
-/tests/                             @LIDER
-/tests/analysis/                    @LIDER @INTEGRANTE_C
-/tests/dashboard/                   @INTEGRANTE_C
-/extension/tests/                   @LIDER @INTEGRANTE_B
+/tests/                             @Physanto
+/tests/analysis/                    @marlon890 @Physanto
+/tests/dashboard/                   @Physanto
+/extension/tests/                   @hiTimmyy @Physanto
