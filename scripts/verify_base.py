@@ -128,7 +128,8 @@ def check_extension_tests(work: Workspace) -> str:
     node = shutil.which("node")
     if node is None:
         raise Skipped("Node.js is not installed")
-    done = _run([node, "--test", "extension/tests/**/*.test.js"])
+    # Formato TAP explícito: desde Node 23 el formato por defecto es otro y no trae "# pass N".
+    done = _run([node, "--test", "--test-reporter=tap", "extension/tests/**/*.test.js"])
     counts = dict(re.findall(r"^# (pass|fail) (\d+)$", done.stdout, flags=re.MULTILINE))
     if done.returncode != 0:
         raise Failed(f"{counts.get('fail', '?')} failed, {counts.get('pass', '?')} passed")
