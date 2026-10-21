@@ -243,6 +243,7 @@ Las páginas, las funciones de datos y cómo agregar una página están en [dash
 
 ```bash
 python -m ruff check .     # estilo y documentación de Python
+python -m ruff format .    # formato de Python (lo aplica; en GitHub se comprueba)
 python -m pytest           # pruebas de Python
 npm test                   # pruebas de la extensión, con node --test
 ```
@@ -259,7 +260,7 @@ Comprueba todo lo que no necesita Chrome y muestra un resumen, una línea por co
 
 | Comprobación | Qué verifica |
 |---|---|
-| Estilo y pruebas | `ruff check`, `pytest` y `node --test` (se salta si Node no está instalado) |
+| Estilo y pruebas | `ruff check`, `ruff format --check`, `pytest` y `node --test` (se salta si Node no está instalado) |
 | Configuración | `config/shared.json` es válido y `extension/config.generated.js` está al día |
 | Contratos | Cada ejemplo de `contracts/examples/` cumple o incumple su contrato, según su nombre |
 | Base y estudio | Se crea una base y se carga el estudio de ejemplo; cargarlo de nuevo no duplica |

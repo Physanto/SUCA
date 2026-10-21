@@ -293,12 +293,12 @@ test(analysis): cover rage click detector
 ```
 
 - Commits pequeños, uno por cambio lógico.
-- `ruff` y todas las pruebas en verde antes de cada commit.
+- `ruff` (estilo y formato) y todas las pruebas en verde antes de cada commit.
 - Los mensajes describen el cambio; no incluyen firmas ni atribuciones automáticas de herramientas.
 
 ### Antes de cada commit
 
-- [ ] `ruff check .`, `pytest` y `npm test` pasan.
+- [ ] `ruff format .` aplicado; `ruff check .`, `pytest` y `npm test` pasan.
 - [ ] Todo archivo, clase y función pública nuevos tienen documentación en español.
 - [ ] Nombres en inglés; textos para el usuario en español.
 - [ ] Ningún archivo ajeno modificado.

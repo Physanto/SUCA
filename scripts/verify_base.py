@@ -2,8 +2,8 @@
 
 Ejecuta estas comprobaciones, en orden, y muestra un resumen:
 
-1. estilo de Python (``ruff check``), pruebas de Python (``pytest``) y pruebas
-   de la extensión (``node --test``);
+1. estilo de Python (``ruff check`` y ``ruff format --check``), pruebas de
+   Python (``pytest``) y pruebas de la extensión (``node --test``);
 2. configuración y su copia para la extensión;
 3. contratos: cada ejemplo válido o inválido se comporta como dice su nombre;
 4. creación de una base y carga del estudio de ejemplo;
@@ -102,11 +102,16 @@ def _last_line(output: str) -> str:
 
 
 def check_style(work: Workspace) -> str:
-    """Estilo y documentación de Python con ``ruff check``."""
+    """Estilo, documentación y formato de Python con ``ruff``."""
     done = _run([sys.executable, "-m", "ruff", "check", "."])
     if done.returncode != 0:
         raise Failed(_last_line(done.stdout) or _last_line(done.stderr))
-    return "ruff check: " + (_last_line(done.stdout) or "no issues")
+    detail = "ruff check: " + (_last_line(done.stdout) or "no issues")
+    formatted = _run([sys.executable, "-m", "ruff", "format", "--check", "."])
+    if formatted.returncode != 0:
+        # Se nombran los archivos para que se sepa qué formatear con ``ruff format .``.
+        raise Failed(formatted.stdout.strip() or _last_line(formatted.stderr))
+    return detail + "; ruff format: " + (_last_line(formatted.stdout) or "no issues")
 
 
 def check_python_tests(work: Workspace) -> str:
