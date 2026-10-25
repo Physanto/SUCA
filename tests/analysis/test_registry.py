@@ -76,7 +76,14 @@ def test_stage_registries_only_accept_contract_types() -> None:
         incident_type = "rageclick"
         episode_type = "checkout"
 
-    assert detectors.DETECTORS.names() == ("rage_click", "dead_click")
+    assert detectors.DETECTORS.names() == (
+        "rage_click",
+        "dead_click",
+        "navigation_loop",
+        "long_pause",
+        "hesitation",
+        "task_overtime",
+    )
     assert episodes.EPISODE_DETECTORS.names() == ("login", "form", "search", "screen")
     with pytest.raises(RegistryError, match="not one of"):
         detectors.DETECTORS.register(Unknown)

@@ -35,7 +35,9 @@ etapa se detiene con un error que lo nombra.
 """
 
 import math
+from bisect import bisect_right
 from collections import deque
+from itertools import chain
 from typing import Any, Protocol
 
 import pandas as pd
@@ -247,3 +249,217 @@ class DeadClickDetector:
                 if index not in answered and click.t + wait <= end
             ],
         )
+
+
+@DETECTORS.register
+class NavigationLoopDetector:
+    """Regreso a una pantalla dentro de la ventana de visitas de la misma tarea."""
+
+    incident_type = "navigation_loop"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Colapsa visitas consecutivas y fecha el regreso, cuando se confirma el bucle."""
+        if params.navigation_loop_window < 3:
+            return columns.empty("incident")
+        visits: deque[str] = deque(maxlen=params.navigation_loop_window - 1)
+        task = None
+        rows = []
+        for event in data.events[data.events["type"] != "camera_gap"].itertuples():
+            current_task = _context(event)[2]
+            if current_task != task:
+                visits.clear()
+                task = current_task
+            if visits and visits[-1] == event.screen:
+                continue
+            if event.screen in visits:
+                rows.append({**_incident(event, self.incident_type), "element": None})
+            visits.append(event.screen)
+        return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class LongPauseDetector:
+    """Inactividad entre eventos observados de la misma tarea."""
+
+    incident_type = "long_pause"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Ignora fallos de cámara y no inventa pausas antes o después de la captura."""
+        previous = None
+        rows = []
+        for event in data.events[data.events["type"] != "camera_gap"].itertuples():
+            if (
+                previous is not None
+                and _context(previous)[2] == _context(event)[2]
+                and event.t - previous.t > params.long_pause_ms
+            ):
+                rows.append({**_incident(previous, self.incident_type), "element": None})
+            previous = event
+        return columns.frame("incident", rows)
+
+
+def _element_area(element: Any, offset: tuple[float, float]) -> tuple | None:
+    """Rectángulo interactivo en coordenadas de página; no conserva valores de campos."""
+    if not isinstance(element, dict) or not element.get("interactive"):
+        return None
+    box = element["box"]
+    if box["w"] <= 0 or box["h"] <= 0:
+        return None
+    return box["x"] + offset[0], box["y"] + offset[1], box["w"], box["h"]
+
+
+def _inside(point: tuple[float, float], area: tuple) -> bool:
+    """La esquina inferior derecha pertenece al exterior del rectángulo."""
+    x, y, width, height = area
+    return x <= point[0] < x + width and y <= point[1] < y + height
+
+
+def _hover_catalog(data: SessionData) -> dict[tuple, dict[str, list[tuple]]]:
+    """Geometría conocida por página: las capturas prevalecen sobre las referencias."""
+    catalog: dict[tuple, dict[str, list[tuple]]] = {}
+    labels = {
+        (event.url, event.title): event.screen
+        for event in data.events.itertuples()
+        if event.type != "camera_gap"
+    }
+    for reference in data.references.itertuples():
+        for step in reference.steps:
+            page = step["screen"]
+            screen = labels.get((page["url"], page["title"]))
+            area = _element_area(step.get("element"), (0, 0))
+            if screen is not None and area is not None:
+                element = step["element"]
+                catalog.setdefault((page["url"], screen), {})[element["selector"]] = [
+                    (-math.inf, element, area)
+                ]
+    context = None
+    offset = (0, 0)
+    for event in data.events[data.events["type"] != "camera_gap"].itertuples():
+        current = _context(event)[:2]
+        if current != context or event.type == "screen_change":
+            offset = (0, 0)
+        context = current
+        if event.type == "scroll":
+            offset = event.data["scroll_x"], event.data["scroll_y"]
+        area = _element_area(event.element, offset)
+        if isinstance(event.element, dict):
+            snapshots = catalog.setdefault(current, {}).setdefault(event.element["selector"], [])
+            if not snapshots or snapshots[-1][1:] != (event.element, area):
+                snapshots.append((event.t, event.element, area))
+    return catalog
+
+
+@DETECTORS.register
+class HesitationDetector:
+    """Cursor inmóvil sobre un elemento interactivo conocido y todavía sin activar."""
+
+    incident_type = "hesitation"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Infiere el objetivo con sus rectángulos; la captura no incluye eventos hover."""
+        catalog = _hover_catalog(data)
+        events = data.events[data.events["type"] != "camera_gap"]
+        end = data.session.ended_at
+        if end is None:
+            end = float(events["t"].max()) if not events.empty else data.session.started_at
+        context = anchor = activated = None
+        offset = (0, 0)
+        checked = False
+        rows = []
+        for event in chain(events.itertuples(), (None,)):
+            if event is not None:
+                current = _context(event)
+                if current != context or event.type == "screen_change":
+                    anchor = activated = None
+                    if (
+                        context is None
+                        or current[:2] != context[:2]
+                        or event.type == "screen_change"
+                    ):
+                        offset = (0, 0)
+                context = current
+            until = end if event is None else event.t
+            if anchor is not None and not checked and until - anchor.t > params.hesitation_ms:
+                checked = True
+                point = anchor.x + offset[0], anchor.y + offset[1]
+                matches = []
+                for snapshots in catalog.get(context[:2], {}).values():
+                    position = bisect_right([snapshot[0] for snapshot in snapshots], anchor.t) - 1
+                    _, element, area = snapshots[max(position, 0)]
+                    if area is not None and _inside(point, area):
+                        matches.append((element, area))
+                if matches:
+                    element, area = min(matches, key=lambda item: item[1][2] * item[1][3])
+                    if activated is None or element["selector"] != activated[0]:
+                        viewport_element = {
+                            **element,
+                            "box": {
+                                "x": area[0] - offset[0],
+                                "y": area[1] - offset[1],
+                                "w": area[2],
+                                "h": area[3],
+                            },
+                        }
+                        rows.append(
+                            {**_incident(anchor, self.incident_type), "element": viewport_element}
+                        )
+            if event is None:
+                break
+            if event.type == "scroll":
+                offset = event.data["scroll_x"], event.data["scroll_y"]
+                anchor = activated = None
+            elif event.type == "mousemove":
+                if columns.is_missing(event.x) or columns.is_missing(event.y):
+                    anchor = activated = None
+                    continue
+                point = event.x + offset[0], event.y + offset[1]
+                if activated is not None and not _inside(point, activated[1]):
+                    activated = None
+                if anchor is None or (event.x, event.y) != (anchor.x, anchor.y):
+                    anchor, checked = event, False
+            elif event.type in ("click", "dblclick", "contextmenu", "focus_in", "field_change"):
+                area = _element_area(event.element, offset)
+                if area is not None:
+                    activated = event.element["selector"], area
+                anchor = None
+            elif event.type != "click_response":
+                anchor = None
+        return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class TaskOvertimeDetector:
+    """Tareas guiadas cuya duración supera el factor de su referencia más larga."""
+
+    incident_type = "task_overtime"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Solo compara tareas terminadas con referencias de duración positiva conocida."""
+        if data.session.mode != "guided":
+            return columns.empty("incident")
+        durations: dict[int, float] = {}
+        for reference in data.references.itertuples():
+            duration = reference.duration_ms
+            if not columns.is_missing(duration) and math.isfinite(duration) and duration > 0:
+                durations[reference.task_id] = max(durations.get(reference.task_id, 0), duration)
+        events = data.events[data.events["type"] != "camera_gap"]
+        times = events["t"].tolist()
+        screen_names = events["screen"].tolist()
+        rows = []
+        for task in data.tasks.itertuples():
+            duration = durations.get(task.task_id)
+            if duration is None:
+                continue
+            deadline = task.t_start + duration * params.task_overtime_factor
+            if task.t_end > deadline:
+                position = bisect_right(times, deadline) - 1
+                rows.append(
+                    {
+                        "type": self.incident_type,
+                        "t": deadline,
+                        "task_id": task.task_id,
+                        "screen": screen_names[position] if position >= 0 else None,
+                        "element": None,
+                    }
+                )
+        return columns.frame("incident", rows)
