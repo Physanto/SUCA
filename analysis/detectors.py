@@ -43,6 +43,14 @@ from typing import Any, Protocol
 import pandas as pd
 
 from analysis import columns
+from analysis.form_activity import (
+    field_reentries,
+    form_exit_time,
+    form_runs,
+    form_submissions,
+    is_field,
+    search_activities,
+)
 from analysis.loader import SessionData
 from analysis.parameters import Parameters
 from analysis.registry import Registry
@@ -462,4 +470,92 @@ class TaskOvertimeDetector:
                         "element": None,
                     }
                 )
+        return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class FormErrorDetector:
+    """Errores de validación explícitos, sin inferirlos de pausas o envíos repetidos."""
+
+    incident_type = "form_error"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Conserva el tiempo y el campo de cada señal de validación."""
+        errors = data.events[data.events["type"] == "validation_error"]
+        return columns.frame(
+            "incident", [_incident(event, self.incident_type) for event in errors.itertuples()]
+        )
+
+
+@DETECTORS.register
+class FieldReentryDetector:
+    """Una incidencia al volver y modificar un campo previamente editado."""
+
+    incident_type = "field_reentry"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Comparte la segmentación y los reingresos contados por los episodios."""
+        return columns.frame(
+            "incident",
+            [
+                _incident(event, self.incident_type)
+                for run in form_runs(data)
+                for event in field_reentries(run)
+            ],
+        )
+
+
+@DETECTORS.register
+class FormAbandonmentDetector:
+    """Campos editados sin envío o con un error pendiente al salir de la sesión o página."""
+
+    incident_type = "form_abandonment"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Exige actividad de edición y un final observado; el foco por sí solo no basta."""
+        rows = []
+        for run in form_runs(data):
+            if not any(
+                event.type == "field_change" and is_field(event.element) for event in run.events
+            ):
+                continue
+            signals = [
+                event.type
+                for event in run.events
+                if event.type in ("form_submit", "validation_error")
+            ]
+            if signals and signals[-1] == "form_submit":
+                continue
+            if not run.visit.exited and run.visit.end != data.session.ended_at:
+                continue
+            anchor = run.events[0]
+            rows.append(
+                {**_incident(anchor, self.incident_type), "t": form_exit_time(run), "element": None}
+            )
+        return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class RepeatedSearchDetector:
+    """Reformulaciones dentro de una ventana sin abrir resultados entre ellas."""
+
+    incident_type = "repeated_search"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Registra una incidencia cuando una ráfaga alcanza el mínimo de búsquedas."""
+        settings = params.repeated_search
+        rows = []
+        for activity in search_activities(data):
+            pending: deque = deque()
+            reported = False
+            for run in activity.runs:
+                for submit in form_submissions(run):
+                    while pending and submit.t - pending[0].t > settings.window_ms:
+                        pending.popleft()
+                    if not pending:
+                        reported = False
+                    pending.append(submit)
+                    if len(pending) >= settings.min_searches and not reported:
+                        rows.append({**_incident(submit, self.incident_type), "element": None})
+                        reported = True
         return columns.frame("incident", rows)
