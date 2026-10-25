@@ -34,7 +34,9 @@ Un detector no modifica ``data``. Si falla o devuelve columnas incorrectas, la
 etapa se detiene con un error que lo nombra.
 """
 
-from typing import Protocol
+import math
+from collections import deque
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -70,7 +72,7 @@ class Detector(Protocol):
 DETECTORS: Registry[Detector] = Registry(
     "detector", key="incident_type", allowed=contracts.enums()["incident_type"]
 )
-"""Detectores registrados. Esqueleto: todavía ninguno."""
+"""Detectores registrados."""
 
 
 def detect(data: SessionData, params: Parameters) -> pd.DataFrame:
@@ -104,3 +106,144 @@ def detect(data: SessionData, params: Parameters) -> pd.DataFrame:
             )
         found.append(result)
     return columns.concat("incident", found).sort_values("t", kind="stable", ignore_index=True)
+
+
+def _context(event: Any) -> tuple[str, str, int | None]:
+    """Identifica la página y tarea reales, además de la pantalla normalizada."""
+    task = None if columns.is_missing(event.task_id) else int(event.task_id)
+    return event.url, event.screen, task
+
+
+def _element_identity(event: Any) -> tuple | None:
+    """Identifica el elemento dentro de su contexto sin leer valores de campos."""
+    if isinstance(event.element, dict):
+        return (*_context(event), event.element["selector"])
+    return None
+
+
+def _text_field(element: Any) -> bool:
+    """Reconoce controles donde el foco permite editar o seleccionar contenido."""
+    return isinstance(element, dict) and (
+        element.get("tag") in ("textarea", "select")
+        or element.get("role") in ("textbox", "searchbox", "combobox", "spinbutton")
+        or element.get("tag") == "input"
+        and element.get("role") not in ("button", "radio", "checkbox", "switch", "slider")
+    )
+
+
+def _incident(event: Any, kind: str) -> dict[str, Any]:
+    """Conserva tiempo, pantalla, tarea y elemento del evento que origina el incidente."""
+    return {
+        "type": kind,
+        "t": event.t,
+        "screen": event.screen,
+        "task_id": event.task_id,
+        "element": event.element,
+    }
+
+
+@DETECTORS.register
+class RageClickDetector:
+    """Una incidencia por ráfaga de clics próximos en espacio, tiempo y contexto."""
+
+    incident_type = "rage_click"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Aplica una ventana móvil sin contar ventanas superpuestas como nuevas ráfagas."""
+        settings = params.rage_click
+        window: deque = deque()
+        context = previous_time = None
+        reported = False
+        rows = []
+        relevant = data.events[data.events["type"].isin(("click", "screen_change"))]
+        for event in relevant.itertuples():
+            if (
+                event.type == "screen_change"
+                or columns.is_missing(event.x)
+                or columns.is_missing(event.y)
+            ):
+                window.clear()
+                reported, context, previous_time = False, None, None
+                continue
+            current = _context(event)
+            if current != context or (
+                previous_time is not None and event.t - previous_time > settings.window_ms
+            ):
+                window.clear()
+                reported = False
+            context, previous_time = current, event.t
+            while window and event.t - window[0].t > settings.window_ms:
+                window.popleft()
+            window.append(event)
+            while window and any(
+                math.hypot(click.x - window[0].x, click.y - window[0].y) > settings.radius_px
+                for click in window
+            ):
+                window.popleft()
+                reported = False
+            if len(window) >= settings.min_clicks and not reported:
+                rows.append(_incident(window[0], self.incident_type))
+                reported = True
+        return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class DeadClickDetector:
+    """Clics sin cambios, navegación ni respuesta de foco dentro del plazo observado."""
+
+    incident_type = "dead_click"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Correlaciona respuestas por clic y foco por elemento; exige la espera completa."""
+        wait = params.dead_click.wait_ms
+        clicks = []
+        by_time: dict[float, list[int]] = {}
+        pending: dict[tuple, list[int]] = {}
+        answered: set[int] = set()
+        focused = None
+        for event in data.events.itertuples():
+            if event.type == "click":
+                index = len(clicks)
+                clicks.append(event)
+                by_time.setdefault(event.t, []).append(index)
+                identity = _element_identity(event)
+                if identity is not None:
+                    if identity == focused:
+                        answered.add(index)
+                    else:
+                        pending.setdefault(identity, []).append(index)
+            elif event.type == "click_response" and isinstance(event.data, dict):
+                if event.data.get("navigated") or event.data.get("mutation_count", 0) > 0:
+                    for index in by_time.get(event.data["click_t"], ()):
+                        if 0 <= event.t - clicks[index].t <= wait:
+                            answered.add(index)
+            elif event.type in ("focus_in", "field_change"):
+                identity = _element_identity(event)
+                if event.type == "focus_in":
+                    focused = identity if _text_field(event.element) else None
+                    if focused is None:
+                        continue
+                if identity is not None:
+                    for index in pending.pop(identity, ()):
+                        if 0 <= event.t - clicks[index].t <= wait:
+                            answered.add(index)
+            elif event.type == "focus_out":
+                if _element_identity(event) == focused:
+                    focused = None
+            elif event.type == "screen_change":
+                if clicks and 0 <= event.t - clicks[-1].t <= wait:
+                    answered.add(len(clicks) - 1)
+                focused = None
+                pending.clear()
+        observed = data.events.loc[data.events["type"] != "camera_gap", "t"]
+        end = data.session.ended_at
+        if end is None:
+            end = float(observed.max()) if not observed.empty else data.session.started_at
+        return columns.frame(
+            "incident",
+            [
+                _incident(click, self.incident_type)
+                for index, click in enumerate(clicks)
+                if index not in answered and click.t + wait <= end
+            ],
+        )
