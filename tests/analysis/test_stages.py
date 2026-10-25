@@ -60,11 +60,14 @@ def test_cleaning_and_screens_return_the_data_unchanged(
     assert screens.assign_screens(data, params) is data
 
 
-def test_reference_and_index_return_empty_results(data: SessionData, params: Parameters) -> None:
+def test_reference_measures_tasks_and_index_waits_for_a_threshold(
+    data: SessionData, params: Parameters
+) -> None:
     task_results = reference.compare(data, params)
     index = usability_index.compute(data, task_results, columns.empty("incident"), params)
 
-    assert len(task_results) == 0
+    assert len(task_results) == 1
+    assert not task_results.iloc[0]["success"]
     assert len(index) == 0
     columns.validate(task_results, "task_result")
     columns.validate(index, "usability_index")
