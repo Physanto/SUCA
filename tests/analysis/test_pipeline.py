@@ -102,7 +102,7 @@ def test_a_registered_detector_appears_in_the_saved_results(
     assert [(row["session_id"], row["type"], row["task_id"]) for row in rows] == [
         (1, "dead_click", 1)
     ]
-    assert rows[0]["screen"] == "https://shop.local/cart/8812"
+    assert rows[0]["screen"] == "/cart/{id}"
 
 
 def test_analyzing_twice_does_not_duplicate_results(

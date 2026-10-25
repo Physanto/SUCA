@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from analysis import columns, detectors, episodes, reference, screens, usability_index
+from analysis import columns, detectors, episodes, reference, usability_index
 from analysis.columns import ColumnValidationError
 from analysis.loader import SessionData, SqliteAnalysisRepository
 from analysis.parameters import Parameters
@@ -51,10 +51,6 @@ class EarlyPause:
 def data(repository: SqliteAnalysisRepository) -> SessionData:
     """Datos de la sesión guiada de la base pequeña."""
     return repository.load_session(1)
-
-
-def test_screens_return_the_data_unchanged(data: SessionData, params: Parameters) -> None:
-    assert screens.assign_screens(data, params) is data
 
 
 def test_reference_and_index_return_empty_results(data: SessionData, params: Parameters) -> None:
