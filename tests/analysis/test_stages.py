@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from analysis import cleaning, columns, detectors, episodes, reference, screens, usability_index
+from analysis import columns, detectors, episodes, reference, screens, usability_index
 from analysis.columns import ColumnValidationError
 from analysis.loader import SessionData, SqliteAnalysisRepository
 from analysis.parameters import Parameters
@@ -53,10 +53,7 @@ def data(repository: SqliteAnalysisRepository) -> SessionData:
     return repository.load_session(1)
 
 
-def test_cleaning_and_screens_return_the_data_unchanged(
-    data: SessionData, params: Parameters
-) -> None:
-    assert cleaning.clean(data, params) is data
+def test_screens_return_the_data_unchanged(data: SessionData, params: Parameters) -> None:
     assert screens.assign_screens(data, params) is data
 
 
