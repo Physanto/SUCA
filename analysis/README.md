@@ -20,7 +20,7 @@ python -m analysis.run --session 17 --db data/mock.db   # otra base (por defecto
 
 ## El pipeline
 
-`run.py` ejecuta seis etapas con nombre. Cada una es una función con firma fija:
+`run.py` ejecuta siete etapas con nombre. Cada una es una función con firma fija:
 
 | # | Etapa | Función | Devuelve |
 |---|---|---|---|
@@ -28,11 +28,12 @@ python -m analysis.run --session 17 --db data/mock.db   # otra base (por defecto
 | 2 | `screens` | `screens.assign_screens(data, params)` | `SessionData` con `events.screen` normalizado |
 | 3 | `episodes` | `episodes.detect(data, params)` | DataFrame de la tabla `episode` |
 | 4 | `detectors` | `detectors.detect(data, params)` | DataFrame de la tabla `incident` |
-| 5 | `reference` | `reference.compare(data, params)` | DataFrame de la tabla `task_result` |
-| 6 | `usability_index` | `usability_index.compute(data, task_results, incidents, params)` | DataFrame de la tabla `usability_index` (una fila o ninguna) |
+| 5 | `reference_drafts` | `reference.extract_drafts(data, params)` | Pasos y candidatas de las grabaciones, para guardar en `reference` como borradores |
+| 6 | `reference` | `reference.compare(data, params)` | DataFrame de la tabla `task_result` |
+| 7 | `usability_index` | `usability_index.compute(data, task_results, incidents, params)` | DataFrame de la tabla `usability_index` (una fila o ninguna) |
 
 ```
-loader.load_session ─► cleaning ─► screens ─► episodes ─► detectors ─► reference ─► usability_index ─► loader.save_results
+loader.load_session ─► cleaning ─► screens ─► episodes ─► detectors ─► reference_drafts ─► reference ─► usability_index ─► loader.save_results
 ```
 
 - A la salida de cada etapa se validan sus columnas. Si una etapa falla o devuelve columnas incorrectas, el análisis de esa sesión se detiene con un mensaje como `stage 'detectors' failed: detector rage_click: missing columns ['t']`, y no se guarda nada: los resultados anteriores quedan como estaban.
@@ -49,10 +50,10 @@ loader.load_session ─► cleaning ─► screens ─► episodes ─► detect
 | `parameters.py`, `parameters.yaml` | Umbrales y valores del índice, validados al cargar |
 | `cleaning.py`, `screens.py` | Etapas 1 y 2 |
 | `episodes.py`, `detectors.py` | Etapas 3 y 4: fachadas que ejecutan los detectores registrados |
-| `reference.py`, `usability_index.py` | Etapas 5 y 6 |
+| `reference.py`, `usability_index.py` | Etapas 5 a 7 |
 | `ml/` | Modelo de aprendizaje automático (fase posterior) |
 
-Todavía son esqueletos: `cleaning` y `screens` devuelven los datos sin cambios, no hay detectores registrados, y `reference` y `usability_index` devuelven resultados vacíos. El pipeline ya funciona de punta a punta: cada etapa se completa por dentro sin tocar el orquestador.
+M5 implementa borradores, comparación e índice; las etapas de fricción se mantienen en la rama M4. Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
 
 ## Datos que recibe cada etapa
 
@@ -97,6 +98,18 @@ Los umbrales y los valores del índice están en `parameters.yaml`, con un comen
 
 `version` se guarda con cada índice calculado. **Si cambias un umbral, cambia también la versión.**
 
+M5 extrae pasos y propone condiciones finales a partir de URL, textos y roles registrados. En sesiones guiadas alinea rutas alternativas y exige los pasos obligatorios de una misma referencia para decidir el éxito. Repetir pasos no es desvío; `deviation_step` indica la posición esperada desde 0 y `off_path_ms` suma el tiempo hasta retomar la ruta o terminar.
+
+| Componente (0–100; mayor es mejor) | Cálculo |
+|---|---|
+| `effectiveness` | `100 * completadas / tareas_de_la_sesion` |
+| `time_efficiency` | `100 * promedio(min(1, t_ref / t_usuario))`, solo completadas |
+| `path_efficiency` | `100 * promedio(min(1, pasos_ref / pasos_usuario))`, solo completadas |
+| `friction` | `100 * (1 - min(1, i / friction_i_max))`; `i` son incidentes asociados por minuto de tarea |
+| `bui` | Promedio de los cuatro componentes |
+
+Sin tareas completadas, las eficiencias valen 0. No hay índice en modo libre ni de referencia, con datos incompletos o duración total nula. `friction_i_max` sigue en `null` hasta el piloto: la ejecución normal no guarda índices. Las pruebas simuladas configuran 15 y guardan la versión `mock`.
+
 ## Cómo agregar un detector
 
 1. Elige su tipo en la enumeración `incident_type` del contrato (`contracts/enums.json`). Si el tipo no existe, se pide agregarlo al contrato: el registro rechaza los tipos que no están ahí.
@@ -137,9 +150,12 @@ Los **detectores de episodios** se agregan igual en `episodes.py`: atributo `epi
 
 ```bash
 pytest tests/analysis
+python -m pytest tests/analysis/test_m5_mock_verification.py tests/integration/test_m5_recorded_reference.py -q
 ```
 
 - `conftest.py` crea una base pequeña: una sesión guiada cerrada con datos de todos los tipos, una sesión libre abierta, y referencias confirmadas y en borrador.
+- `test_m5_mock_verification.py` contrasta éxito, desvío e índice con la verdad simulada y verifica la persistencia, usando los incidentes esperados como entrada de M4. `test_usability_index.py` incluye el cálculo manual del BUI.
+- `test_m5_recorded_reference.py` reproduce dos clics reales de `extension/test-page/` por la API y comprueba la candidata `/extension/test-page/second-page.html`, su confirmación y su conservación al reanalizar. La fixture está en `tests/integration/fixtures/reference_test_page.json`. La grabación usa la captura provisional y un arnés de estado y transporte; no cubre el panel lateral, el worker, la cámara ni M7. Su reproducción no necesita navegador.
 - Para probar un detector sin dejarlo registrado en las demás pruebas, crea un `Registry` propio, registra la clase y reemplaza el de la etapa con `monkeypatch.setattr(detectors, "DETECTORS", registro)` (ver `test_stages.py`).
 - Para probar `find` directamente, basta con instanciar la clase y pasarle un `SessionData` cargado de la base de prueba.
 - Para armar casos con patrones conocidos (una ráfaga de clics, una pausa por debajo del umbral, un desvío en un paso dado), usa el constructor de sesiones simuladas: `SessionBuilder` de `scripts/simulation/builder.py` y `store.load_session` para obtener el `SessionData`. Cada sesión trae su verdad de referencia (`session.truth`). Ver `scripts/simulation/README.md`.
