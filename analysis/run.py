@@ -1,14 +1,15 @@
 """Orquestador del análisis (Pipeline) y su línea de comandos.
 
-Analiza una sesión terminada en seis etapas con nombre, cada una con una firma
+Analiza una sesión terminada en siete etapas con nombre, cada una con una firma
 fija:
 
 1. ``cleaning``: ``cleaning.clean(data, params)`` → datos limpios;
 2. ``screens``: ``screens.assign_screens(data, params)`` → datos con pantallas;
 3. ``episodes``: ``episodes.detect(data, params)`` → tabla ``episode``;
 4. ``detectors``: ``detectors.detect(data, params)`` → tabla ``incident``;
-5. ``reference``: ``reference.compare(data, params)`` → tabla ``task_result``;
-6. ``usability_index``: ``usability_index.compute(data, task_results,
+5. ``reference_drafts``: ``reference.extract_drafts(data, params)`` → borradores;
+6. ``reference``: ``reference.compare(data, params)`` → tabla ``task_result``;
+7. ``usability_index``: ``usability_index.compute(data, task_results,
    incidents, params)`` → tabla ``usability_index``.
 
 A la salida de cada etapa se validan las columnas (``analysis/columns.py``) y
@@ -64,6 +65,7 @@ class AnalysisResults:
         incidents: Incidentes (tabla ``incident``).
         task_results: Resultados por tarea (tabla ``task_result``).
         usability_index: Índice de la sesión (tabla ``usability_index``).
+        reference_drafts: Pasos y candidatas de las tareas de una grabación.
         timings_ms: Duración de cada etapa ejecutada, en milisegundos y en orden.
     """
 
@@ -73,6 +75,7 @@ class AnalysisResults:
     task_results: pd.DataFrame
     usability_index: pd.DataFrame
     timings_ms: Mapping[str, float] = field(default_factory=lambda: MappingProxyType({}))
+    reference_drafts: pd.DataFrame = field(default_factory=lambda: columns.empty("reference_draft"))
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,12 @@ STAGES: tuple[Stage, ...] = (
         "incidents",
         lambda state, params: detectors.detect(state.data, params),
         _table_check("incident"),
+    ),
+    Stage(
+        "reference_drafts",
+        "reference_drafts",
+        lambda state, params: reference.extract_drafts(state.data, params),
+        _table_check("reference_draft"),
     ),
     Stage(
         "reference",
@@ -225,6 +234,7 @@ def analyze_session(
         results.task_results,
         results.usability_index,
         params.version,
+        reference_drafts=results.reference_drafts,
     )
     return results
 
@@ -240,10 +250,15 @@ def summary(results: AnalysisResults) -> str:
     """
     index = results.usability_index
     bui = f"bui {index['bui'].iloc[0]:.1f}" if len(index) else "no index"
+    drafts = (
+        f"{len(results.reference_drafts)} reference drafts, "
+        if len(results.reference_drafts)
+        else ""
+    )
     return (
         f"session {results.data.session.id}: {len(results.episodes)} episodes, "
         f"{len(results.incidents)} incidents, {len(results.task_results)} task results, "
-        f"{bui} ({sum(results.timings_ms.values()):.1f} ms)"
+        f"{drafts}{bui} ({sum(results.timings_ms.values()):.1f} ms)"
     )
 
 

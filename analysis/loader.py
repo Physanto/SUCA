@@ -16,6 +16,7 @@ sustituirla por cualquier objeto con las mismas funciones.
 """
 
 import json
+import math
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ from typing import Any, Protocol
 import pandas as pd
 
 from analysis import columns
-from shared import db
+from shared import contracts, db
 
 CONFIRMED_REFERENCE = "confirmed"
 """Estado de las referencias que usa el análisis (``reference_status``)."""
@@ -141,6 +142,8 @@ class AnalysisRepository(Protocol):
         task_results: pd.DataFrame,
         usability_index: pd.DataFrame,
         params_version: str,
+        *,
+        reference_drafts: pd.DataFrame | None = None,
     ) -> None:
         """Reemplaza los resultados de una sesión por los nuevos.
 
@@ -221,6 +224,8 @@ class SqliteAnalysisRepository:
         task_results: pd.DataFrame,
         usability_index: pd.DataFrame,
         params_version: str,
+        *,
+        reference_drafts: pd.DataFrame | None = None,
     ) -> None:
         """Reemplaza los resultados de una sesión, todo o nada.
 
@@ -235,9 +240,14 @@ class SqliteAnalysisRepository:
             usability_index: Índice de la sesión, una fila o ninguna (tabla
                 ``usability_index``).
             params_version: Versión de los parámetros; se guarda con el índice.
+            reference_drafts: Rutas y candidatas extraídas de una grabación de
+                referencia. Se guardan en la misma transacción y se conservan
+                las referencias que ya están confirmadas.
 
         Raises:
             columns.ColumnValidationError: Si algún DataFrame no cumple su tabla.
+            ValueError: Si un borrador no cumple el contrato o no pertenece a una
+                tarea de la grabación de referencia.
         """
         results = dict(
             zip(
@@ -248,12 +258,52 @@ class SqliteAnalysisRepository:
         )
         for table, df in results.items():
             columns.validate(df, table)
+        if reference_drafts is not None:
+            _validate_reference_drafts(reference_drafts)
         with db.transaction(self._connection):
+            if reference_drafts is not None and not reference_drafts.empty:
+                self._save_reference_drafts(session_id, reference_drafts)
             for table in columns.RESULT_TABLES:
                 self._connection.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
             for table, df in results.items():
                 extra = {"params_version": params_version} if table == "usability_index" else {}
                 self._insert(table, session_id, df, extra)
+
+    def _save_reference_drafts(self, session_id: int, drafts: pd.DataFrame) -> None:
+        """Actualiza borradores de la grabación sin sobrescribir confirmaciones."""
+        session = self._connection.execute(
+            "SELECT study_id, mode FROM session WHERE id = ?", (session_id,)
+        ).fetchone()
+        if session is None or session["mode"] != "reference":
+            raise ValueError("reference drafts require a reference recording session")
+        task_ids = {
+            row[0]
+            for row in self._connection.execute(
+                "SELECT task.id FROM task JOIN session_task ON session_task.task_id = task.id"
+                " WHERE session_task.session_id = ? AND task.study_id = ?",
+                (session_id, session["study_id"]),
+            )
+        }
+        if not set(drafts["task_id"]).issubset(task_ids):
+            raise ValueError("reference drafts must belong to recorded tasks of the session study")
+        self._connection.executemany(
+            "INSERT INTO reference (task_id, source_session_id, steps, candidates,"
+            " end_condition, required_steps, status, duration_ms)"
+            " VALUES (?, ?, ?, ?, NULL, '[]', 'draft', ?)"
+            " ON CONFLICT (task_id, source_session_id) DO UPDATE SET"
+            " steps = excluded.steps, candidates = excluded.candidates,"
+            " duration_ms = excluded.duration_ms WHERE reference.status = 'draft'",
+            [
+                (
+                    int(row.task_id),
+                    session_id,
+                    json.dumps(row.steps, ensure_ascii=False),
+                    json.dumps(row.candidates, ensure_ascii=False),
+                    float(row.duration_ms),
+                )
+                for row in drafts.itertuples()
+            ],
+        )
 
     def _rows(self, sql: str, *params: Any) -> list[dict[str, Any]]:
         """Ejecuta una consulta y devuelve sus filas como diccionarios."""
@@ -356,3 +406,20 @@ def _db_value(column: columns.Column, value: Any) -> Any:
     if column.kind == "float":
         return float(value)
     return str(value)
+
+
+def _validate_reference_drafts(drafts: pd.DataFrame) -> None:
+    """Revisa las columnas y el contrato JSON antes de escribir resultados."""
+    columns.validate(drafts, "reference_draft")
+    for row in drafts.itertuples():
+        document = {
+            "steps": row.steps,
+            "candidates": row.candidates,
+            "end_condition": None,
+            "required_steps": [],
+        }
+        errors = contracts.validate("reference", document)
+        if errors:
+            raise ValueError(f"reference draft for task {row.task_id}: {errors[0]}")
+        if not math.isfinite(row.duration_ms) or row.duration_ms < 0:
+            raise ValueError(f"reference draft for task {row.task_id}: invalid duration_ms")

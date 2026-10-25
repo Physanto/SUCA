@@ -143,6 +143,16 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
             },
             max_rows=1,
         ),
+        # Borradores: se actualizan por tarea y grabación, sin reemplazar confirmadas.
+        "reference_draft": TableSpec(
+            {
+                "task_id": _INT,
+                "steps": _JSON,
+                "candidates": _JSON,
+                "duration_ms": _FLOAT,
+            },
+            unique=("task_id",),
+        ),
         # Datos de la sesión, tal como los entrega el repositorio.
         "events": TableSpec(
             {

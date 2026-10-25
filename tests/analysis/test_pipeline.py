@@ -64,6 +64,7 @@ def test_runs_every_stage_in_order_with_empty_results(
         "screens",
         "episodes",
         "detectors",
+        "reference_drafts",
         "reference",
         "usability_index",
     ]
@@ -73,6 +74,7 @@ def test_runs_every_stage_in_order_with_empty_results(
         ("incident", results.incidents),
         ("task_result", results.task_results),
         ("usability_index", results.usability_index),
+        ("reference_draft", results.reference_drafts),
     ]:
         assert len(frame) == 0
         columns.validate(frame, table)
