@@ -71,13 +71,13 @@ def test_without_allowed_names_any_name_is_accepted() -> None:
     assert registry.names() == ("anything",)
 
 
-def test_stage_registries_start_empty_and_only_accept_contract_types() -> None:
+def test_stage_registries_only_accept_contract_types() -> None:
     class Unknown:
         incident_type = "rageclick"
         episode_type = "checkout"
 
     assert len(detectors.DETECTORS) == 0
-    assert len(episodes.EPISODE_DETECTORS) == 0
+    assert episodes.EPISODE_DETECTORS.names() == ("login", "form", "search", "screen")
     with pytest.raises(RegistryError, match="not one of"):
         detectors.DETECTORS.register(Unknown)
     with pytest.raises(RegistryError, match="not one of"):

@@ -64,8 +64,13 @@ def test_reference_and_index_return_empty_results(data: SessionData, params: Par
 
 
 def test_without_strategies_the_facades_return_empty_frames(
-    data: SessionData, params: Parameters
+    data: SessionData, params: Parameters, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        episodes,
+        "EPISODE_DETECTORS",
+        Registry("episode detector", key="episode_type", allowed=contracts.enums()["episode_type"]),
+    )
     incidents = detectors.detect(data, params)
     found = episodes.detect(data, params)
 
