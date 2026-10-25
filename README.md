@@ -222,9 +222,29 @@ python -m analysis.run --session 17     # una sesión
 python -m analysis.run --study 1        # las sesiones cerradas de un estudio
 ```
 
-- Guarda episodios, incidentes, resultados por tarea e índice en las tablas de resultados. Volver a ejecutarlo reemplaza los resultados de la sesión.
+- Guarda los resultados del análisis en la base. Volver a ejecutarlo reemplaza los resultados de la sesión.
 - Para usar otra base, agrega `--db RUTA`. Con `--db data/mock.db` se analizan los datos simulados, y sus resultados esperados se reemplazan hasta que vuelvas a generarla.
-- Los umbrales están en `analysis/parameters.yaml`. El pipeline y cómo agregar un detector están en [analysis/README.md](analysis/README.md).
+- Los umbrales están en `analysis/parameters.yaml`.
+
+El análisis de fricción (M4) recorre estas etapas:
+
+| Etapa | Función |
+|---|---|
+| `cleaning` | Ordena y deduplica registros; corrige el desfase de la cámara |
+| `screens` | Normaliza las URL y distingue pantallas por su título |
+| `episodes` | Segmenta inicio de sesión, formularios, búsquedas y visitas a pantallas |
+| `detectors` | Detecta los diez tipos de incidente de `contracts/enums.json` |
+| `reference` y `usability_index` | Puntos de extensión para comparar tareas y calcular el índice; aún devuelven tablas vacías |
+
+Para verificar los incidentes y episodios de toda la base simulada contra `mock_ground_truth.json`:
+
+```bash
+python -m pytest tests/analysis/test_mock_verification.py -q
+```
+
+La prueba genera los datos en una carpeta temporal y ejecuta el pipeline sin resultados precargados. Las sesiones reales se comprobarán en la integración I4.
+
+Para agregar un detector, registra una clase con `@DETECTORS.register` en `analysis/detectors.py`, con un `incident_type` del contrato y un método `find(data, params)`. Devuelve `columns.frame("incident", filas)` o `columns.empty("incident")`, usa los umbrales de `params` y añade un caso positivo y uno negativo. Conserva intactos los datos de entrada.
 
 ### 9. Abrir el panel de resultados
 

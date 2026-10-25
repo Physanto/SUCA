@@ -349,7 +349,9 @@ def test_mock_episodes_match_truth_with_supplied_incidents(
                 [
                     {
                         "type": item["type"],
-                        "t": item["t_start"],
+                        "t": item["t_end"]
+                        if item["type"] in ("navigation_loop", "repeated_search")
+                        else item["t_start"],
                         "screen": item["screen"],
                         "task_id": item["task_id"],
                         "element": item["element"],

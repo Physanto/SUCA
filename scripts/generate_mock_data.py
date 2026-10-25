@@ -51,7 +51,8 @@ CONVENTIONS = {
         "t_start y t_end delimitan el patrón (por ejemplo, del primer al último clic de una "
         "ráfaga). Un detector acierta si informa un incidente del mismo tipo, en la misma "
         "sesión, con t dentro de ese intervalo. En las tablas de resultados simuladas, "
-        "t = t_start."
+        "t = t_end para navigation_loop y repeated_search, al confirmar el patrón; "
+        "los demás usan t_start."
     ),
     "problem": "Número del problema sembrado (seeded_problems) que produce el incidente, o null.",
     "steps": "Clics en elementos interactivos, envíos de formulario y cambios de pantalla.",
