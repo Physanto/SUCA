@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ceiba</title>
+    <meta name="description" content="Tienda en línea de tecnología y hogar." />
+    <link rel="icon" href="/images/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script type="module" src="/js/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+    <!-- Encabezado fijo: marca, búsqueda, cuenta y carrito; debajo, las categorías. -->
+    <header class="site-header">
+      <div class="header-bar container">
+        <a class="brand" href="/">
+          <img src="/images/logo.svg" alt="" width="32" height="32" />
+          <span>Ceiba</span>
+        </a>
+        <form class="search" role="search" action="/search" method="get">
+          <label class="visually-hidden" for="q">Buscar productos</label>
+          <input id="q" type="search" name="q" placeholder="Buscar productos" autocomplete="off" />
+          <button type="submit" class="button button-primary">Buscar</button>
+        </form>
+        <div class="account-area"></div>
+        <a class="cart-link" href="/cart">
+          <img src="/images/cart.svg" alt="" width="24" height="24" />
+          <span>Carrito</span>
+          <span class="cart-count" hidden>0</span>
+        </a>
+      </div>
+      <nav class="main-nav" aria-label="Categorías">
+        <ul class="container">
+          <li><a href="/">Inicio</a></li>
+          <li><a href="/category/audio">Audio</a></li>
+          <li><a href="/category/computers">Computadores</a></li>
+          <li><a href="/category/phones">Celulares y relojes</a></li>
+          <li><a href="/category/home">Hogar</a></li>
+          <li><a href="/offers">Ofertas</a></li>
+          <li><a href="/help">Ayuda</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <!-- Contenido de cada pantalla; lo dibuja js/main.js. -->
+    <main id="contenido" class="container" tabindex="-1">
+      <noscript>Para usar la tienda, activa JavaScript en tu navegador.</noscript>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <section>
+          <h2>Ceiba</h2>
+          <p>Tecnología y hogar con envío a todo el país.</p>
+        </section>
+        <section>
+          <h2>Ayuda</h2>
+          <ul>
+            <li><a href="/help">Preguntas frecuentes</a></li>
+            <li><a href="/help">Envíos y devoluciones</a></li>
+          </ul>
+        </section>
+        <section>
+          <h2>Contacto</h2>
+          <p>ayuda@ceiba.test</p>
+        </section>
+      </div>
+      <p class="container footer-note">Tienda de demostración: los productos, precios y pagos no son reales.</p>
+    </footer>
+
+    <!-- Avisos emergentes; los lectores de pantalla los anuncian sin mover el foco. -->
+    <div class="toast-region" role="status" aria-live="polite"></div>
+  </body>
+</html>
