@@ -111,6 +111,13 @@ export function renderPayment(ctx) {
   const { lines, sums } = currentOrder(ctx);
   const { shipping } = state;
   const alert = h('div', { class: 'form-alert', role: 'alert' });
+  // Problema 4 (`form_clears_on_error`): el número solo se acepta sin espacios
+  // (solo lo dice el placeholder) y un error borra todos los datos de la tarjeta.
+  const clears = ctx.problems.has('form_clears_on_error');
+  // Problema 6 (`ambiguous_error`): el vencimiento solo se acepta como MM/AAAA
+  // (solo lo dice el placeholder) y los errores se informan con un mensaje
+  // genérico, sin decir qué campo falla.
+  const ambiguous = ctx.problems.has('ambiguous_error');
 
   const methodError = h('p', { class: 'field-error', id: 'pay-method-error', hidden: true }, 'Elige un método de pago.');
   const radio = (id, value, label) =>
@@ -138,12 +145,27 @@ export function renderPayment(ctx) {
       ['Vencimiento', TEST_CARD.expiry],
       ['Código de seguridad', TEST_CARD.cvc],
     ]),
-    textField({ id: 'card-number', name: 'number', label: 'Número de la tarjeta', attrs: { autocomplete: 'cc-number', inputmode: 'numeric' } }),
+    textField({
+      id: 'card-number',
+      name: 'number',
+      label: 'Número de la tarjeta',
+      attrs: {
+        autocomplete: 'cc-number',
+        inputmode: 'numeric',
+        placeholder: clears ? 'Solo números, sin espacios' : null,
+      },
+    }),
     textField({ id: 'card-name', name: 'name', label: 'Nombre como aparece en la tarjeta', attrs: { autocomplete: 'cc-name' } }),
     h(
       'div',
       { class: 'field-row' },
-      textField({ id: 'card-expiry', name: 'expiry', label: 'Vencimiento', hint: 'MM/AA', attrs: { autocomplete: 'cc-exp', inputmode: 'numeric' } }),
+      textField({
+        id: 'card-expiry',
+        name: 'expiry',
+        label: 'Vencimiento',
+        hint: ambiguous ? undefined : 'MM/AA',
+        attrs: { autocomplete: 'cc-exp', inputmode: 'numeric', placeholder: ambiguous ? 'MM/AAAA' : null },
+      }),
       textField({ id: 'card-cvc', name: 'cvc', label: 'Código de seguridad', hint: '3 o 4 dígitos', attrs: { autocomplete: 'cc-csc', inputmode: 'numeric' } }),
     ),
   );
@@ -186,10 +208,25 @@ export function renderPayment(ctx) {
     event.preventDefault();
     if (isBusy(submit)) return;
     const values = formValues(form);
-    const errors = validatePayment({ ...values, method: values.method ?? '' }, ctx.now());
+    const errors = validatePayment({ ...values, method: values.method ?? '' }, ctx.now(), {
+      digitsOnlyNumber: clears,
+      fullYearExpiry: ambiguous,
+    });
     methodError.hidden = !errors.method;
     // Solo se marcan los campos de la sección visible.
     const visible = Object.fromEntries(Object.entries(errors).filter(([key]) => key !== 'method'));
+    const fieldsFailed = Object.keys(visible).length > 0;
+    if (clears && fieldsFailed) {
+      for (const field of cardSection.querySelectorAll('input')) field.value = '';
+    }
+    if (ambiguous && fieldsFailed) {
+      showFieldErrors(form, {});
+      alert.replaceChildren(
+        h('p', null, 'No pudimos procesar el pago. Revisa los datos e inténtalo de nuevo. (Código E-102)'),
+      );
+      form.querySelector('.method-details:not([hidden]) :is(input, select)')?.focus();
+      return;
+    }
     showFieldErrors(form, visible);
     if (Object.keys(errors).length > 0) {
       alert.replaceChildren(h('p', null, 'Revisa los datos de pago marcados.'));
