@@ -64,6 +64,7 @@ def test_runs_every_stage_in_order_with_screen_episodes(
         "screens",
         "episodes",
         "detectors",
+        "reference_drafts",
         "reference",
         "usability_index",
     ]
@@ -72,11 +73,14 @@ def test_runs_every_stage_in_order_with_screen_episodes(
     columns.validate(results.episodes, "episode")
     for table, frame in [
         ("incident", results.incidents),
-        ("task_result", results.task_results),
         ("usability_index", results.usability_index),
+        ("reference_draft", results.reference_drafts),
     ]:
         assert len(frame) == 0
         columns.validate(frame, table)
+    assert len(results.task_results) == 1
+    assert not results.task_results.iloc[0]["success"]
+    columns.validate(results.task_results, "task_result")
 
 
 def test_logs_the_time_of_each_stage(
@@ -174,7 +178,7 @@ def test_cli_analyzes_one_session(analysis_db: Path, capsys: pytest.CaptureFixtu
 
     output = capsys.readouterr().out
     assert code == 0
-    assert output.startswith("session 1: 2 episodes, 0 incidents, 0 task results, no index (")
+    assert output.startswith("session 1: 2 episodes, 0 incidents, 1 task results, no index (")
 
 
 def test_cli_analyzes_the_closed_sessions_of_a_study(
