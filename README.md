@@ -17,7 +17,7 @@ Todo corre en una sola computadora: sin nube y sin cuentas de usuario. El video 
 | Análisis | `analysis/` | Procesa las sesiones terminadas: segmenta, detecta fricción, compara con referencias y calcula el índice | Python, pandas |
 | Panel de resultados | `dashboard/` | Muestra los resultados | Streamlit |
 
-Las cuatro piezas se conectan mediante los **contratos** de `contracts/` (formatos de datos y valores permitidos) y comparten la configuración de `config/` y las utilidades de Python de `shared/`. La carpeta `test-app/` contendrá la aplicación de prueba sobre la que se usa la extensión; no forma parte del sistema.
+Las cuatro piezas se conectan mediante los **contratos** de `contracts/` (formatos de datos y valores permitidos) y comparten la configuración de `config/` y las utilidades de Python de `shared/`. La carpeta `test-app/` tiene la aplicación de prueba sobre la que se usa la extensión, una tienda con versiones V0, V1 y V2; no forma parte del sistema.
 
 ## Estructura del repositorio
 
@@ -37,7 +37,7 @@ Las cuatro piezas se conectan mediante los **contratos** de `contracts/` (format
 └── data/            datos locales (no se versiona)
 ```
 
-Cada pieza tiene su README con el detalle: [extension/](extension/README.md), [server/](server/README.md), [analysis/](analysis/README.md), [dashboard/](dashboard/README.md), [contracts/](contracts/README.md) y [scripts/simulation/](scripts/simulation/README.md).
+Cada pieza tiene su README con el detalle: [extension/](extension/README.md), [server/](server/README.md), [analysis/](analysis/README.md), [dashboard/](dashboard/README.md), [contracts/](contracts/README.md), [scripts/simulation/](scripts/simulation/README.md) y [test-app/](test-app/README.md).
 
 ## Requisitos
 
@@ -189,6 +189,14 @@ python -m scripts.serve_test_page
 
 Queda en `http://127.0.0.1:8766/`. Tiene botones, enlaces, un formulario con validación, un menú, una búsqueda, regiones semánticas y una tienda de una sola página.
 
+La **app de prueba** (`test-app/`), la tienda sobre la que se hacen las sesiones con participantes, se sirve igual, en el puerto `test_app.port`:
+
+```bash
+python -m scripts.serve_test_app
+```
+
+Queda en `http://127.0.0.1:8767/`. La versión (V0, V1 o V2) se elige en `http://127.0.0.1:8767/setup` antes de cada sesión. Cómo prepararla, sus datos de prueba y sus pantallas están en [test-app/README.md](test-app/README.md).
+
 ### 6. Cargar la extensión en Chrome
 
 La extensión se carga en modo desarrollador, sin publicarla:
@@ -246,7 +254,7 @@ Las páginas, las funciones de datos y cómo agregar una página están en [dash
 python -m ruff check .     # estilo y documentación de Python
 python -m ruff format .    # formato de Python (lo aplica; en GitHub se comprueba)
 python -m pytest           # pruebas de Python
-npm test                   # pruebas de la extensión, con node --test
+npm test                   # pruebas de la extensión y de la app de prueba, con node --test
 ```
 
 Las mismas comprobaciones se ejecutan automáticamente en cada *pull request* y en cada cambio en `main`.
