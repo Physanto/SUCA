@@ -233,8 +233,10 @@ export class Page {
    *
    * @param {string} selector - Selector CSS de los candidatos (`button`, `a`…).
    * @param {string} text - Texto visible o `aria-label` exacto.
+   * @param {{ times?: number }} [options] - `times` repite el clic en el mismo
+   *   punto, como quien insiste en un botón que no responde.
    */
-  async click(selector, text) {
+  async click(selector, text, { times = 1 } = {}) {
     const point = await this.waitFor(
       `(() => {
         const wanted = ${JSON.stringify(text)};
@@ -252,9 +254,57 @@ export class Page {
       })()`,
       `${selector} "${text}"`,
     );
+    for (let i = 0; i < times; i += 1) {
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+        await this.send('Input.dispatchMouseEvent', { type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
+      }
+    }
+  }
+
+  /**
+   * Hace clic con el ratón en el centro del primer elemento visible de un
+   * selector CSS. Sirve para lo que no tiene texto ni etiqueta (una imagen).
+   *
+   * @param {string} selector - Selector CSS.
+   */
+  async clickSelector(selector) {
+    const point = await this.waitFor(
+      `(() => {
+        const element = [...document.querySelectorAll(${JSON.stringify(selector)})].find((candidate) => {
+          const box = candidate.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        });
+        if (!element) return null;
+        element.scrollIntoView({ block: 'center' });
+        const box = element.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      })()`,
+      selector,
+    );
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
       await this.send('Input.dispatchMouseEvent', { type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
     }
+  }
+
+  /**
+   * Empieza a contar los cambios del DOM (como hace la captura para saber si
+   * un clic tuvo respuesta). El total se lee con `mutations()`.
+   */
+  async watchMutations() {
+    await this.evaluate(`(() => {
+      window.e2eMutations = 0;
+      new MutationObserver((records) => { window.e2eMutations += records.length; })
+        .observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+    })()`);
+  }
+
+  /**
+   * Cambios del DOM desde `watchMutations`.
+   *
+   * @returns {Promise<number>} Número de cambios.
+   */
+  mutations() {
+    return this.evaluate('window.e2eMutations');
   }
 
   /**
