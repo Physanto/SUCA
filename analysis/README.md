@@ -53,7 +53,7 @@ loader.load_session ─► cleaning ─► screens ─► episodes ─► detect
 | `reference.py`, `usability_index.py` | Etapas 5 a 7 |
 | `ml/` | Modelo de aprendizaje automático (fase posterior) |
 
-M5 implementa borradores, comparación e índice; las etapas de fricción se mantienen en la rama M4. Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
+Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
 
 ## Datos que recibe cada etapa
 
@@ -98,7 +98,7 @@ Los umbrales y los valores del índice están en `parameters.yaml`, con un comen
 
 `version` se guarda con cada índice calculado. **Si cambias un umbral, cambia también la versión.**
 
-M5 extrae pasos y propone condiciones finales a partir de URL, textos y roles registrados. En sesiones guiadas alinea rutas alternativas y exige los pasos obligatorios de una misma referencia para decidir el éxito. Repetir pasos no es desvío; `deviation_step` indica la posición esperada desde 0 y `off_path_ms` suma el tiempo hasta retomar la ruta o terminar.
+El análisis extrae pasos y propone condiciones finales a partir de URL, textos y roles registrados. En sesiones guiadas alinea rutas alternativas y exige los pasos obligatorios de una misma referencia para decidir el éxito. Repetir pasos no es desvío; `deviation_step` indica la posición esperada desde 0 y `off_path_ms` suma el tiempo hasta retomar la ruta o terminar.
 
 | Componente (0–100; mayor es mejor) | Cálculo |
 |---|---|
@@ -154,8 +154,8 @@ python -m pytest tests/analysis/test_m5_mock_verification.py tests/integration/t
 ```
 
 - `conftest.py` crea una base pequeña: una sesión guiada cerrada con datos de todos los tipos, una sesión libre abierta, y referencias confirmadas y en borrador.
-- `test_m5_mock_verification.py` contrasta éxito, desvío e índice con la verdad simulada y verifica la persistencia, usando los incidentes esperados como entrada de M4. `test_usability_index.py` incluye el cálculo manual del BUI.
-- `test_m5_recorded_reference.py` reproduce dos clics reales de `extension/test-page/` por la API y comprueba la candidata `/extension/test-page/second-page.html`, su confirmación y su conservación al reanalizar. La fixture está en `tests/integration/fixtures/reference_test_page.json`. La grabación usa la captura provisional y un arnés de estado y transporte; no cubre el panel lateral, el worker, la cámara ni M7. Su reproducción no necesita navegador.
+- `test_m5_mock_verification.py` contrasta éxito, desvío e índice con la verdad simulada y verifica la persistencia, usando los incidentes que produce el pipeline. `test_usability_index.py` incluye el cálculo manual del BUI.
+- `test_m5_recorded_reference.py` reproduce dos clics reales de `extension/test-page/` por la API y comprueba la candidata `/extension/test-page/second-page.html`, su confirmación y su conservación al reanalizar. La fixture está en `tests/integration/fixtures/reference_test_page.json`. La grabación usa la captura provisional y un arnés de estado y transporte; no cubre el panel lateral, el worker, la cámara ni la aplicación de prueba. Su reproducción no necesita navegador.
 - Para probar un detector sin dejarlo registrado en las demás pruebas, crea un `Registry` propio, registra la clase y reemplaza el de la etapa con `monkeypatch.setattr(detectors, "DETECTORS", registro)` (ver `test_stages.py`).
 - Para probar `find` directamente, basta con instanciar la clase y pasarle un `SessionData` cargado de la base de prueba.
 - Para armar casos con patrones conocidos (una ráfaga de clics, una pausa por debajo del umbral, un desvío en un paso dado), usa el constructor de sesiones simuladas: `SessionBuilder` de `scripts/simulation/builder.py` y `store.load_session` para obtener el `SessionData`. Cada sesión trae su verdad de referencia (`session.truth`). Ver `scripts/simulation/README.md`.

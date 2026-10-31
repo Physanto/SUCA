@@ -6,7 +6,7 @@
     "browser": "Chrome for Testing 152.0.7977.42",
     "captured_on": "2026-10-25",
     "method": "Real browser clicks with the existing capture module; session state and batch transport replaced by a harness using sessionStorage.",
-    "limitation": "Legacy capture records clicks only. This is not the complete extension panel, worker, or M7 test-app flow."
+    "limitation": "Legacy capture records clicks only. This is not the complete extension panel, worker, or test-app flow."
   },
   "recording": {
     "t_start": 1792964023923.7,

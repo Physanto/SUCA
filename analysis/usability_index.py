@@ -1,4 +1,4 @@
-"""Etapa 6 del análisis: índice de usabilidad conductual (``bui``).
+"""Etapa 7 del análisis: índice de usabilidad conductual (``bui``).
 
 Calcula, en las sesiones guiadas, a partir de los resultados por tarea y de
 los incidentes (cada componente de 0 a 100):

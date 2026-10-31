@@ -1,4 +1,4 @@
-"""Verifica las salidas de M5 con las capturas y los incidentes conocidos del simulador."""
+"""Verifica los resultados por tarea y el índice a partir de las capturas del simulador."""
 
 import json
 import shutil
@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from pandas.testing import assert_frame_equal
 
-from analysis import columns, detectors
+from analysis import columns
 from analysis.loader import SqliteAnalysisRepository
 from analysis.parameters import Parameters
 from analysis.run import analyze_session
@@ -19,29 +19,13 @@ from shared import db
 
 
 @pytest.mark.parametrize("key", ["reference", "guided_v0", "guided_v1", "guided_v2", "free_v1"])
-def test_mock_task_results_and_index_match_truth_with_known_m4_incidents(
-    mock: Any, params: Parameters, tmp_path: Path, key: str, monkeypatch: pytest.MonkeyPatch
+def test_mock_task_results_and_index_match_truth_with_detected_incidents(
+    mock: Any, params: Parameters, tmp_path: Path, key: str
 ) -> None:
     truth = json.loads(ground_truth_path(mock.path).read_text(encoding="utf-8"))
     expected = next(item for item in truth["sessions"] if item["key"] == key)
-    # M4 se desarrolla en su propia rama. Sus incidentes son una entrada de M5;
-    # la comparación de tareas y el cálculo del índice se ejecutan sin sustitutos.
-    incidents = columns.frame(
-        "incident",
-        [
-            {
-                "type": item["type"],
-                "t": item["t_start"],
-                "screen": item["screen"],
-                "task_id": item["task_id"],
-                "element": item["element"],
-            }
-            for item in expected["incidents"]
-        ],
-    )
-    monkeypatch.setattr(detectors, "detect", lambda data, params: incidents.copy(deep=True))
     configured = replace(params, version="mock", friction_i_max=truth["friction_i_max"])
-    database = tmp_path / "m5.db"
+    database = tmp_path / "analysis.db"
     shutil.copyfile(mock.path, database)
     tasks = columns.frame(
         "task_result",

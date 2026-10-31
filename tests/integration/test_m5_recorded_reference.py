@@ -50,7 +50,7 @@ def test_recorded_reference_proposes_the_correct_condition_and_can_be_confirmed(
             "/sessions",
             json={
                 "study_id": study.study_id,
-                "participant_id": "M5-38-REF",
+                "participant_id": "RECORDED-REF",
                 "version": "test-page",
                 "mode": "reference",
                 "screen_info": recording["screen_info"],

@@ -1,4 +1,4 @@
-"""Cálculo del índice con resultados por tarea y persistencia junto al análisis M4."""
+"""Cálculo del índice con resultados por tarea y persistencia junto al análisis de fricción."""
 
 import json
 import shutil

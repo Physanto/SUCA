@@ -1,4 +1,4 @@
-"""Etapa 5 del análisis: comparación con las referencias.
+"""Etapa 6 del análisis: comparación con las referencias.
 
 Para cada tarea de una sesión guiada (``data.tasks``):
 
@@ -19,17 +19,16 @@ alcanzado el final de esa ruta y cumplido sus pasos obligatorios.
 """
 
 import math
-import re
 from bisect import bisect_left
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlsplit
 
 import pandas as pd
 
 from analysis import columns
 from analysis.loader import SessionData
 from analysis.parameters import Parameters
+from analysis.screens import _normalize_url
 from shared import contracts
 
 
@@ -102,17 +101,6 @@ def extract_drafts(data: SessionData, params: Parameters) -> pd.DataFrame:
             }
         )
     return columns.frame("reference_draft", rows)
-
-
-def _normalize_url(url: str) -> str:
-    """Obtiene el patrón de ruta de M5 sin depender de la etapa de pantallas de M4."""
-    parsed = urlsplit(url)
-    path = re.sub(r"(?<=/)[0-9]+(?=/|$)", "{id}", parsed.path or "/")
-    fragment = parsed.fragment.removeprefix("!")
-    if fragment.startswith("/"):
-        route = re.sub(r"(?<=/)[0-9]+(?=/|$)", "{id}", urlsplit(fragment).path or "/")
-        return route if path == "/" else f"{path}#{route}"
-    return path
 
 
 def _candidates(events: pd.DataFrame) -> list[dict[str, str]]:
