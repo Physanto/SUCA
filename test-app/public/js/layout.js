@@ -1,0 +1,149 @@
+/**
+ * @file Partes fijas de la página: el contador del carrito, el área de la
+ * cuenta con su menú, la búsqueda del encabezado, el menú de categorías
+ * activo y los avisos emergentes.
+ *
+ * El esqueleto está en `index.html`; aquí solo se conecta y se actualiza con
+ * el estado de la tienda.
+ */
+
+import { countUnits } from './cart.js';
+import { h } from './dom.js';
+import { TOAST_MS } from './timing.js';
+
+/**
+ * Menú de la cuenta (patrón de divulgación: un botón que muestra y oculta una
+ * lista de enlaces). Se cierra con Escape, con un clic fuera o al elegir una opción.
+ *
+ * @param {object} options - Datos y acciones.
+ * @param {string} options.firstName - Nombre de la persona, para el saludo.
+ * @param {() => void} options.onLogout - Cierra la sesión.
+ * @returns {HTMLElement} Contenedor del botón y el menú.
+ */
+function accountMenu({ firstName, onLogout }) {
+  const list = h(
+    'ul',
+    { class: 'account-menu', id: 'account-menu', hidden: true },
+    h('li', { class: 'account-menu-greeting' }, `Hola, ${firstName}`),
+    h('li', null, h('a', { href: '/account' }, 'Ver mi cuenta')),
+    h('li', null, h('a', { href: '/account#pedidos' }, 'Mis pedidos')),
+    h('li', null, h('a', { href: '/help' }, 'Ayuda')),
+    h(
+      'li',
+      null,
+      h('button', { type: 'button', class: 'link-button', on: { click: onLogout } }, 'Cerrar sesión'),
+    ),
+  );
+  const button = h(
+    'button',
+    {
+      type: 'button',
+      class: 'account-button',
+      'aria-expanded': 'false',
+      'aria-controls': 'account-menu',
+    },
+    'Mi cuenta',
+  );
+  const wrapper = h('div', { class: 'account-wrapper' }, button, list);
+
+  /** Abre o cierra el menú. */
+  const setOpen = (open) => {
+    button.setAttribute('aria-expanded', String(open));
+    list.hidden = !open;
+  };
+  button.addEventListener('click', () => setOpen(list.hidden));
+  list.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('a, button')) setOpen(false);
+  });
+  wrapper.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !list.hidden) {
+      setOpen(false);
+      button.focus();
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (!wrapper.contains(/** @type {Node} */ (event.target))) setOpen(false);
+  });
+  return wrapper;
+}
+
+/**
+ * Conecta el encabezado con la tienda y el router.
+ *
+ * @param {object} options - Dependencias.
+ * @param {object} options.shop - Tienda (`createShop`).
+ * @param {(url: string, options?: object) => void} options.navigate - Navegación.
+ * @param {(text: string) => void} options.toast - Aviso emergente.
+ * @returns {{ update: (location: Location) => void }} Actualiza lo que depende
+ *   de la ruta (enlace activo, texto de la búsqueda).
+ */
+export function mountLayout({ shop, navigate, toast }) {
+  const cartCount = document.querySelector('.cart-count');
+  const accountArea = document.querySelector('.account-area');
+  const searchForm = document.querySelector('form[role="search"]');
+  const searchInput = searchForm.querySelector('input[name="q"]');
+
+  let shownLoggedIn = null;
+
+  /** Dibuja el contador y el área de la cuenta con el estado actual. */
+  const render = (state) => {
+    const units = countUnits(state.cart);
+    cartCount.textContent = String(units);
+    cartCount.hidden = units === 0;
+    const link = cartCount.closest('a');
+    link.setAttribute('aria-label', units === 0 ? 'Carrito vacío' : `Carrito, ${units} productos`);
+    const loggedIn = Boolean(state.user);
+    if (shownLoggedIn === loggedIn) return;
+    shownLoggedIn = loggedIn;
+    accountArea.replaceChildren(
+      loggedIn
+        ? accountMenu({
+            firstName: state.user.name.split(' ')[0],
+            onLogout: () => {
+              shop.logout();
+              toast('Cerraste sesión.');
+              navigate('/login');
+            },
+          })
+        : h('a', { href: '/login', class: 'login-link' }, 'Iniciar sesión'),
+    );
+  };
+  render(shop.get());
+  shop.subscribe(render);
+
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = searchInput.value.trim();
+    if (!query) {
+      searchInput.focus();
+      return;
+    }
+    navigate(`/search?q=${encodeURIComponent(query)}`);
+  });
+
+  return {
+    update(location) {
+      for (const link of document.querySelectorAll('.main-nav a')) {
+        const active = link.pathname === location.pathname;
+        if (active) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      }
+      const params = new URLSearchParams(location.search);
+      searchInput.value = location.pathname === '/search' ? (params.get('q') ?? '') : '';
+    },
+  };
+}
+
+/**
+ * Crea la función que muestra avisos emergentes en la región `role="status"`.
+ *
+ * @param {Element} region - Región de avisos de `index.html`.
+ * @returns {(text: string) => void} Muestra un aviso durante unos segundos.
+ */
+export function createToaster(region) {
+  return (text) => {
+    const toast = h('p', { class: 'toast' }, text);
+    region.append(toast);
+    setTimeout(() => toast.remove(), TOAST_MS);
+  };
+}

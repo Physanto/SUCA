@@ -25,5 +25,8 @@
   },
   "test_page": {
     "port": 8766
+  },
+  "test_app": {
+    "port": 8767
   }
 }

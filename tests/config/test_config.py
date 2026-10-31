@@ -111,6 +111,8 @@ def test_invalid_json_is_reported(tmp_path: Path) -> None:
         ({"capture__scroll_hz": 0}, "capture.scroll_hz: must be positive"),
         ({"server__port": 70000}, "server.port: must be between 1 and 65535"),
         ({"test_page__port": 65536}, "test_page.port: must be between 1 and 65535"),
+        ({"test_app__port": 0}, "test_app.port: must be positive"),
+        ({"test_app__port": 65536}, "test_app.port: must be between 1 and 65535"),
         ({"server__token": " "}, "server.token: expected a non-empty string"),
         ({"database__path": 3}, "database.path: expected a non-empty string"),
         ({"server__host": "0.0.0.0"}, "server.host: must be a loopback IP address"),
