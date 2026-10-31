@@ -18,7 +18,8 @@ import { productListing } from './listing.js';
 export async function render(ctx, { query }) {
   const text = (query.get('q') ?? '').trim();
   await wait(LATENCY.page);
-  const found = searchProducts(PRODUCTS, text);
+  // Problema 8 (`strict_search`): sin tolerancia a errores de escritura ni a prefijos.
+  const found = searchProducts(PRODUCTS, text, { tolerant: !ctx.problems.has('strict_search') });
   const heading = text ? `Resultados para “${text}”` : 'Buscar productos';
   return {
     title: 'Resultados',

@@ -8,7 +8,7 @@
 
 import { DEMO_ACCOUNT } from '../data.js';
 import { h, wait } from '../dom.js';
-import { LATENCY } from '../timing.js';
+import { LATENCY, PROBLEM_DELAY } from '../timing.js';
 import { isBusy, testDataNotice, withBusyButton } from '../ui.js';
 
 /**
@@ -84,14 +84,28 @@ export function render(ctx, { query }) {
     h('p', { class: 'form-links' }, h('a', { href: '/help#olvide-mi-contrasena' }, '¿Olvidaste tu contraseña?')),
   );
 
+  // Problema 7 (`slow_login`): tarda 4 s sin ninguna señal; ni el botón ni el
+  // mensaje anterior cambian, y los envíos de mientras se ignoran.
+  const slow = ctx.problems.has('slow_login');
+  let pending = false;
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (isBusy(submit)) return;
-    alert.replaceChildren();
-    const ok = await withBusyButton(submit, 'Ingresando…', async () => {
-      await wait(LATENCY.login);
-      return ctx.shop.login(email.value, password.value);
-    });
+    if (pending || isBusy(submit)) return;
+    let ok;
+    if (slow) {
+      pending = true;
+      await wait(PROBLEM_DELAY.login);
+      pending = false;
+      alert.replaceChildren();
+      ok = ctx.shop.login(email.value, password.value);
+    } else {
+      alert.replaceChildren();
+      ok = await withBusyButton(submit, 'Ingresando…', async () => {
+        await wait(LATENCY.login);
+        return ctx.shop.login(email.value, password.value);
+      });
+    }
     if (ok) {
       ctx.toast(`¡Hola, ${ctx.shop.get().user.name.split(' ')[0]}! Iniciaste sesión.`);
       ctx.navigate(next, { replace: true });

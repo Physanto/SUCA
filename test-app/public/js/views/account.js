@@ -48,7 +48,15 @@ export function renderAccount(ctx) {
           h('h2', { id: 'address-title' }, 'Dirección de envío'),
           h('p', null, address.street),
           h('p', { class: 'muted' }, [address.city, address.details].filter(Boolean).join(' · ')),
-          h('a', { href: '/account/address', class: 'account-link' }, 'Cambiar dirección de envío'),
+          // Problema 5 (`low_contrast_link`): mismo texto y destino, casi invisible.
+          h(
+            'a',
+            {
+              href: '/account/address',
+              class: ctx.problems.has('low_contrast_link') ? 'account-link-faint' : 'account-link',
+            },
+            'Cambiar dirección de envío',
+          ),
         ),
       ),
       h(
