@@ -115,7 +115,11 @@ function start() {
     cleanup = null;
     layout.update(location);
     main.setAttribute('aria-busy', 'true');
-    const timer = setTimeout(() => main.replaceChildren(loadingBlock()), LOADING_DELAY_MS);
+    // Solo si esta navegación sigue siendo la actual: si la persona ya fue a
+    // otra pantalla, el aviso taparía la pantalla nueva.
+    const timer = setTimeout(() => {
+      if (id === current) main.replaceChildren(loadingBlock());
+    }, LOADING_DELAY_MS);
     let result;
     try {
       const route = { params: match?.params ?? {}, query: new URLSearchParams(location.search) };
