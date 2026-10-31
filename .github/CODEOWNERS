@@ -37,6 +37,7 @@
 /analysis/screens.py                @marlon890 @Physanto
 /analysis/episodes.py               @marlon890 @Physanto
 /analysis/detectors.py              @marlon890 @Physanto
+/analysis/form_activity.py          @marlon890 @Physanto
 /analysis/reference.py              @marlon890 @Physanto
 /analysis/usability_index.py        @marlon890 @Physanto
 /analysis/ml/                       @marlon890 @Physanto

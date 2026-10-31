@@ -3,5 +3,5 @@ fastapi>=0.110
 uvicorn>=0.29
 jsonschema>=4.21
 PyYAML>=6.0
-pandas>=2.2
+pandas>=3.0
 streamlit>=1.36

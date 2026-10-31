@@ -224,7 +224,7 @@ Cada integrante modifica solo sus carpetas. `.github/CODEOWNERS` hace que GitHub
 | `dashboard/` | Líder (panel de resultados) |
 | `extension/content/capture.js` | Integrante B (captura) |
 | `extension/panel/`, `extension/content/task-end.js` | Integrante B (sesión y modos) |
-| `analysis/cleaning.py`, `analysis/screens.py`, `analysis/episodes.py`, `analysis/detectors.py` | Integrante C (fricción) |
+| `analysis/cleaning.py`, `analysis/screens.py`, `analysis/episodes.py`, `analysis/detectors.py`, `analysis/form_activity.py` | Integrante C (fricción) |
 | `analysis/reference.py`, `analysis/usability_index.py` | Integrante C (referencia e índice) |
 | `analysis/ml/`, `notebooks/` | Integrante C (aprendizaje automático) |
 | `tests/` | El dueño del código que se prueba |
