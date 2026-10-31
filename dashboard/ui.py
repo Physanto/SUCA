@@ -219,7 +219,8 @@ def show_table(df: pd.DataFrame, *, empty: str = "Todavía no hay datos.") -> No
             shown[column] = pd.to_datetime(shown[column], unit="ms", utc=True).dt.tz_convert(local)
     for column in _DURATION_COLUMNS:
         if column in shown:
-            shown[column] = (shown[column] / 1000).round(1)
+            # Una columna sin valores llega como object; to_numeric la deja en NaN.
+            shown[column] = (pd.to_numeric(shown[column]) / 1000).round(1)
     if "mode" in shown:
         shown["mode"] = shown["mode"].map(lambda mode: MODE_LABELS.get(mode, mode))
     # Una etiqueta se usa una sola vez: si dos columnas la comparten, la segunda queda en inglés.
