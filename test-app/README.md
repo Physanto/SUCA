@@ -10,7 +10,7 @@ Tienda en línea ficticia sobre la que se valida el sistema. Tiene tres versione
 
 Además, la versión **personalizada** activa cualquier combinación de problemas, uno por uno.
 
-> **Estado:** las versiones ya se eligen y el catálogo de problemas está definido en `public/js/versions.js`, pero los problemas todavía no cambian la tienda: por ahora las tres versiones se comportan como V0. Cada problema se agregará con su documentación (ubicación, tipo, comportamiento esperado y detector esperado) en `PROBLEMS.md`.
+El catálogo de problemas, con su ubicación, tipo, comportamiento esperado y detector esperado, está en [PROBLEMS.md](PROBLEMS.md).
 
 La tienda no forma parte del sistema: es un sitio web más, que se evalúa como caja negra. No usa nada de la extensión ni tiene atributos, identificadores o avisos para facilitar la captura. Los productos, precios, cuentas y pagos son falsos: nada sale de la computadora.
 
@@ -160,6 +160,8 @@ node test-app/e2e/walkthrough.js                    # V0 en http://127.0.0.1:876
 node test-app/e2e/walkthrough.js --version V1 --url http://127.0.0.1:8767
 ```
 
+**Problemas sembrados.** `node test-app/e2e/problems.js` comprueba cada problema por separado. Con solo ese problema activo debe verse el problema, y en V0 el comportamiento correcto. El detalle está en [PROBLEMS.md](PROBLEMS.md).
+
 Busca Chrome en las ubicaciones habituales; si está en otra, indícala con la variable `CHROME_PATH`. No se ejecuta en la integración continua.
 
 ## Cómo extenderla
@@ -169,7 +171,7 @@ Busca Chrome en las ubicaciones habituales; si está en otra, indícala con la v
 1. Agrégalo al catálogo `PROBLEMS` de `public/js/versions.js` (clave, número, título y pantalla) y, si corresponde, a una versión en `VERSIONS`.
 2. En la pantalla afectada, cambia el comportamiento solo si está activo: `if (ctx.problems.has('mi_problema')) { … }`.
 3. Comprueba que no cambia la ruta ideal de ninguna tarea (pantallas, textos y roles de los pasos).
-4. Documéntalo en `PROBLEMS.md` y agrega una prueba de su lógica si la tiene.
+4. Documéntalo en `PROBLEMS.md`, agrega su comprobación a `e2e/problems.js` y una prueba de su lógica si la tiene.
 
 **Agregar una pantalla:** crea `public/js/views/mi-pantalla.js` con una función `render(ctx, { params, query })` que devuelve `{ title, node }` (o `{ redirect }`, o `{ notFound: true }`) y regístrala en `ROUTES` de `public/js/main.js`. Si la pantalla carga datos, espera `LATENCY.page` para simular el servidor. Cada pantalla tiene un `h1` con `tabindex="-1"`, que recibe el foco al llegar.
 
