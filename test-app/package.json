@@ -1,0 +1,6 @@
+{
+  "name": "suca-test-app",
+  "private": true,
+  "description": "App de prueba: sus archivos .js son módulos ES, en el navegador y en las pruebas de Node.",
+  "type": "module"
+}
