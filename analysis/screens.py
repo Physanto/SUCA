@@ -42,7 +42,7 @@ def assign_screens(data: SessionData, params: Parameters) -> SessionData:
     )
     use_title = title_counts.gt(1) & titles.ne("")
     events.loc[use_title, "screen"] = (
-        events.loc[use_title, "screen"] + " | " + titles.loc[use_title]
+        events.loc[use_title, "screen"].astype(str) + " | " + titles.loc[use_title].astype(str)
     )
     return replace(data, events=events)
 

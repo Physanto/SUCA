@@ -226,7 +226,7 @@ python -m analysis.run --study 1        # las sesiones cerradas de un estudio
 - Para usar otra base, agrega `--db RUTA`. Con `--db data/mock.db` se analizan los datos simulados, y sus resultados esperados se reemplazan hasta que vuelvas a generarla.
 - Los umbrales están en `analysis/parameters.yaml`.
 
-El análisis de fricción (M4) recorre estas etapas:
+El análisis de fricción recorre estas etapas:
 
 | Etapa | Función |
 |---|---|
@@ -234,7 +234,7 @@ El análisis de fricción (M4) recorre estas etapas:
 | `screens` | Normaliza las URL y distingue pantallas por su título |
 | `episodes` | Segmenta inicio de sesión, formularios, búsquedas y visitas a pantallas |
 | `detectors` | Detecta los diez tipos de incidente de `contracts/enums.json` |
-| `reference` y `usability_index` | Puntos de extensión para comparar tareas y calcular el índice; aún devuelven tablas vacías |
+| `reference` y `usability_index` | Comparación de tareas con referencias y cálculo del índice de usabilidad |
 
 Para verificar los incidentes y episodios de toda la base simulada contra `mock_ground_truth.json`:
 
@@ -242,7 +242,7 @@ Para verificar los incidentes y episodios de toda la base simulada contra `mock_
 python -m pytest tests/analysis/test_mock_verification.py -q
 ```
 
-La prueba genera los datos en una carpeta temporal y ejecuta el pipeline sin resultados precargados. Las sesiones reales se comprobarán en la integración I4.
+La prueba genera los datos en una carpeta temporal y ejecuta el pipeline sin resultados precargados.
 
 Para agregar un detector, registra una clase con `@DETECTORS.register` en `analysis/detectors.py`, con un `incident_type` del contrato y un método `find(data, params)`. Devuelve `columns.frame("incident", filas)` o `columns.empty("incident")`, usa los umbrales de `params` y añade un caso positivo y uno negativo. Conserva intactos los datos de entrada.
 
