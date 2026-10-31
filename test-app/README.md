@@ -42,7 +42,7 @@ El participante nunca escribe datos propios: la tienda muestra los que necesita.
 | Dónde | Dato |
 |---|---|
 | Inicio de sesión | Correo `ana.gomez@correo.test`, contraseña `Ceiba2026` |
-| Envío | Viene lleno con los datos de la cuenta |
+| Envío | Viene lleno con los datos de la cuenta (dirección `Carrera 7 # 45-12`, Medellín) |
 | Pago con tarjeta | Número `4111 1111 1111 1111`, nombre `ANA GOMEZ`, vencimiento `12/29`, código `123` |
 
 Los datos que se muestran son los mismos en todas las versiones. En V1 y V2, el pago exige formatos más estrictos que los mostrados (problemas 4 y 6 de [PROBLEMS.md](PROBLEMS.md)).
@@ -178,7 +178,7 @@ Antes del piloto, alguien que no conoce el proyecto debe completar las 4 tareas 
    - en `/setup` elige **V0** y pulsa **Guardar y preparar para un participante**;
    - deja la ventana del tamaño que tendrá en las sesiones (con el panel lateral de Chrome abierto, si se usará). No hace falta la extensión.
 3. **Instrucciones a la persona:** "Vas a usar una tienda en línea de prueba. Primero inicia sesión con la cuenta de demostración que aparece en la pantalla. Luego te daré cuatro tareas, una a la vez; hazlas como las harías en casa. Evaluamos la tienda, no a ti. Si te atascas, dímelo, pero no podré ayudarte."
-4. **Tareas:** lee en voz alta, una a la vez, las instrucciones de `studies/example.yaml`, sin cambiarlas ni explicarlas. Pasa a la siguiente cuando la persona diga que terminó.
+4. **Tareas:** lee en voz alta, una a la vez, las instrucciones de `studies/example.yaml`, sin cambiarlas ni explicarlas, y deja a la vista la tarea escrita (una tarjeta por tarea): la 4 tiene una dirección que hay que copiar. Pasa a la siguiente cuando la persona diga que terminó.
 5. **Durante la prueba:** no ayudes, no señales y no confirmes. Si pide ayuda, responde: "¿Qué harías si estuvieras solo?". Una tarea que pasa de 5 minutos cuenta como no completada.
 6. **Registro, por tarea:**
    - si la completó sin ayuda;
