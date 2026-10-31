@@ -437,7 +437,9 @@ export const DEMO_ACCOUNT = Object.freeze({
   password: 'Ceiba2026',
   name: 'Ana Gómez',
   phone: '300 123 4567',
-  address: Object.freeze({ street: 'Carrera 7 # 45-12', city: 'Medellín', details: 'Apartamento 301' }),
+  // Sin apartamento ni referencia: la tarea de cambiar la dirección da solo
+  // calle y ciudad, y un dato de más hacía dudar si también había que cambiarlo.
+  address: Object.freeze({ street: 'Carrera 7 # 45-12', city: 'Medellín', details: '' }),
 });
 
 /** Tarjeta de prueba que se muestra en el pago. Cumple el algoritmo de Luhn. */

@@ -137,7 +137,7 @@ export function render(ctx, { query }) {
         { class: 'card auth-card', 'aria-labelledby': 'login-title' },
         h('h1', { id: 'login-title', tabindex: -1 }, 'Iniciar sesión'),
         h('p', { class: 'muted' }, 'Ingresa para comprar y revisar tus pedidos.'),
-        testDataNotice('Cuenta de demostración', [
+        testDataNotice('Para ingresar, usa esta cuenta de demostración', [
           ['Correo', DEMO_ACCOUNT.email],
           ['Contraseña', DEMO_ACCOUNT.password],
         ]),

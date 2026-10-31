@@ -195,7 +195,7 @@ La **app de prueba** (`test-app/`), la tienda sobre la que se hacen las sesiones
 python -m scripts.serve_test_app
 ```
 
-Queda en `http://127.0.0.1:8767/`. La versión (V0, V1 o V2) se elige en `http://127.0.0.1:8767/setup` antes de cada sesión. Cómo prepararla, sus datos de prueba y sus pantallas están en [test-app/README.md](test-app/README.md).
+Queda en `http://127.0.0.1:8767/`. La versión (V0, V1 o V2) se elige en `http://127.0.0.1:8767/setup` antes de cada sesión. Cómo prepararla, sus datos de prueba y sus pantallas están en [test-app/README.md](test-app/README.md), y los problemas sembrados de cada versión en [test-app/PROBLEMS.md](test-app/PROBLEMS.md).
 
 ### 6. Cargar la extensión en Chrome
 

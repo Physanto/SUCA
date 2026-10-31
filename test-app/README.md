@@ -42,8 +42,10 @@ El participante nunca escribe datos propios: la tienda muestra los que necesita.
 | Dónde | Dato |
 |---|---|
 | Inicio de sesión | Correo `ana.gomez@correo.test`, contraseña `Ceiba2026` |
-| Envío | Viene lleno con los datos de la cuenta |
+| Envío | Viene lleno con los datos de la cuenta (dirección `Carrera 7 # 45-12`, Medellín) |
 | Pago con tarjeta | Número `4111 1111 1111 1111`, nombre `ANA GOMEZ`, vencimiento `12/29`, código `123` |
+
+Los datos que se muestran son los mismos en todas las versiones. En V1 y V2, el pago exige formatos más estrictos que los mostrados (problemas 4 y 6 de [PROBLEMS.md](PROBLEMS.md)).
 
 ## Pantallas
 
@@ -160,9 +162,41 @@ node test-app/e2e/walkthrough.js                    # V0 en http://127.0.0.1:876
 node test-app/e2e/walkthrough.js --version V1 --url http://127.0.0.1:8767
 ```
 
+Pasa en V0, V1 y V2: así se comprueba que los problemas sembrados no cambian la ruta ideal de ninguna tarea.
+
 **Problemas sembrados.** `node test-app/e2e/problems.js` comprueba cada problema por separado. Con solo ese problema activo debe verse el problema, y en V0 el comportamiento correcto. El detalle está en [PROBLEMS.md](PROBLEMS.md).
 
 Busca Chrome en las ubicaciones habituales; si está en otra, indícala con la variable `CHROME_PATH`. No se ejecuta en la integración continua.
+
+## Validar V0 con una persona ajena
+
+Antes del piloto, alguien que no conoce el proyecto debe completar las 4 tareas en V0 sin ayuda. Si no lo logra, V0 tiene un problema que nadie sembró, y eso arruinaría la comparación entre versiones.
+
+1. **La persona:** mayor de edad y sin participación en el proyecto. No se registran su nombre ni ningún dato suyo.
+2. **Preparación:**
+   - sirve la app;
+   - en `/setup` elige **V0** y pulsa **Guardar y preparar para un participante**;
+   - deja la ventana del tamaño que tendrá en las sesiones (con el panel lateral de Chrome abierto, si se usará). No hace falta la extensión.
+3. **Instrucciones a la persona:** "Vas a usar una tienda en línea de prueba. Primero inicia sesión con la cuenta de demostración que aparece en la pantalla. Luego te daré cuatro tareas, una a la vez; hazlas como las harías en casa. Evaluamos la tienda, no a ti. Si te atascas, dímelo, pero no podré ayudarte."
+4. **Tareas:** lee en voz alta, una a la vez, las instrucciones de `studies/example.yaml`, sin cambiarlas ni explicarlas, y deja a la vista la tarea escrita (una tarjeta por tarea): la 4 tiene una dirección que hay que copiar. Pasa a la siguiente cuando la persona diga que terminó.
+5. **Durante la prueba:** no ayudes, no señales y no confirmes. Si pide ayuda, responde: "¿Qué harías si estuvieras solo?". Una tarea que pasa de 5 minutos cuenta como no completada.
+6. **Registro, por tarea:**
+   - si la completó sin ayuda;
+   - el tiempo aproximado;
+   - dónde dudó o se equivocó.
+
+   Al final, pregúntale qué le resultó difícil. Las notas van fuera del repositorio y nunca con datos de la persona.
+7. **Criterio:** las 4 tareas completadas sin ayuda. Si alguna falla, corrige lo que causó el problema en V0 y repite con **otra** persona: la primera ya conoce las tareas.
+
+## Problemas frecuentes
+
+| Síntoma | Causa y solución |
+|---|---|
+| La versión elegida "se pierde" o aparece el carrito de otra sesión | La tienda guarda sus datos por dirección: `localhost:8767` y `127.0.0.1:8767` son tiendas distintas para el navegador. Usa siempre `http://127.0.0.1:8767` |
+| Quedó el carrito, el pedido o la dirección del participante anterior | Prepara la tienda en `/setup` (o abre `/login?version=…`) antes de cada participante |
+| La página queda en blanco | La app se abrió como archivo o con otro servidor. Sírvela con `python -m scripts.serve_test_app`, que entrega los módulos de JavaScript con el tipo correcto también en Windows |
+| Un cambio en el código no se ve | Recarga la página. El servidor pide no guardar caché, pero una pestaña abierta conserva el código hasta recargar |
+| El puerto 8767 está ocupado | Cambia `test_app.port` en `config/shared.json` |
 
 ## Cómo extenderla
 

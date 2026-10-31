@@ -165,7 +165,8 @@ export function checkoutSteps(current) {
 }
 
 /**
- * Aviso con datos de prueba para que nadie escriba datos propios.
+ * Aviso con datos de prueba para que nadie escriba datos propios. El título
+ * debe decir qué hacer con ellos ("usa esta cuenta…"), no solo qué son.
  *
  * @param {string} title - Título del aviso.
  * @param {Array<[string, string]>} rows - Etiqueta y valor de cada dato.
