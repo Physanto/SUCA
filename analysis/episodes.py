@@ -35,11 +35,19 @@ Un detector no modifica ``data``. Si falla o devuelve columnas incorrectas, la
 etapa se detiene con un error que lo nombra.
 """
 
+from bisect import bisect_left
 from typing import Protocol
 
 import pandas as pd
 
-from analysis import columns
+from analysis import columns, detectors
+from analysis.form_activity import (
+    form_exit_time,
+    form_metrics,
+    form_runs,
+    search_activities,
+    visits,
+)
 from analysis.loader import SessionData
 from analysis.parameters import Parameters
 from analysis.registry import Registry
@@ -71,7 +79,7 @@ class EpisodeDetector(Protocol):
 EPISODE_DETECTORS: Registry[EpisodeDetector] = Registry(
     "episode detector", key="episode_type", allowed=contracts.enums()["episode_type"]
 )
-"""Detectores de episodios registrados. Esqueleto: todavía ninguno."""
+"""Detectores de episodios registrados."""
 
 
 def detect(data: SessionData, params: Parameters) -> pd.DataFrame:
@@ -105,3 +113,126 @@ def detect(data: SessionData, params: Parameters) -> pd.DataFrame:
             )
         found.append(result)
     return columns.concat("episode", found).sort_values("t_start", kind="stable", ignore_index=True)
+
+
+def _form_rows(data: SessionData, kind: str) -> pd.DataFrame:
+    """Produce episodios de formulario o autenticación con sus métricas."""
+    rows = []
+    for run in form_runs(data):
+        if run.kind != kind:
+            continue
+        attempts, errors, reentries = form_metrics(run)
+        submissions = [event.t for event in run.events if event.type == "form_submit"]
+        signals = [
+            event.type for event in run.events if event.type in ("form_submit", "validation_error")
+        ]
+        submitted = bool(signals) and signals[-1] == "form_submit"
+        outcome = "submitted" if submitted else "abandoned"
+        if kind == "login":
+            outcome = (
+                "success"
+                if submitted and run.visit.exited
+                else ("submitted" if submitted else "failed" if attempts else "abandoned")
+            )
+        rows.append(
+            {
+                "type": kind,
+                "t_start": run.start,
+                "t_end": submissions[-1] if submitted else form_exit_time(run),
+                "screen": run.visit.screen,
+                "outcome": outcome,
+                "metrics": {"attempts": attempts, "errors": errors}
+                if kind == "login"
+                else {"errors": errors, "reentries": reentries},
+            }
+        )
+    return columns.frame("episode", rows)
+
+
+def _search_rows(data: SessionData) -> pd.DataFrame:
+    """Une reformulaciones hasta abrir un resultado, salir o cambiar de actividad."""
+    return columns.frame(
+        "episode",
+        [
+            {
+                "type": "search",
+                "t_start": activity.runs[0].start,
+                "t_end": activity.end,
+                "screen": activity.runs[0].visit.screen,
+                "outcome": "result_opened"
+                if activity.result_click is not None
+                else "no_result_opened",
+                "metrics": {
+                    "searches": sum(form_metrics(run)[0] for run in activity.runs),
+                    "result_clicks": int(activity.result_click is not None),
+                },
+            }
+            for activity in search_activities(data)
+        ],
+    )
+
+
+@EPISODE_DETECTORS.register
+class LoginEpisodes:
+    """Episodios de autenticación reconocibles en los eventos capturados."""
+
+    episode_type = "login"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Devuelve intentos, errores y resultado de cada interacción de autenticación."""
+        return _form_rows(data, self.episode_type)
+
+
+@EPISODE_DETECTORS.register
+class FormEpisodes:
+    """Episodios de llenado, envío o abandono de formularios."""
+
+    episode_type = "form"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Devuelve formularios con sus errores y reingresos."""
+        return _form_rows(data, self.episode_type)
+
+
+@EPISODE_DETECTORS.register
+class SearchEpisodes:
+    """Búsquedas y reformulaciones hasta abrir un resultado o abandonar."""
+
+    episode_type = "search"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Devuelve búsquedas, clics en resultados y sus intervalos."""
+        return _search_rows(data)
+
+
+@EPISODE_DETECTORS.register
+class ScreenEpisodes:
+    """Visitas continuas a pantallas normalizadas."""
+
+    episode_type = "screen"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Cuenta los incidentes registrados que comienzan dentro de cada visita."""
+        page_visits = visits(data)
+        if not page_visits:
+            return columns.empty("episode")
+        by_screen: dict[str, list[float]] = {}
+        for incident in detectors.detect(data, params).itertuples():
+            by_screen.setdefault(incident.screen, []).append(incident.t)
+        for times in by_screen.values():
+            times.sort()
+        rows = []
+        for visit in page_visits:
+            times = by_screen.get(visit.screen, [])
+            rows.append(
+                {
+                    "type": self.episode_type,
+                    "t_start": visit.start,
+                    "t_end": visit.end,
+                    "screen": visit.screen,
+                    "metrics": {
+                        "incidents": bisect_left(times, visit.end) - bisect_left(times, visit.start)
+                    },
+                }
+            )
+        return columns.frame("episode", rows)

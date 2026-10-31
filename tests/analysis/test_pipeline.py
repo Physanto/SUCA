@@ -53,7 +53,7 @@ def close_session_2(connection: sqlite3.Connection) -> None:
     connection.execute("UPDATE session SET ended_at = started_at + 5000 WHERE id = 2")
 
 
-def test_runs_every_stage_in_order_with_empty_results(
+def test_runs_every_stage_in_order_with_screen_episodes(
     repository: SqliteAnalysisRepository, params: Parameters
 ) -> None:
     results = run_pipeline(repository.load_session(1), params)
@@ -68,8 +68,9 @@ def test_runs_every_stage_in_order_with_empty_results(
         "usability_index",
     ]
     assert all(duration >= 0 for duration in results.timings_ms.values())
+    assert results.episodes["screen"].tolist() == ["/cart/{id}", "/order/{id}"]
+    columns.validate(results.episodes, "episode")
     for table, frame in [
-        ("episode", results.episodes),
         ("incident", results.incidents),
         ("task_result", results.task_results),
         ("usability_index", results.usability_index),
@@ -102,7 +103,7 @@ def test_a_registered_detector_appears_in_the_saved_results(
     assert [(row["session_id"], row["type"], row["task_id"]) for row in rows] == [
         (1, "dead_click", 1)
     ]
-    assert rows[0]["screen"] == "https://shop.local/cart/8812"
+    assert rows[0]["screen"] == "/cart/{id}"
 
 
 def test_analyzing_twice_does_not_duplicate_results(
@@ -173,7 +174,7 @@ def test_cli_analyzes_one_session(analysis_db: Path, capsys: pytest.CaptureFixtu
 
     output = capsys.readouterr().out
     assert code == 0
-    assert output.startswith("session 1: 0 episodes, 0 incidents, 0 task results, no index (")
+    assert output.startswith("session 1: 2 episodes, 0 incidents, 0 task results, no index (")
 
 
 def test_cli_analyzes_the_closed_sessions_of_a_study(

@@ -229,7 +229,7 @@ def store_expected_results(
 def result_frames(truth: SessionTruth) -> dict[str, Any]:
     """Convierte una verdad de referencia en los DataFrames de las tablas de resultados.
 
-    Cada incidente se guarda en el inicio de su patrón (``t_start``).
+    Cada incidente usa su tiempo de referencia (``ExpectedIncident.t``).
 
     Args:
         truth: Verdad de referencia.
@@ -258,7 +258,7 @@ def result_frames(truth: SessionTruth) -> dict[str, Any]:
             [
                 {
                     "type": item.type,
-                    "t": item.t_start,
+                    "t": item.t,
                     "screen": item.screen,
                     "task_id": item.task_id,
                     "element": None if item.element is None else dict(item.element),

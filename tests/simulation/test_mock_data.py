@@ -224,7 +224,16 @@ def test_truth_matches_the_saved_results(mock: Any, mock_connection: sqlite3.Con
             session_id,
         )
         expected = sorted(
-            ((item["t_start"], item["type"]), item["task_id"]) for item in session["incidents"]
+            (
+                (
+                    item["t_end"]
+                    if item["type"] in ("navigation_loop", "repeated_search")
+                    else item["t_start"],
+                    item["type"],
+                ),
+                item["task_id"],
+            )
+            for item in session["incidents"]
         )
         assert [((item["t"], item["type"]), item["task_id"]) for item in saved] == expected
         episodes = mock_connection.execute(
