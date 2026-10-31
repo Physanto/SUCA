@@ -139,7 +139,7 @@ export function renderPayment(ctx) {
   const cardSection = h(
     'div',
     { class: 'method-details', hidden: true },
-    testDataNotice('Tarjeta de prueba', [
+    testDataNotice('Paga con esta tarjeta de prueba (no es real)', [
       ['Número', TEST_CARD.number],
       ['Nombre', TEST_CARD.name],
       ['Vencimiento', TEST_CARD.expiry],
