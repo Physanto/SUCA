@@ -2,11 +2,11 @@
   "name": "suca-extension-tests",
   "version": "0.1.0",
   "private": true,
-  "description": "Pruebas de la extensión de Chrome con el ejecutor nativo de Node.",
+  "description": "Pruebas de la extensión de Chrome y de la app de prueba con el ejecutor nativo de Node.",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test \"extension/tests/**/*.test.js\""
+    "test": "node --test \"extension/tests/**/*.test.js\" \"test-app/tests/**/*.test.js\""
   }
 }
