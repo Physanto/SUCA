@@ -138,6 +138,24 @@ class TestPageConfig:
 
 
 @dataclass(frozen=True)
+class TestAppConfig:
+    """Servidor estático de la app de prueba (``test-app/``).
+
+    Attributes:
+        port: Puerto en el que se sirve la app.
+    """
+
+    # Evita que pytest intente recolectar esta clase por empezar con "Test".
+    __test__ = False
+
+    port: int
+
+    def __post_init__(self) -> None:
+        """Valida el puerto."""
+        _check_port("test_app.port", self.port)
+
+
+@dataclass(frozen=True)
 class Config:
     """Configuración completa del sistema.
 
@@ -148,6 +166,7 @@ class Config:
         capture: Captura de interacción.
         camera: Módulo de cámara.
         test_page: Página de prueba.
+        test_app: App de prueba.
     """
 
     server: ServerConfig
@@ -156,6 +175,7 @@ class Config:
     capture: CaptureConfig
     camera: CameraConfig
     test_page: TestPageConfig
+    test_app: TestAppConfig
 
 
 def load_config(path: Path | str | None = None) -> Config:

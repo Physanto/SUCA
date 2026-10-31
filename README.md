@@ -108,6 +108,7 @@ JSON no admite comentarios, así que cada clave se documenta aquí. Todos los n�
 | `camera.gaze_hz` | `30` | Frecuencia de muestreo de la mirada |
 | `camera.face_hz` | `15` | Frecuencia de muestreo de los movimientos faciales |
 | `test_page.port` | `8766` | Puerto en el que se sirve la página de prueba de la extensión |
+| `test_app.port` | `8767` | Puerto en el que se sirve la app de prueba (`test-app/`) |
 
 Las rutas relativas se resuelven desde la raíz del repositorio. La carpeta `data/` no se versiona.
 
@@ -291,7 +292,7 @@ Para trabajar sin sesiones reales, usa los datos simulados (paso 3).
 | `ModuleNotFoundError: No module named 'shared'` (u otro paquete del proyecto) | Falta `python -m pip install -e .`, o el entorno virtual no está activo |
 | `database not found` | Crea la base con `python -m scripts.init_db` (o la simulada con `python -m scripts.generate_mock_data`) |
 | La base tiene otra versión del esquema | Recréala con `python -m scripts.init_db --reset` (borra sus datos) |
-| El puerto 8765, 8766 u 8501 está ocupado | Cierra el programa que lo usa, o cambia `server.port` o `test_page.port` en `config/shared.json` y regenera la configuración de la extensión |
+| El puerto 8765, 8766, 8767 u 8501 está ocupado | Cierra el programa que lo usa, o cambia `server.port`, `test_page.port` o `test_app.port` en `config/shared.json` y regenera la configuración de la extensión |
 | La extensión no captura nada | El servidor debe estar en marcha; la sesión se inicia con la pestaña evaluada activa; los content scripts no corren en páginas `chrome://` ni en la Chrome Web Store; recarga la pestaña después de recargar la extensión |
 | `--reset` falla en Windows | Detén antes el servidor y el panel, que tienen la base abierta |
 
