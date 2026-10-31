@@ -20,5 +20,16 @@ export const LATENCY = Object.freeze({
   saveAddress: 500,
 });
 
+/**
+ * Esperas de los problemas sembrados: más largas que el tiempo que la
+ * captura observa la página tras un clic (1,5 s), y sin ninguna señal visible.
+ */
+export const PROBLEM_DELAY = Object.freeze({
+  /** Problema 2: agregar al carrito. */
+  addToCart: 3000,
+  /** Problema 7: iniciar sesión. */
+  login: 4000,
+});
+
 /** Cuánto tiempo se ve un aviso emergente. */
 export const TOAST_MS = 4000;

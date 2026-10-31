@@ -1029,6 +1029,19 @@ textarea {
   font-weight: 600;
 }
 
+/* Problema 5: el enlace a la dirección, con contraste muy bajo y sin subrayado. */
+.account-link-faint {
+  display: inline-block;
+  margin-top: var(--space-3);
+  color: #c4cbc6;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.account-link-faint:hover {
+  color: #c4cbc6;
+}
+
 .status-area:empty {
   display: none;
 }
@@ -1116,6 +1129,12 @@ textarea {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: contain;
+}
+
+/* Problema 1: una imagen con el aspecto exacto del botón "Ampliar imagen". */
+.zoom-badge {
+  margin-top: var(--space-3);
+  cursor: pointer;
 }
 
 .rating-row {

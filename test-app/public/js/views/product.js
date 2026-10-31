@@ -8,7 +8,7 @@ import { clampQuantity } from '../cart.js';
 import { findCategory, findProduct, MAX_QUANTITY, PRODUCTS } from '../data.js';
 import { h, wait } from '../dom.js';
 import { reviewsFor } from '../reviews.js';
-import { LATENCY } from '../timing.js';
+import { LATENCY, PROBLEM_DELAY } from '../timing.js';
 import {
   breadcrumbs,
   isBusy,
@@ -26,10 +26,22 @@ const RELATED_COUNT = 4;
  * Imagen del producto con un botón que la abre ampliada en un diálogo modal.
  * El diálogo se cierra con su botón, con Escape o con un clic fuera de él.
  *
+ * Problema 1 (`button_like_image`): en lugar del botón hay una imagen con su
+ * mismo aspecto, que no hace nada al pulsarla.
+ *
  * @param {import('../data.js').Product} product - Producto.
+ * @param {ReadonlySet<string>} problems - Problemas activos.
  * @returns {HTMLElement} Galería con el botón y el diálogo.
  */
-function gallery(product) {
+function gallery(product, problems) {
+  if (problems.has('button_like_image')) {
+    return h(
+      'div',
+      { class: 'product-gallery' },
+      productImage(product, 'product-image-large'),
+      h('img', { class: 'zoom-badge', src: '/images/zoom-badge.svg', alt: '', width: 168, height: 40 }),
+    );
+  }
   const close = h('button', { type: 'button', class: 'button button-secondary' }, 'Cerrar');
   const dialog = h(
     'dialog',
@@ -142,10 +154,20 @@ export async function render(ctx, { params }) {
   const quantity = quantityPicker();
   const addButton = h('button', { type: 'button', class: 'button button-primary button-large' }, 'Agregar al carrito');
 
+  // Problema 2 (`slow_add_to_cart`): tarda 3 s sin cambiar nada en la página;
+  // los clics de mientras se ignoran sin dejar rastro (ni siquiera un atributo).
+  const slow = ctx.problems.has('slow_add_to_cart');
+  let pending = false;
+
   addButton.addEventListener('click', async () => {
-    if (isBusy(addButton)) return;
+    if (pending || isBusy(addButton)) return;
     const units = quantity.value();
-    await withBusyButton(addButton, 'Agregando…', () => wait(LATENCY.addToCart));
+    if (slow) {
+      pending = true;
+      await wait(PROBLEM_DELAY.addToCart);
+    } else {
+      await withBusyButton(addButton, 'Agregando…', () => wait(LATENCY.addToCart));
+    }
     ctx.shop.addToCart(product.id, units);
     ctx.toast(`Agregaste ${units} ${units === 1 ? 'unidad' : 'unidades'} de ${product.name} al carrito.`);
     ctx.navigate('/cart');
@@ -164,7 +186,7 @@ export async function render(ctx, { params }) {
       h(
         'div',
         { class: 'product-layout' },
-        gallery(product),
+        gallery(product, ctx.problems),
         h(
           'div',
           { class: 'product-info' },

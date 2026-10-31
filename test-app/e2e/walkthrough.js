@@ -12,6 +12,9 @@
  * Requiere la app servida (`python -m scripts.serve_test_app`) y Chrome
  * instalado (o la variable `CHROME_PATH`).
  *
+ * Pasa en V0, V1 y V2: los problemas sembrados agregan fricción, pero no
+ * cambian la ruta ideal de ninguna tarea.
+ *
  * Uso:
  *   node test-app/e2e/walkthrough.js [--url http://127.0.0.1:8767] [--version V0]
  */
@@ -75,9 +78,11 @@ const STEPS = [
       await page.click('button', 'Continuar al pago');
       await page.waitForPath(/^\/checkout\/payment$/);
       await page.click('input', 'Tarjeta de crédito o débito');
-      await page.fill('Número de la tarjeta', TEST_CARD.number);
+      // Sin espacios y con el año completo: el formato que aceptan las tres
+      // versiones. Así el mismo recorrido comprueba que la ruta ideal no cambia.
+      await page.fill('Número de la tarjeta', TEST_CARD.number.replace(/\s/g, ''));
       await page.fill('Nombre como aparece en la tarjeta', TEST_CARD.name);
-      await page.fill('Vencimiento', TEST_CARD.expiry);
+      await page.fill('Vencimiento', TEST_CARD.expiry.replace('/', '/20'));
       await page.fill('Código de seguridad', TEST_CARD.cvc);
       await page.click('button', await page.evaluate("document.querySelector('main button[type=submit]').innerText.trim()"));
       await page.waitForPath(/^\/order\/\d+\/confirmation$/);
@@ -145,10 +150,13 @@ const STEPS = [
       await page.waitForPath(/^\/search\?q=parlante$/);
       await page.click('main a', 'Parlante portátil Ritmo Mini');
       await page.waitForPath(/^\/product\/104$/);
-      await page.click('button', 'Ampliar imagen');
-      await page.waitFor("document.querySelector('dialog').open", 'open dialog');
-      await page.press('Escape');
-      await page.waitFor("!document.querySelector('dialog').open", 'closed dialog');
+      // Con el problema 1 activo el botón es una imagen sin diálogo (lo comprueba problems.js).
+      if (!(await page.evaluate("!!document.querySelector('img.zoom-badge')"))) {
+        await page.click('button', 'Ampliar imagen');
+        await page.waitFor("document.querySelector('dialog').open", 'open dialog');
+        await page.press('Escape');
+        await page.waitFor("!document.querySelector('dialog').open", 'closed dialog');
+      }
       await page.evaluate("window.productMarker = document.querySelector('main h1')");
       await page.click('a', 'Ver opiniones');
       await page.waitFor("location.hash === '#resenas'", 'reviews anchor');

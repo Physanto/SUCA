@@ -12,6 +12,29 @@ import { h } from './dom.js';
 import { productCount } from './format.js';
 import { TOAST_MS } from './timing.js';
 
+/** Opciones del menú de la cuenta: texto y destino. */
+const MENU_ITEMS = [
+  ['Ver mi cuenta', '/account'],
+  ['Mis pedidos', '/account#pedidos'],
+  ['Ayuda', '/help'],
+];
+
+/**
+ * Opciones del menú con el problema 3 (`illogical_account_menu`): más opciones,
+ * sin orden lógico y con señuelos ("Mi perfil" no tiene la dirección; "Datos
+ * de envío" lleva a la ayuda sobre tiempos de entrega). "Ver mi cuenta" conserva
+ * su texto y su destino, pero queda al final.
+ */
+const ILLOGICAL_MENU_ITEMS = [
+  ['Mi perfil', '/account/profile'],
+  ['Datos de envío', '/help#tiempo-de-entrega'],
+  ['Mis cupones', '/offers'],
+  ['Novedades', '/products'],
+  ['Ayuda', '/help'],
+  ['Mis pedidos', '/account#pedidos'],
+  ['Ver mi cuenta', '/account'],
+];
+
 /**
  * Menú de la cuenta (patrón de divulgación: un botón que muestra y oculta una
  * lista de enlaces). Se cierra con Escape, con un clic fuera o al elegir una opción.
@@ -19,16 +42,16 @@ import { TOAST_MS } from './timing.js';
  * @param {object} options - Datos y acciones.
  * @param {string} options.firstName - Nombre de la persona, para el saludo.
  * @param {() => void} options.onLogout - Cierra la sesión.
+ * @param {boolean} options.illogical - Si el problema 3 está activo.
  * @returns {HTMLElement} Contenedor del botón y el menú.
  */
-function accountMenu({ firstName, onLogout }) {
+function accountMenu({ firstName, onLogout, illogical }) {
+  const items = illogical ? ILLOGICAL_MENU_ITEMS : MENU_ITEMS;
   const list = h(
     'ul',
     { class: 'account-menu', id: 'account-menu', hidden: true },
     h('li', { class: 'account-menu-greeting' }, `Hola, ${firstName}`),
-    h('li', null, h('a', { href: '/account' }, 'Ver mi cuenta')),
-    h('li', null, h('a', { href: '/account#pedidos' }, 'Mis pedidos')),
-    h('li', null, h('a', { href: '/help' }, 'Ayuda')),
+    items.map(([label, href]) => h('li', null, h('a', { href }, label))),
     h(
       'li',
       null,
@@ -78,10 +101,11 @@ function accountMenu({ firstName, onLogout }) {
  * @param {object} options.shop - Tienda (`createShop`).
  * @param {(url: string, options?: object) => void} options.navigate - Navegación.
  * @param {(text: string) => void} options.toast - Aviso emergente.
+ * @param {ReadonlySet<string>} options.problems - Problemas activos.
  * @returns {{ update: (location: Location) => void }} Actualiza lo que depende
  *   de la ruta (enlace activo, texto de la búsqueda).
  */
-export function mountLayout({ shop, navigate, toast }) {
+export function mountLayout({ shop, navigate, toast, problems }) {
   const cartCount = document.querySelector('.cart-count');
   const accountArea = document.querySelector('.account-area');
   const searchForm = document.querySelector('form[role="search"]');
@@ -104,6 +128,7 @@ export function mountLayout({ shop, navigate, toast }) {
       name
         ? accountMenu({
             firstName: name.split(' ')[0],
+            illogical: problems.has('illogical_account_menu'),
             onLogout: () => {
               shop.logout();
               toast('Cerraste sesión.');

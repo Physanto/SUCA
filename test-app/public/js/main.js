@@ -98,7 +98,7 @@ function start() {
     toast,
     now: () => new Date(),
   });
-  const layout = mountLayout({ shop, navigate: router.navigate, toast });
+  const layout = mountLayout({ shop, navigate: router.navigate, toast, problems: ctx.problems });
 
   /**
    * Dibuja la pantalla de la ruta actual.
