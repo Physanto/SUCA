@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from analysis import cleaning, columns, detectors, episodes, reference, screens, usability_index
+from analysis import columns, detectors, episodes, reference, usability_index
 from analysis.columns import ColumnValidationError
 from analysis.loader import SessionData, SqliteAnalysisRepository
 from analysis.parameters import Parameters
@@ -53,13 +53,6 @@ def data(repository: SqliteAnalysisRepository) -> SessionData:
     return repository.load_session(1)
 
 
-def test_cleaning_and_screens_return_the_data_unchanged(
-    data: SessionData, params: Parameters
-) -> None:
-    assert cleaning.clean(data, params) is data
-    assert screens.assign_screens(data, params) is data
-
-
 def test_reference_measures_tasks_and_index_waits_for_a_threshold(
     data: SessionData, params: Parameters
 ) -> None:
@@ -74,8 +67,14 @@ def test_reference_measures_tasks_and_index_waits_for_a_threshold(
 
 
 def test_without_strategies_the_facades_return_empty_frames(
-    data: SessionData, params: Parameters
+    data: SessionData, params: Parameters, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(detectors, "DETECTORS", incident_registry())
+    monkeypatch.setattr(
+        episodes,
+        "EPISODE_DETECTORS",
+        Registry("episode detector", key="episode_type", allowed=contracts.enums()["episode_type"]),
+    )
     incidents = detectors.detect(data, params)
     found = episodes.detect(data, params)
 

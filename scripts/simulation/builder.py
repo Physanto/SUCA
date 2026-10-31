@@ -218,6 +218,11 @@ class ExpectedIncident:
     element: Mapping[str, Any] | None = None
     problem: int | None = None
 
+    @property
+    def t(self) -> float:
+        """Ubica retornos y repeticiones al confirmarse; los demás, al inicio del patrón."""
+        return self.t_end if self.type in ("navigation_loop", "repeated_search") else self.t_start
+
 
 @dataclass(frozen=True)
 class ExpectedEpisode:
@@ -1708,13 +1713,13 @@ def _zone(x: float, y: float, width: float, height: float) -> str:
 def _with_screen_incidents(
     episode: ExpectedEpisode, incidents: Sequence[ExpectedIncident]
 ) -> ExpectedEpisode:
-    """Agrega a un episodio de pantalla cuántos incidentes empezaron durante la visita."""
+    """Agrega a una visita los incidentes ubicados en ella por su tiempo de referencia."""
     if episode.type != "screen":
         return episode
     count = sum(
         1
         for incident in incidents
-        if episode.t_start <= incident.t_start < episode.t_end and incident.screen == episode.screen
+        if episode.t_start <= incident.t < episode.t_end and incident.screen == episode.screen
     )
     return ExpectedEpisode(
         episode.type,
