@@ -7,6 +7,7 @@ import {
   passesLuhn,
   validateAddress,
   validatePayment,
+  validateProfile,
   validateShipping,
 } from '../public/js/validation.js';
 
@@ -65,4 +66,9 @@ test('shipping requires name, address, a known city and a 10 digit phone', () =>
 test('the account address requires a street and a known city', () => {
   assert.deepEqual(validateAddress({ street: 'Calle 10 # 20-30', city: 'Bogotá' }), {});
   assert.deepEqual(Object.keys(validateAddress({ street: '', city: '' })).sort(), ['city', 'street']);
+});
+
+test('the profile requires a full name and a 10 digit phone', () => {
+  assert.deepEqual(validateProfile({ name: 'Ana Gómez', phone: '300 123 4567' }), {});
+  assert.deepEqual(Object.keys(validateProfile({ name: 'A', phone: '300' })).sort(), ['name', 'phone']);
 });

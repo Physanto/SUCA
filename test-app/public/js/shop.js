@@ -33,6 +33,7 @@ const STORE_VERSION = 1;
  * @property {{ name: string, email: string }|null} user - Sesión iniciada, o `null`.
  * @property {import('./cart.js').CartItem[]} cart - Carrito.
  * @property {{ street: string, city: string, details: string }} address - Dirección guardada.
+ * @property {string} name - Nombre guardado en la cuenta (se conserva al cerrar sesión).
  * @property {string} phone - Teléfono guardado.
  * @property {object|null} shipping - Datos de envío del pedido en curso.
  * @property {Order[]} orders - Pedidos hechos, del más reciente al más antiguo.
@@ -50,6 +51,7 @@ export function initialState() {
     user: null,
     cart: [],
     address: { ...DEMO_ACCOUNT.address },
+    name: DEMO_ACCOUNT.name,
     phone: DEMO_ACCOUNT.phone,
     shipping: null,
     orders: [],
@@ -129,7 +131,7 @@ export function createShop(storage, { now = () => Date.now() } = {}) {
      */
     login(email, password) {
       if (!checkCredentials(email, password)) return false;
-      commit({ ...state, user: { name: DEMO_ACCOUNT.name, email: DEMO_ACCOUNT.email } });
+      commit({ ...state, user: { name: state.name, email: DEMO_ACCOUNT.email } });
       return true;
     },
 
@@ -200,6 +202,20 @@ export function createShop(storage, { now = () => Date.now() } = {}) {
         nextOrderId: state.nextOrderId + 1,
       });
       return order;
+    },
+
+    /**
+     * Cambia el nombre y el teléfono de la cuenta.
+     *
+     * @param {{ name: string, phone: string }} profile - Datos validados.
+     */
+    updateProfile(profile) {
+      commit({
+        ...state,
+        user: { ...state.user, name: profile.name },
+        name: profile.name,
+        phone: profile.phone,
+      });
     },
 
     /**

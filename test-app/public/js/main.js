@@ -48,6 +48,8 @@ const ROUTES = compileRoutes([
   { path: '/order/:id/confirmation', auth: true, render: checkout.renderConfirmation },
   { path: '/account', auth: true, render: account.renderAccount },
   { path: '/account/address', auth: true, render: account.renderAddress },
+  { path: '/account/profile', auth: true, render: account.renderProfile },
+  { path: '/account/orders/:id', auth: true, render: account.renderOrder },
   { path: '/help', render: help.render },
   { path: '/setup', render: setup.render },
 ]);

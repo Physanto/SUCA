@@ -733,6 +733,11 @@ main.container {
   font-size: 0.9rem;
 }
 
+/* Los números de pedido no se parten: un enlace en dos líneas deja un hueco sin clic. */
+.orders-table td:first-child {
+  white-space: nowrap;
+}
+
 .cart-product {
   display: flex;
   align-items: center;
@@ -1142,6 +1147,17 @@ textarea {
 .review-stars {
   margin-bottom: var(--space-2);
   color: #a35c00;
+}
+
+/* --- Formularios: enlaces y datos de solo lectura --------------------------------------------- */
+.form-links {
+  margin-top: var(--space-4);
+  text-align: center;
+}
+
+.field-label {
+  margin-bottom: var(--space-1);
+  font-weight: 600;
 }
 
 /* --- Pie y avisos ------------------------------------------------------------------------- */
