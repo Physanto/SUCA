@@ -1160,6 +1160,40 @@ textarea {
   font-weight: 600;
 }
 
+/* --- Boletín y términos ------------------------------------------------------------------------ */
+.newsletter label {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.newsletter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.newsletter-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.newsletter-done {
+  font-weight: 600;
+}
+
+.terms-back {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.narrow-page {
+  max-width: 760px;
+}
+
+.narrow-page section {
+  margin-bottom: var(--space-5);
+}
+
 /* --- Pie y avisos ------------------------------------------------------------------------- */
 .site-footer {
   padding: var(--space-6) 0 var(--space-4);

@@ -9,6 +9,7 @@
 
 import { countUnits } from './cart.js';
 import { h } from './dom.js';
+import { productCount } from './format.js';
 import { TOAST_MS } from './timing.js';
 
 /**
@@ -61,9 +62,12 @@ function accountMenu({ firstName, onLogout }) {
       button.focus();
     }
   });
-  document.addEventListener('click', (event) => {
-    if (!wrapper.contains(/** @type {Node} */ (event.target))) setOpen(false);
-  });
+  /** Cierra el menú con un clic fuera; deja de escuchar cuando el menú ya no está. */
+  const closeOutside = (event) => {
+    if (!wrapper.isConnected) document.removeEventListener('click', closeOutside);
+    else if (!wrapper.contains(/** @type {Node} */ (event.target))) setOpen(false);
+  };
+  document.addEventListener('click', closeOutside);
   return wrapper;
 }
 
@@ -83,7 +87,8 @@ export function mountLayout({ shop, navigate, toast }) {
   const searchForm = document.querySelector('form[role="search"]');
   const searchInput = searchForm.querySelector('input[name="q"]');
 
-  let shownLoggedIn = null;
+  /** Nombre mostrado en el menú de la cuenta, o `null` sin sesión. */
+  let shownName;
 
   /** Dibuja el contador y el área de la cuenta con el estado actual. */
   const render = (state) => {
@@ -91,14 +96,14 @@ export function mountLayout({ shop, navigate, toast }) {
     cartCount.textContent = String(units);
     cartCount.hidden = units === 0;
     const link = cartCount.closest('a');
-    link.setAttribute('aria-label', units === 0 ? 'Carrito vacío' : `Carrito, ${units} productos`);
-    const loggedIn = Boolean(state.user);
-    if (shownLoggedIn === loggedIn) return;
-    shownLoggedIn = loggedIn;
+    link.setAttribute('aria-label', units === 0 ? 'Carrito vacío' : `Carrito, ${productCount(units)}`);
+    const name = state.user ? state.user.name : null;
+    if (shownName === name) return;
+    shownName = name;
     accountArea.replaceChildren(
-      loggedIn
+      name
         ? accountMenu({
-            firstName: state.user.name.split(' ')[0],
+            firstName: name.split(' ')[0],
             onLogout: () => {
               shop.logout();
               toast('Cerraste sesión.');
@@ -110,6 +115,15 @@ export function mountLayout({ shop, navigate, toast }) {
   };
   render(shop.get());
   shop.subscribe(render);
+
+  // Boletín: la validación del correo es la nativa; el correo no se guarda.
+  const newsletter = document.querySelector('.newsletter-form');
+  newsletter.addEventListener('submit', (event) => {
+    event.preventDefault();
+    newsletter.replaceWith(
+      h('p', { class: 'newsletter-done', role: 'status' }, '¡Listo! Te suscribiste al boletín de ofertas.'),
+    );
+  });
 
   searchForm.addEventListener('submit', (event) => {
     event.preventDefault();
