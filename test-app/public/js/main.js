@@ -38,6 +38,7 @@ const ROUTES = compileRoutes([
   { path: '/', render: home.render },
   { path: '/login', render: login.render },
   { path: '/search', render: search.render },
+  { path: '/products', render: category.renderAll },
   { path: '/category/:slug', render: category.render },
   { path: '/offers', render: category.renderOffers },
   { path: '/product/:id', render: product.render },
@@ -91,6 +92,7 @@ function start() {
     storage,
     problems: activeProblems(settings),
     navigate: router.navigate,
+    replaceQuery: router.replaceQuery,
     toast,
     now: () => new Date(),
   });
@@ -122,7 +124,11 @@ function start() {
     }, LOADING_DELAY_MS);
     let result;
     try {
-      const route = { params: match?.params ?? {}, query: new URLSearchParams(location.search) };
+      const route = {
+        params: match?.params ?? {},
+        query: new URLSearchParams(location.search),
+        hash: decodeURIComponent(location.hash.slice(1)),
+      };
       result = match ? await match.route.render(ctx, route) : { notFound: true };
       if (result.notFound) result = notFound.render();
     } catch (error) {

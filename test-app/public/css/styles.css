@@ -1050,6 +1050,46 @@ textarea {
   margin: var(--space-3) 0 0;
 }
 
+/* --- Listados con orden y filtro --------------------------------------------------------- */
+.listing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.listing-controls .listing-count {
+  margin: 0;
+}
+
+.listing-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.listing-filters .field {
+  margin: 0;
+}
+
+.listing-filters label {
+  white-space: nowrap;
+}
+
+.listing-filters select {
+  width: auto;
+}
+
+.listing-more,
+.section-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-5);
+}
+
 /* --- Pie y avisos ------------------------------------------------------------------------- */
 .site-footer {
   padding: var(--space-6) 0 var(--space-4);
