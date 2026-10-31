@@ -72,3 +72,25 @@ test('the profile requires a full name and a 10 digit phone', () => {
   assert.deepEqual(validateProfile({ name: 'Ana Gómez', phone: '300 123 4567' }), {});
   assert.deepEqual(Object.keys(validateProfile({ name: 'A', phone: '300' })).sort(), ['name', 'phone']);
 });
+
+test('the strict number rule rejects spaces and dashes but keeps the Luhn check', () => {
+  const rules = { digitsOnlyNumber: true };
+
+  assert.match(validatePayment(card(), NOW, rules).number, /sin espacios/);
+  assert.match(validatePayment(card({ number: '4111-1111-1111-1111' }), NOW, rules).number, /sin espacios/);
+  assert.deepEqual(validatePayment(card({ number: '4111111111111111' }), NOW, rules), {});
+  assert.match(validatePayment(card({ number: '4111111111111112' }), NOW, rules).number, /13 y 19/);
+});
+
+test('the strict expiry rule only accepts MM/AAAA', () => {
+  const rules = { fullYearExpiry: true };
+
+  assert.match(validatePayment(card(), NOW, rules).expiry, /MM\/AAAA/);
+  assert.match(validatePayment(card({ expiry: '1229' }), NOW, rules).expiry, /MM\/AAAA/);
+  assert.deepEqual(validatePayment(card({ expiry: '12/2029' }), NOW, rules), {});
+  assert.match(validatePayment(card({ expiry: '09/2026' }), NOW, rules).expiry, /vencida/);
+});
+
+test('the default rules accept what the strict ones require', () => {
+  assert.deepEqual(validatePayment(card({ number: '4111111111111111', expiry: '12/2029' }), NOW), {});
+});

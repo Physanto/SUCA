@@ -77,15 +77,37 @@ export function validateShipping(values) {
 }
 
 /**
+ * Interpreta una fecha de vencimiento solo con el formato `MM/AAAA` (regla
+ * estricta de un problema sembrado).
+ *
+ * @param {string} text - Fecha escrita por la persona.
+ * @returns {{ month: number, year: number }|null} Mes y año, o `null` si no
+ *   tiene exactamente ese formato.
+ */
+export function parseExpiryStrict(text) {
+  const match = /^\s*(\d{2})\/(\d{4})\s*$/.exec(String(text ?? ''));
+  if (!match) return null;
+  const month = Number(match[1]);
+  return month >= 1 && month <= 12 ? { month, year: Number(match[2]) } : null;
+}
+
+/**
  * Valida los datos de pago.
+ *
+ * Por defecto acepta los formatos habituales (número con espacios o guiones,
+ * vencimiento `MM/AA`, `MMAA` o `MM/AAAA`). Las reglas estrictas las activan
+ * problemas sembrados.
  *
  * @param {{ method: string, number?: string, name?: string, expiry?: string,
  *   cvc?: string, bank?: string }} values - Valores; los de tarjeta solo se
  *   revisan si el método es `card`, y el banco si es `pse`.
  * @param {Date} now - Fecha actual, para saber si la tarjeta venció.
+ * @param {{ digitsOnlyNumber?: boolean, fullYearExpiry?: boolean }} [rules] -
+ *   `digitsOnlyNumber` rechaza espacios y guiones en el número;
+ *   `fullYearExpiry` exige el vencimiento como `MM/AAAA`.
  * @returns {FieldErrors} Errores por campo.
  */
-export function validatePayment(values, now) {
+export function validatePayment(values, now, { digitsOnlyNumber = false, fullYearExpiry = false } = {}) {
   const errors = {};
   if (values.method === 'pse') {
     if (!values.bank) errors.bank = 'Elige tu banco.';
@@ -96,15 +118,19 @@ export function validatePayment(values, now) {
     return errors;
   }
   const number = digitsOnly(values.number);
-  if (number.length < 13 || number.length > 19 || !passesLuhn(number)) {
+  if (digitsOnlyNumber && /\D/.test(String(values.number ?? '').trim())) {
+    errors.number = 'Escribe el número de la tarjeta sin espacios ni guiones.';
+  } else if (number.length < 13 || number.length > 19 || !passesLuhn(number)) {
     errors.number = 'Revisa el número de la tarjeta: debe tener entre 13 y 19 dígitos.';
   }
   if (!String(values.name ?? '').trim()) {
     errors.name = 'Escribe el nombre como aparece en la tarjeta.';
   }
-  const expiry = parseExpiry(values.expiry);
+  const expiry = fullYearExpiry ? parseExpiryStrict(values.expiry) : parseExpiry(values.expiry);
   if (!expiry) {
-    errors.expiry = 'Escribe el vencimiento con el formato MM/AA, por ejemplo: 12/29.';
+    errors.expiry = fullYearExpiry
+      ? 'Escribe el vencimiento con el formato MM/AAAA, por ejemplo: 12/2029.'
+      : 'Escribe el vencimiento con el formato MM/AA, por ejemplo: 12/29.';
   } else if (
     expiry.year < now.getFullYear() ||
     (expiry.year === now.getFullYear() && expiry.month < now.getMonth() + 1)
