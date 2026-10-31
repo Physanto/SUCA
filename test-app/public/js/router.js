@@ -75,17 +75,36 @@ export function isAppLink(event, link, location) {
 }
 
 /**
+ * Clave de la página de una ubicación: ruta y consulta, sin el fragmento.
+ * Dos ubicaciones con la misma clave son la misma pantalla con otra ancla.
+ *
+ * @param {{ pathname: string, search: string }} location - Ubicación.
+ * @returns {string} Ruta y consulta.
+ */
+export function pageKey(location) {
+  return `${location.pathname}${location.search}`;
+}
+
+/**
  * Crea el router sobre una ventana del navegador.
  *
  * @param {object} options - Dependencias.
  * @param {Window} options.window - Ventana (historial, ubicación y documento).
  * @param {(location: Location, how: { initial: boolean, pop: boolean }) => void} options.onChange
  *   - Se llama al iniciar y en cada cambio de ruta.
- * @returns {{ start: () => void, navigate: (url: string, options?: { replace?: boolean }) => void }}
- *   Router.
+ * @returns {{ start: () => void, navigate: (url: string, options?: { replace?: boolean }) => void,
+ *   replaceQuery: (params: URLSearchParams) => void }} Router.
  */
 export function createRouter({ window, onChange }) {
   const { history, location, document } = window;
+  /** Página dibujada, para no redibujarla cuando solo cambia el fragmento. */
+  let shown = null;
+
+  /** Avisa del cambio de ruta y recuerda la página dibujada. */
+  function change(how) {
+    shown = pageKey(location);
+    onChange(location, how);
+  }
 
   /** Guarda el scroll de la entrada actual para restaurarlo al volver. */
   function rememberScroll() {
@@ -105,11 +124,24 @@ export function createRouter({ window, onChange }) {
       rememberScroll();
       history.pushState({ scrollY: 0 }, '', url);
     }
-    onChange(location, { initial: false, pop: false });
+    change({ initial: false, pop: false });
+  }
+
+  /**
+   * Cambia la consulta de la URL sin agregar una entrada al historial ni
+   * redibujar, como hacen los filtros de un listado.
+   *
+   * @param {URLSearchParams} params - Consulta nueva.
+   */
+  function replaceQuery(params) {
+    const search = params.toString();
+    history.replaceState(history.state, '', `${location.pathname}${search ? `?${search}` : ''}${location.hash}`);
+    shown = pageKey(location);
   }
 
   return {
     navigate,
+    replaceQuery,
     start() {
       // El scroll se restaura a mano porque el contenido se dibuja después de
       // cambiar la URL y el navegador lo restauraría antes de tiempo.
@@ -122,8 +154,13 @@ export function createRouter({ window, onChange }) {
         if (url === `${location.pathname}${location.search}${location.hash}`) return;
         navigate(url);
       });
-      window.addEventListener('popstate', () => onChange(location, { initial: false, pop: true }));
-      onChange(location, { initial: true, pop: false });
+      window.addEventListener('popstate', () => {
+        // Un ancla de la misma página (#resenas) también dispara popstate; el
+        // navegador ya bajó hasta ella y no hay nada que redibujar.
+        if (pageKey(location) === shown) return;
+        change({ initial: false, pop: true });
+      });
+      change({ initial: true, pop: false });
     },
   };
 }

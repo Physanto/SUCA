@@ -56,6 +56,11 @@ export async function render() {
         { 'aria-labelledby': 'featured-title' },
         h('h2', { id: 'featured-title' }, 'Destacados'),
         productGrid(featured),
+        h(
+          'p',
+          { class: 'section-more' },
+          h('a', { href: '/products', class: 'button button-secondary' }, 'Ver todos los productos'),
+        ),
       ),
     ),
   };

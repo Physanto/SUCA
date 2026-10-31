@@ -4,10 +4,9 @@
 
 import { CATEGORIES, PRODUCTS } from '../data.js';
 import { h, wait } from '../dom.js';
-import { productCount } from '../format.js';
 import { searchProducts } from '../search.js';
 import { LATENCY } from '../timing.js';
-import { productGrid } from '../ui.js';
+import { productListing } from './listing.js';
 
 /**
  * Dibuja la pantalla.
@@ -28,7 +27,12 @@ export async function render(ctx, { query }) {
       { class: 'results', 'aria-labelledby': 'results-title' },
       h('h1', { id: 'results-title', tabindex: -1 }, heading),
       found.length > 0
-        ? [h('p', { class: 'muted' }, `${productCount(found.length)}`), productGrid(found)]
+        ? productListing(ctx, {
+            products: found,
+            query,
+            empty: () =>
+              h('p', { class: 'empty-state' }, 'Ningún resultado tiene descuento. Quita el filtro para verlos todos.'),
+          })
         : emptyResults(text),
     ),
   };

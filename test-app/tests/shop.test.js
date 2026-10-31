@@ -74,3 +74,15 @@ test('reset returns to a fresh store for the next participant', () => {
   assert.deepEqual(shop.get().cart, []);
   assert.deepEqual(shop.get().address, DEMO_ACCOUNT.address);
 });
+
+test('the edited name is kept after logging out and in again', () => {
+  const shop = createShop(memoryStorage());
+  shop.login(DEMO_ACCOUNT.email, DEMO_ACCOUNT.password);
+  shop.updateProfile({ name: 'Ana María Gómez', phone: '310 000 0000' });
+
+  shop.logout();
+  shop.login(DEMO_ACCOUNT.email, DEMO_ACCOUNT.password);
+
+  assert.equal(shop.get().user.name, 'Ana María Gómez');
+  assert.equal(shop.get().phone, '310 000 0000');
+});

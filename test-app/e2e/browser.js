@@ -190,7 +190,12 @@ export class Page {
    */
   async goto(url) {
     await this.send('Page.navigate', { url });
-    await this.waitFor("document.readyState === 'complete' && !!document.querySelector('main h1')", `page ${url}`);
+    // Se espera la página nueva: la anterior también cumple la condición mientras no se reemplace.
+    const path = new URL(url).pathname;
+    await this.waitFor(
+      `location.pathname === ${JSON.stringify(path)} && document.readyState !== 'loading' && !!document.querySelector('main h1') && !document.querySelector('main[aria-busy]')`,
+      `page ${url}`,
+    );
   }
 
   /** Recarga la página y espera a que cargue. */

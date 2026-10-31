@@ -52,19 +52,50 @@ El participante nunca escribe datos propios: la tienda muestra los que necesita.
 | `/login` | Inicio de sesión | — |
 | `/` | Inicio: portada, categorías y destacados | — |
 | `/search?q=…` | Resultados de búsqueda | — |
+| `/products` | Todos los productos | — |
 | `/category/{slug}` | Listado de una categoría | — |
 | `/offers` | Ofertas | — |
-| `/product/{id}` | Detalle de producto | — |
+| `/product/{id}` | Detalle de producto, con opiniones en `#resenas` | — |
 | `/cart` | Carrito | — |
 | `/checkout/shipping` | Compra, paso 1: envío | Requerida |
 | `/checkout/payment` | Compra, paso 2: pago | Requerida |
 | `/order/{id}/confirmation` | Compra, paso 3: pedido confirmado | Requerida |
 | `/account` | Mi cuenta: datos, dirección y pedidos | Requerida |
 | `/account/address` | Dirección de envío | Requerida |
-| `/help` | Centro de ayuda | — |
+| `/account/profile` | Datos personales | Requerida |
+| `/account/orders/{id}` | Detalle de un pedido | Requerida |
+| `/help` | Centro de ayuda; cada pregunta tiene un ancla (`/help#olvide-mi-contrasena`) | — |
+| `/terms.html` | Términos y condiciones: página aparte, fuera de la aplicación | — |
 | `/setup` | Página del evaluador | — |
 
 Sin sesión iniciada, las rutas que la requieren llevan a `/login` y, al ingresar, vuelven a la ruta pedida.
+
+### Comportamientos de sitios reales
+
+La tienda incluye a propósito comportamientos comunes en la web que una herramienta de captura debe manejar:
+
+| Comportamiento | Dónde |
+|---|---|
+| Cambio de pantalla con `pushState`, botón Atrás con `popstate` y recarga de cualquier ruta | Toda la tienda |
+| Ids numéricos en la ruta (`/product/101`, `/order/5012/confirmation`) | Detalle, confirmación, pedidos |
+| Consulta que cambia sin cambiar de pantalla (`replaceState`, sin entrada nueva en el historial) | Ordenar y filtrar listados (`?sort=price_asc&discount=1`) |
+| Contenido que se agrega sin navegar | "Cargar más productos" |
+| Ancla en la misma pantalla (solo cambia el fragmento) | "Ver opiniones" (`#resenas`) |
+| Ancla en otra pantalla | "¿Olvidaste tu contraseña?" → `/help#olvide-mi-contrasena` |
+| Navegación completa a otro documento | `/terms.html` y su regreso |
+| Redirecciones | Rutas con sesión requerida, compra con el carrito vacío |
+| Diálogo modal (`<dialog>`) que se cierra con Escape o con un clic fuera | "Ampliar imagen" |
+| Menú desplegable con `aria-expanded` | "Mi cuenta" |
+| Secciones desplegables (`details`) | Centro de ayuda |
+| Carga asíncrona con indicador ("Cargando…", "Agregando…") | Pantallas con datos y botones de acción |
+| Avisos emergentes y mensajes `role="status"` | Carrito, dirección, datos personales |
+| Validación nativa del navegador | Inicio de sesión, boletín |
+| Validación propia con `aria-invalid` y mensajes por campo | Envío, pago, cuenta |
+| Campo de contraseña que pasa a texto | "Mostrar contraseña" |
+| Formulario opcional, ajeno a las tareas | Boletín del pie |
+| Foco que se mueve al título al cambiar de pantalla | Toda la tienda |
+
+Las sugerencias de búsqueda mientras se escribe se dejaron fuera a propósito: abrirían una segunda ruta para la tarea 1 (ir al producto sin pasar por los resultados).
 
 ### Estados finales de las tareas del estudio de ejemplo
 
@@ -86,6 +117,7 @@ test-app/
 ├── package.json        marca los .js como módulos ES (también en las pruebas)
 ├── public/             lo que se sirve
 │   ├── index.html      esqueleto: encabezado, contenido y pie
+│   ├── terms.html      términos y condiciones, fuera de la aplicación
 │   ├── css/styles.css
 │   ├── images/         ilustraciones SVG propias
 │   └── js/
@@ -95,10 +127,10 @@ test-app/
 │       ├── shop.js     estado de la tienda y sus acciones
 │       ├── router.js   rutas con el historial del navegador
 │       ├── data.js     productos, cuenta y tarjeta de prueba
-│       ├── search.js, cart.js, validation.js, format.js   lógica sin DOM
+│       ├── search.js, cart.js, listing.js, validation.js, format.js, reviews.js   lógica sin DOM
 │       ├── dom.js, ui.js, fields.js, layout.js             piezas de interfaz
 │       ├── timing.js   tiempos de respuesta simulados
-│       └── views/      una pantalla por archivo
+│       └── views/      una pantalla por archivo (listing.js: listado compartido)
 ├── tests/              pruebas de la lógica con node --test
 └── e2e/                recorrido automático en Chrome sin interfaz
 ```
@@ -112,7 +144,16 @@ npm test                                   # lógica de la tienda (y la extensi�
 python -m pytest tests/config/test_serve_test_app.py   # servidor de la app
 ```
 
-**Recorrido en Chrome.** Con la app servida, `node test-app/e2e/walkthrough.js` abre Chrome sin interfaz (en una ventana de 920 × 800, el espacio que deja el panel lateral) e inicia sesión y hace las 4 tareas del estudio de ejemplo como una persona: clics del ratón y texto desde el teclado. Falla si alguna tarea no llega a su estado final o si la página tiene errores de JavaScript.
+**Recorrido en Chrome.** Con la app servida, `node test-app/e2e/walkthrough.js` abre Chrome sin interfaz, en una ventana de 920 × 800 (el espacio que deja el panel lateral). Se comporta como una persona, con clics del ratón y texto desde el teclado:
+
+1. inicia sesión y hace las 4 tareas del estudio de ejemplo;
+2. después prueba las demás funciones: listados, diálogo, anclas, cuenta, boletín, página de términos y recuperación de contraseña.
+
+Falla si:
+- alguna tarea no llega a su estado final;
+- ordenar o saltar a un ancla cambia de pantalla;
+- la página muestra `null`, `undefined` o `NaN`;
+- hay errores de JavaScript.
 
 ```bash
 node test-app/e2e/walkthrough.js                    # V0 en http://127.0.0.1:8767

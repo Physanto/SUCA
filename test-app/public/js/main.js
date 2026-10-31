@@ -38,6 +38,7 @@ const ROUTES = compileRoutes([
   { path: '/', render: home.render },
   { path: '/login', render: login.render },
   { path: '/search', render: search.render },
+  { path: '/products', render: category.renderAll },
   { path: '/category/:slug', render: category.render },
   { path: '/offers', render: category.renderOffers },
   { path: '/product/:id', render: product.render },
@@ -47,6 +48,8 @@ const ROUTES = compileRoutes([
   { path: '/order/:id/confirmation', auth: true, render: checkout.renderConfirmation },
   { path: '/account', auth: true, render: account.renderAccount },
   { path: '/account/address', auth: true, render: account.renderAddress },
+  { path: '/account/profile', auth: true, render: account.renderProfile },
+  { path: '/account/orders/:id', auth: true, render: account.renderOrder },
   { path: '/help', render: help.render },
   { path: '/setup', render: setup.render },
 ]);
@@ -91,6 +94,7 @@ function start() {
     storage,
     problems: activeProblems(settings),
     navigate: router.navigate,
+    replaceQuery: router.replaceQuery,
     toast,
     now: () => new Date(),
   });
@@ -115,10 +119,18 @@ function start() {
     cleanup = null;
     layout.update(location);
     main.setAttribute('aria-busy', 'true');
-    const timer = setTimeout(() => main.replaceChildren(loadingBlock()), LOADING_DELAY_MS);
+    // Solo si esta navegación sigue siendo la actual: si la persona ya fue a
+    // otra pantalla, el aviso taparía la pantalla nueva.
+    const timer = setTimeout(() => {
+      if (id === current) main.replaceChildren(loadingBlock());
+    }, LOADING_DELAY_MS);
     let result;
     try {
-      const route = { params: match?.params ?? {}, query: new URLSearchParams(location.search) };
+      const route = {
+        params: match?.params ?? {},
+        query: new URLSearchParams(location.search),
+        hash: decodeURIComponent(location.hash.slice(1)),
+      };
       result = match ? await match.route.render(ctx, route) : { notFound: true };
       if (result.notFound) result = notFound.render();
     } catch (error) {

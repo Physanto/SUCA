@@ -118,6 +118,21 @@ export function validatePayment(values, now) {
 }
 
 /**
+ * Valida los datos personales de la cuenta.
+ *
+ * @param {{ name: string, phone: string }} values - Valores.
+ * @returns {FieldErrors} Errores por campo.
+ */
+export function validateProfile(values) {
+  const errors = {};
+  if (values.name.trim().length < 3) errors.name = 'Escribe tu nombre completo.';
+  if (digitsOnly(values.phone).length !== 10) {
+    errors.phone = 'Escribe un teléfono de 10 dígitos, por ejemplo: 300 123 4567.';
+  }
+  return errors;
+}
+
+/**
  * Valida la dirección de envío de la cuenta.
  *
  * @param {{ street: string, city: string }} values - Valores.

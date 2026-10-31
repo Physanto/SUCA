@@ -81,6 +81,7 @@ export function render(ctx, { query }) {
       h('label', { for: 'show-password' }, 'Mostrar contraseña'),
     ),
     submit,
+    h('p', { class: 'form-links' }, h('a', { href: '/help#olvide-mi-contrasena' }, '¿Olvidaste tu contraseña?')),
   );
 
   form.addEventListener('submit', async (event) => {
@@ -92,7 +93,7 @@ export function render(ctx, { query }) {
       return ctx.shop.login(email.value, password.value);
     });
     if (ok) {
-      ctx.toast(`¡Hola, ${DEMO_ACCOUNT.name.split(' ')[0]}! Iniciaste sesión.`);
+      ctx.toast(`¡Hola, ${ctx.shop.get().user.name.split(' ')[0]}! Iniciaste sesión.`);
       ctx.navigate(next, { replace: true });
       return;
     }

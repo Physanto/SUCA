@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { compileRoutes, isAppLink, matchRoute } from '../public/js/router.js';
+import { compileRoutes, isAppLink, matchRoute, pageKey } from '../public/js/router.js';
 
 const routes = compileRoutes([
   { path: '/', name: 'home' },
@@ -50,4 +50,9 @@ test('the browser keeps links it should handle itself', () => {
   assert.equal(isAppLink(click(), link('/terms.html'), location), false);
   assert.equal(isAppLink(click(), link('https://example.com/'), location), false);
   assert.equal(isAppLink(click(), link('/product/101#resenas'), location), false);
+});
+
+test('the page key ignores the fragment, so an anchor is the same page', () => {
+  assert.equal(pageKey({ pathname: '/product/101', search: '', hash: '#resenas' }), '/product/101');
+  assert.notEqual(pageKey({ pathname: '/search', search: '?q=a' }), pageKey({ pathname: '/search', search: '?q=b' }));
 });

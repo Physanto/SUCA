@@ -1,9 +1,12 @@
 /**
  * @file Recorrido automático de la tienda en Chrome sin interfaz: inicio de
- * sesión y las 4 tareas del estudio de ejemplo, como las haría una persona.
+ * sesión y las 4 tareas del estudio de ejemplo, como las haría una persona, y
+ * después las demás funciones del sitio (listados, diálogo, anclas, cuenta,
+ * boletín y página aparte).
  *
  * Comprueba que cada tarea llega a su estado final, que recargar una ruta
- * funciona y que la página no tiene errores de JavaScript. La ventana mide
+ * funciona, que ordenar o saltar a un ancla no cambia de pantalla y que la
+ * página no tiene errores de JavaScript. La ventana mide
  * 920 × 800, el espacio que queda con el panel lateral de Chrome abierto.
  *
  * Requiere la app servida (`python -m scripts.serve_test_app`) y Chrome
@@ -111,6 +114,90 @@ const STEPS = [
       await page.waitForText('Calle 10 # 20-30');
     },
   ],
+  [
+    'listing: sorts and filters in place and loads more products',
+    async (page) => {
+      await page.click('a', 'Inicio');
+      await page.waitForPath(/^\/$/);
+      await page.click('a', 'Ver todos los productos');
+      await page.waitForPath(/^\/products$/);
+      const entries = await page.evaluate('history.length');
+      await page.evaluate("window.listingMarker = document.querySelector('main h1')");
+      await page.select('Ordenar por', 'Menor precio');
+      await page.waitFor("location.search === '?sort=price_asc'", 'sort in the URL');
+      const prices = await page.evaluate(
+        "[...document.querySelectorAll('.product-grid .price-current')].map((e) => Number(e.textContent.replace(/\\D/g, '')))",
+      );
+      assert.deepEqual(prices, [...prices].sort((a, b) => a - b));
+      await page.click('button', 'Cargar más productos');
+      await page.waitFor("document.querySelectorAll('.product-grid li').length === 16", '16 products');
+      await page.click('input', 'Solo con descuento');
+      await page.waitFor("location.search === '?sort=price_asc&discount=1'", 'filter in the URL');
+      assert.equal(await page.evaluate('history.length'), entries);
+      assert.equal(await page.evaluate("window.listingMarker === document.querySelector('main h1')"), true);
+    },
+  ],
+  [
+    'product: opens and closes the image dialog and jumps to the reviews in place',
+    async (page) => {
+      await page.fill('Buscar productos', 'parlante');
+      await page.press('Enter');
+      await page.waitForPath(/^\/search\?q=parlante$/);
+      await page.click('main a', 'Parlante portátil Ritmo Mini');
+      await page.waitForPath(/^\/product\/104$/);
+      await page.click('button', 'Ampliar imagen');
+      await page.waitFor("document.querySelector('dialog').open", 'open dialog');
+      await page.press('Escape');
+      await page.waitFor("!document.querySelector('dialog').open", 'closed dialog');
+      await page.evaluate("window.productMarker = document.querySelector('main h1')");
+      await page.click('a', 'Ver opiniones');
+      await page.waitFor("location.hash === '#resenas'", 'reviews anchor');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(await page.evaluate("window.productMarker === document.querySelector('main h1')"), true);
+    },
+  ],
+  [
+    'account: edits the personal data and opens an order',
+    async (page) => {
+      await page.click('button', 'Mi cuenta');
+      await page.click('a', 'Ver mi cuenta');
+      await page.waitForPath(/^\/account$/);
+      await page.click('a', 'Editar datos personales');
+      await page.waitForPath(/^\/account\/profile$/);
+      await page.fill('Nombre completo', 'Ana María Gómez');
+      await page.click('button', 'Guardar');
+      await page.waitForText('Datos actualizados');
+      await page.click('a', 'Volver a mi cuenta');
+      await page.waitForText('Ana María Gómez');
+      const order = await page.evaluate("document.querySelector('.orders-table a').innerText");
+      await page.click('a', order);
+      await page.waitForPath(/^\/account\/orders\/\d+$/);
+      await page.waitForText(`Pedido ${order}`);
+    },
+  ],
+  [
+    'footer: subscribes to the newsletter and opens the terms as a separate page',
+    async (page) => {
+      await page.fill('Correo electrónico', 'nombre@ejemplo.com');
+      await page.click('button', 'Suscribirme');
+      await page.waitForText('Te suscribiste al boletín');
+      await page.click('a', 'Términos y condiciones');
+      await page.waitFor("location.pathname === '/terms.html' && document.readyState === 'complete'", 'terms page');
+      await page.click('main a', 'Volver a la tienda');
+      await page.waitForPath(/^\/$/);
+    },
+  ],
+  [
+    'login: the forgotten password link opens its answer in the help',
+    async (page) => {
+      await page.click('button', 'Mi cuenta');
+      await page.click('button', 'Cerrar sesión');
+      await page.waitForPath(/^\/login$/);
+      await page.click('a', '¿Olvidaste tu contraseña?');
+      await page.waitForPath(/^\/help$/);
+      await page.waitFor("document.getElementById('olvide-mi-contrasena').open", 'open answer');
+    },
+  ],
 ];
 
 const page = await launch({ width: 920, height: 800 });
@@ -119,11 +206,15 @@ try {
   for (const [name, step] of STEPS) {
     try {
       await step(page);
+      // Un valor sin dibujar (null, undefined, NaN) delata un error de la vista.
+      const leaked = await page.evaluate("document.body.innerText.match(/\\b(null|undefined|NaN)\\b/)?.[0] ?? ''");
+      assert.equal(leaked, '', `the page shows "${leaked}"`);
       console.log(`ok - ${name}`);
     } catch (error) {
       failed = true;
       const screen = await page.evaluate("document.querySelector('main')?.innerText ?? ''").catch(() => '');
-      console.log(`not ok - ${name}\n  ${error.message}\n  screen: ${screen.replace(/\s+/g, ' ').slice(0, 600)}`);
+      const url = await page.evaluate('location.href').catch(() => '?');
+      console.log(`not ok - ${name}\n  ${error.message}\n  at: ${url}\n  screen: ${screen.replace(/\s+/g, ' ').slice(0, 600)}`);
       break;
     }
   }

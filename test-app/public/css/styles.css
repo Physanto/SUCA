@@ -733,6 +733,11 @@ main.container {
   font-size: 0.9rem;
 }
 
+/* Los números de pedido no se parten: un enlace en dos líneas deja un hueco sin clic. */
+.orders-table td:first-child {
+  white-space: nowrap;
+}
+
 .cart-product {
   display: flex;
   align-items: center;
@@ -1048,6 +1053,145 @@ textarea {
 
 .faq details p {
   margin: var(--space-3) 0 0;
+}
+
+/* --- Listados con orden y filtro --------------------------------------------------------- */
+.listing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.listing-controls .listing-count {
+  margin: 0;
+}
+
+.listing-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.listing-filters .field {
+  margin: 0;
+}
+
+.listing-filters label {
+  white-space: nowrap;
+}
+
+.listing-filters select {
+  width: auto;
+}
+
+.listing-more,
+.section-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-5);
+}
+
+/* --- Detalle: galería, opiniones y relacionados ------------------------------------------- */
+.zoom-button {
+  margin-top: var(--space-3);
+}
+
+.image-dialog {
+  width: min(720px, calc(100vw - 2 * var(--space-5)));
+  padding: var(--space-5);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.image-dialog::backdrop {
+  background: rgb(16 24 20 / 60%);
+}
+
+.product-image-zoom {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+}
+
+.rating-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.rating-row .rating {
+  margin: 0;
+}
+
+.reviews,
+.related {
+  margin-top: var(--space-6);
+}
+
+.review-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-stars {
+  margin-bottom: var(--space-2);
+  color: #a35c00;
+}
+
+/* --- Formularios: enlaces y datos de solo lectura --------------------------------------------- */
+.form-links {
+  margin-top: var(--space-4);
+  text-align: center;
+}
+
+.field-label {
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+}
+
+/* --- Boletín y términos ------------------------------------------------------------------------ */
+.newsletter label {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.newsletter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.newsletter-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.newsletter-done {
+  font-weight: 600;
+}
+
+.terms-back {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.narrow-page {
+  max-width: 760px;
+}
+
+.narrow-page section {
+  margin-bottom: var(--space-5);
 }
 
 /* --- Pie y avisos ------------------------------------------------------------------------- */
