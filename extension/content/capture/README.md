@@ -9,10 +9,14 @@ Arranca y se detiene con la sesión, a través de `bootstrap.js`: `start(ctx)` p
 | Evento | Qué se guarda |
 |---|---|
 | `click`, `dblclick`, `contextmenu` | Coordenadas del puntero (`x`, `y`), descriptor del elemento y `data: {}` |
+| `mousemove` | Coordenadas del puntero (`x`, `y`). Sin elemento, para no recorrer la página decenas de veces por segundo. Como máximo `capture.mousemove_hz` por segundo (50) |
+| `scroll` | Posición de la página en `data.scroll_x` y `data.scroll_y` (nunca negativa). Sin `x` ni `y`: esos campos son siempre la posición del puntero. Como máximo `capture.scroll_hz` por segundo (10). Solo el scroll de la página; el de cajas internas se ignora |
+
+**Muestreo.** El primer movimiento o scroll se registra de inmediato. Los que llegan antes de que pase el intervalo mínimo (1000 ÷ frecuencia) no se pierden: se guarda el último y se registra al cumplirse el intervalo, para conservar la posición donde terminó el movimiento. Las frecuencias se leen de `ctx.config.capture` al iniciar; si no son números positivos, el módulo no arranca. Los oyentes son pasivos y `stop()` descarta lo pendiente.
 
 Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
 
-Los demás tipos de evento (cursor, scroll, selección, formularios, respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
+Los demás tipos de evento (selección, formularios, respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
 
 ## Descriptor del elemento
 

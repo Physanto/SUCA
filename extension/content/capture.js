@@ -4,8 +4,9 @@
  * pantalla), sin capturar nunca lo que escribe.
  *
  * Por ahora registra los clics (`click`, `dblclick` y `contextmenu`) con el
- * descriptor definitivo del elemento. Los demás tipos de evento se agregan en
- * las siguientes tareas de M1.
+ * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
+ * con una frecuencia máxima configurable. Los demás tipos de evento se agregan
+ * en las siguientes tareas de M1.
  *
  * Mensajes:
  * - Envía: lotes `events` con `ctx.batcher.add('events', registro)`; el
@@ -185,43 +186,177 @@
     };
   }
 
-  /** Registra un clic, doble clic o clic derecho con sus coordenadas y el elemento. */
-  function onClick(event) {
+  /** Entrega un registro de evento con los campos comunes (momento, pantalla y tarea activa). */
+  function record(t, type, fields) {
     const state = ctx.session.get();
-    const target = event.target instanceof Element ? event.target : null;
     ctx.batcher.add('events', {
-      t: ctx.clock.now(),
-      type: event.type,
-      x: event.clientX,
-      y: event.clientY,
+      t,
+      type,
+      ...fields,
       screen: { url: root.location.href, title: root.document.title },
       task_id: state ? state.task_id : null,
+    });
+  }
+
+  /** Registra un clic, doble clic o clic derecho con sus coordenadas y el elemento. */
+  function onClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    record(ctx.clock.now(), event.type, {
+      x: event.clientX,
+      y: event.clientY,
       element: target ? describe(target) : null,
       data: {},
     });
   }
 
+  /** Intervalo mínimo, en milisegundos, de una frecuencia máxima en Hz. */
+  function intervalOf(hz, key) {
+    if (typeof hz !== 'number' || !Number.isFinite(hz) || hz <= 0) {
+      throw new Error(`config capture.${key} must be a positive number`);
+    }
+    return 1000 / hz;
+  }
+
+  /**
+   * Limita la frecuencia de un tipo de evento: entrega el primero de inmediato y,
+   * si llegan más antes de que pase el intervalo, solo el último, cuando se cumple.
+   * Así no se pierde la posición donde termina un movimiento o un desplazamiento.
+   *
+   * @param {object} options - Opciones.
+   * @param {number} options.intervalMs - Tiempo mínimo entre dos entregas.
+   * @param {function(): number} options.now - Reloj en milisegundos.
+   * @param {{setTimeout: Function, clearTimeout: Function}} options.timers - Temporizadores.
+   * @param {function(): void} options.emit - Entrega el último valor recibido.
+   * @returns {{request: function(): void, cancel: function(): void}} `request` se llama en
+   *   cada evento; `cancel` descarta lo pendiente.
+   */
+  function createSampler({ intervalMs, now, timers, emit }) {
+    let lastEmit = -Infinity;
+    let timer = null;
+
+    /** Entrega el último valor y anota cuándo. */
+    function fire() {
+      timer = null;
+      // Un temporizador puede dispararse una fracción de milisegundo antes: se reprograma.
+      const wait = lastEmit + intervalMs - now();
+      if (wait > 0) {
+        timer = timers.setTimeout(fire, wait);
+        return;
+      }
+      lastEmit = now();
+      emit();
+    }
+
+    return {
+      request() {
+        const wait = lastEmit + intervalMs - now();
+        if (wait <= 0) {
+          timers.clearTimeout(timer);
+          fire();
+        } else if (timer === null) {
+          timer = timers.setTimeout(fire, wait);
+        }
+      },
+      cancel() {
+        timers.clearTimeout(timer);
+        timer = null;
+        lastEmit = -Infinity;
+      },
+    };
+  }
+
+  /** Muestreadores de cursor y scroll; se crean en `start` con las frecuencias configuradas. */
+  let mouseSampler = null;
+  let scrollSampler = null;
+  /**
+   * Último movimiento del cursor y última posición de scroll, pendientes de entregar.
+   * El registro lleva la hora en que se entrega y no la del evento, para que dos
+   * registros nunca queden más cerca que el intervalo mínimo.
+   */
+  let lastMove = null;
+  let lastScroll = null;
+
+  /** Guarda el movimiento del cursor; el muestreador decide cuándo registrarlo. */
+  function onMouseMove(event) {
+    lastMove = { x: event.clientX, y: event.clientY };
+    mouseSampler.request();
+  }
+
+  /** Guarda la posición de scroll de la página; los desplazamientos de cajas internas se ignoran. */
+  function onScroll(event) {
+    if (event.target !== root.document) {
+      return;
+    }
+    // Los navegadores con rebote pueden informar posiciones negativas; el contrato las excluye.
+    lastScroll = {
+      scroll_x: Math.max(0, root.scrollX),
+      scroll_y: Math.max(0, root.scrollY),
+    };
+    scrollSampler.request();
+  }
+
+  /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
+  const PASSIVE = { capture: true, passive: true };
+
   UX.modules.register({
     name: 'capture',
 
     /**
-     * Empieza a escuchar los clics, en fase de captura para no depender del sitio.
+     * Empieza a escuchar los eventos, en fase de captura para no depender del
+     * sitio. El cursor y el scroll se muestrean a las frecuencias máximas de
+     * `context.config.capture`.
      *
      * @param {object} context - Contexto del módulo.
      * @returns {void}
+     * @throws {Error} Si una frecuencia configurada no es un número positivo.
      */
     start(context) {
+      const { mousemove_hz: mouseHz, scroll_hz: scrollHz } = context.config.capture;
+      // Se valida antes de escuchar nada: si falla, no queda nada a medias.
+      const mouseInterval = intervalOf(mouseHz, 'mousemove_hz');
+      const scrollInterval = intervalOf(scrollHz, 'scroll_hz');
       ctx = context;
+      // Se toman ahora y no al usarlos, para poder probarlos con temporizadores falsos.
+      // `bind` es necesario: en el navegador, llamarlos desde otro objeto da "Illegal invocation".
+      const timers = {
+        setTimeout: root.setTimeout.bind(root),
+        clearTimeout: root.clearTimeout.bind(root),
+      };
+      const now = () => ctx.clock.now();
+      mouseSampler = createSampler({
+        intervalMs: mouseInterval,
+        now,
+        timers,
+        emit: () => record(ctx.clock.now(), 'mousemove', { x: lastMove.x, y: lastMove.y, data: {} }),
+      });
+      scrollSampler = createSampler({
+        intervalMs: scrollInterval,
+        now,
+        timers,
+        emit: () =>
+          record(ctx.clock.now(), 'scroll', {
+            data: { scroll_x: lastScroll.scroll_x, scroll_y: lastScroll.scroll_y },
+          }),
+      });
       CLICK_TYPES.forEach((type) => root.document.addEventListener(type, onClick, true));
+      root.document.addEventListener('mousemove', onMouseMove, PASSIVE);
+      root.document.addEventListener('scroll', onScroll, PASSIVE);
     },
 
     /**
-     * Deja de escuchar los clics.
+     * Deja de escuchar los eventos y descarta lo que esperaba su turno.
      *
      * @returns {void}
      */
     stop() {
       CLICK_TYPES.forEach((type) => root.document.removeEventListener(type, onClick, true));
+      root.document.removeEventListener('mousemove', onMouseMove, PASSIVE);
+      root.document.removeEventListener('scroll', onScroll, PASSIVE);
+      [mouseSampler, scrollSampler].forEach((sampler) => sampler && sampler.cancel());
+      mouseSampler = null;
+      scrollSampler = null;
+      lastMove = null;
+      lastScroll = null;
       ctx = null;
     },
   });

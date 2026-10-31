@@ -7,6 +7,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const { createFakeTimers } = require('./fakes.js');
+
 const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
 
 /** Elemento falso con lo justo que usa la captura: árbol, atributos, texto y caja. */
@@ -81,17 +83,23 @@ const el = (tag, attributes, options) => new FakeElement(tag, attributes, option
 /** Documento falso: guarda los oyentes y permite dispararles eventos. */
 function createFakeDocument() {
   const listeners = new Map();
+  const passive = new Map();
   return {
     title: 'Carrito',
-    addEventListener(type, listener, capture) {
+    addEventListener(type, listener, options) {
+      const capture = typeof options === 'object' ? options.capture : options;
       assert.equal(capture, true, 'listeners must use the capture phase');
+      passive.set(type, typeof options === 'object' && options.passive === true);
       listeners.set(type, listener);
     },
-    removeEventListener(type, listener) {
+    removeEventListener(type, listener, options) {
+      const capture = typeof options === 'object' ? options.capture : options;
+      assert.equal(capture, true, 'listeners must be removed with the same phase');
       if (listeners.get(type) === listener) {
         listeners.delete(type);
       }
     },
+    isPassive: (type) => passive.get(type),
     dispatch(event) {
       const listener = listeners.get(event.type);
       if (listener) {
@@ -110,19 +118,43 @@ globalThis.CSS = { escape: (value) => value };
 globalThis.location = { href: 'https://shop.local/cart' };
 require('../content/capture.js');
 
-/** Inicia la captura con un contexto de sustitutos y devuelve lo necesario para probarla. */
-function startCapture(session = { task_id: 3 }) {
+const CAPTURE_CONFIG = { mousemove_hz: 50, scroll_hz: 10, click_response_wait_ms: 1500 };
+
+/**
+ * Inicia la captura con un contexto de sustitutos y devuelve lo necesario para probarla.
+ *
+ * Los temporizadores falsos se instalan solo mientras corre `start`, que es cuando
+ * el módulo los toma; así no se altera el resto de la prueba.
+ *
+ * @param {object|null} [session] - Estado de la sesión que ve el módulo.
+ * @param {object} [options] - Opciones.
+ * @param {object} [options.config] - Sección `capture` de la configuración.
+ * @param {boolean} [options.fakeClock] - Si el reloj sigue a los temporizadores falsos.
+ */
+function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeClock = false } = {}) {
   const document = createFakeDocument();
   globalThis.document = document;
+  const timers = createFakeTimers();
   const added = [];
-  registered.start({
-    clock: { now: () => 1791380123456.2 },
-    batcher: { add: (type, record) => added.push({ type, record }) },
-    session: { get: () => session },
-  });
+  const real = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+  globalThis.setTimeout = timers.setTimeout;
+  globalThis.clearTimeout = timers.clearTimeout;
+  try {
+    registered.start({
+      clock: { now: fakeClock ? timers.now : () => 1791380123456.2 },
+      // `at` es el momento en que se entregó el registro, distinto de `record.t`
+      // cuando el muestreador retrasó un valor pendiente.
+      batcher: { add: (type, record) => added.push({ type, record, at: timers.now() }) },
+      session: { get: () => session },
+      config: { capture: config },
+    });
+  } finally {
+    globalThis.setTimeout = real.setTimeout;
+    globalThis.clearTimeout = real.clearTimeout;
+  }
   const click = (target, type = 'click', x = 845, y = 560) =>
     document.dispatch({ type, target, clientX: x, clientY: y });
-  return { document, added, click, stop: () => registered.stop() };
+  return { document, added, click, timers, stop: () => registered.stop() };
 }
 
 /** Descriptor del último clic sobre `target`. */
@@ -286,11 +318,210 @@ test('records element null when the target is not an element', () => {
 
 test('listens in the capture phase and stop removes every listener', () => {
   const { document, added, click } = startCapture();
-  assert.deepEqual(document.listenerTypes(), ['click', 'contextmenu', 'dblclick']);
+  assert.deepEqual(document.listenerTypes(), ['click', 'contextmenu', 'dblclick', 'mousemove', 'scroll']);
 
   registered.stop();
 
   assert.deepEqual(document.listenerTypes(), []);
   click(el('button'));
   assert.equal(added.length, 0);
+});
+
+/** Dispara un movimiento del cursor. */
+const move = (document, x, y) => document.dispatch({ type: 'mousemove', clientX: x, clientY: y });
+
+/** Dispara un scroll de la página en la posición dada. */
+function scrollTo(document, x, y, target = document) {
+  globalThis.scrollX = x;
+  globalThis.scrollY = y;
+  document.dispatch({ type: 'scroll', target });
+}
+
+test('records the first mousemove at once and only the last one of a burst when the interval ends', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  move(document, 10, 10);
+  await timers.advance(5);
+  move(document, 20, 20);
+  await timers.advance(5);
+  move(document, 30, 30);
+  assert.equal(added.length, 1);
+
+  await timers.advance(10);
+
+  assert.equal(added.length, 2);
+  assert.deepEqual(added.map((entry) => [entry.record.x, entry.record.y]), [[10, 10], [30, 30]]);
+  registered.stop();
+});
+
+test('reschedules a timer that fires a little early instead of delivering too soon', async () => {
+  const timers = createFakeTimers();
+  const added = [];
+  const real = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+  const document = createFakeDocument();
+  globalThis.document = document;
+  // Un reloj que va 1 ms por delante de los temporizadores: el aviso llega "antes".
+  let skew = 0;
+  globalThis.setTimeout = timers.setTimeout;
+  globalThis.clearTimeout = timers.clearTimeout;
+  try {
+    registered.start({
+      clock: { now: () => timers.now() + skew },
+      batcher: { add: (type, record) => added.push(record) },
+      session: { get: () => null },
+      config: { capture: CAPTURE_CONFIG },
+    });
+  } finally {
+    globalThis.setTimeout = real.setTimeout;
+    globalThis.clearTimeout = real.clearTimeout;
+  }
+
+  move(document, 1, 1);
+  move(document, 2, 2);
+  skew = -1;
+  await timers.advance(20);
+  assert.equal(added.length, 1);
+  skew = 0;
+  await timers.advance(1);
+
+  assert.equal(added.length, 2);
+  assert.ok(added[1].t - added[0].t >= 20);
+  registered.stop();
+});
+
+test('records mousemove with coordinates, no element and the active task', () => {
+  const { document, added } = startCapture({ task_id: 4 });
+
+  move(document, 700, 410);
+  registered.stop();
+
+  const [{ type, record }] = added;
+  assert.equal(type, 'events');
+  assert.deepEqual(record, {
+    t: 1791380123456.2,
+    type: 'mousemove',
+    x: 700,
+    y: 410,
+    data: {},
+    screen: { url: 'https://shop.local/cart', title: 'Carrito' },
+    task_id: 4,
+  });
+});
+
+test('never delivers mousemove records closer than the configured interval', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  // Medio segundo de eventos cada 5 ms (200 Hz): a 50 Hz caben unos 25 registros.
+  for (let ms = 0; ms < 500; ms += 5) {
+    move(document, ms, ms);
+    await timers.advance(5);
+  }
+  await timers.advance(100);
+  registered.stop();
+
+  // Se comprueba la hora del registro (`t`), que es la que llega a la base.
+  const gaps = added.slice(1).map((entry, i) => entry.record.t - added[i].record.t);
+  assert.ok(gaps.every((gap) => gap >= 20), `gaps were ${gaps}`);
+  assert.ok(added.length >= 24 && added.length <= 26, `${added.length} records in half a second`);
+});
+
+test('reads the sampling rates from the configuration', async () => {
+  const config = { mousemove_hz: 10, scroll_hz: 2 };
+  const { document, added, timers } = startCapture(undefined, { config, fakeClock: true });
+
+  move(document, 1, 1);
+  await timers.advance(50);
+  move(document, 2, 2);
+  await timers.advance(49);
+  assert.equal(added.length, 1);
+  await timers.advance(1);
+  assert.equal(added.length, 2);
+
+  scrollTo(document, 0, 100);
+  await timers.advance(300);
+  scrollTo(document, 0, 200);
+  await timers.advance(199);
+  assert.equal(added.filter((entry) => entry.record.type === 'scroll').length, 1);
+  await timers.advance(1);
+  assert.equal(added.filter((entry) => entry.record.type === 'scroll').length, 2);
+  registered.stop();
+});
+
+test('records scroll with the page position in data and no pointer coordinates', () => {
+  const { document, added } = startCapture({ task_id: null });
+
+  scrollTo(document, 12, 480);
+  registered.stop();
+
+  assert.deepEqual(added[0].record, {
+    t: 1791380123456.2,
+    type: 'scroll',
+    data: { scroll_x: 12, scroll_y: 480 },
+    screen: { url: 'https://shop.local/cart', title: 'Carrito' },
+    task_id: null,
+  });
+});
+
+test('keeps the final scroll position of a burst and never records a negative one', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  scrollTo(document, 0, 100);
+  await timers.advance(30);
+  scrollTo(document, 0, -40);
+  await timers.advance(30);
+  scrollTo(document, 0, 300);
+  await timers.advance(100);
+  registered.stop();
+
+  assert.deepEqual(added.map((entry) => entry.record.data.scroll_y), [100, 300]);
+  scrollTo(document, -5, -5);
+});
+
+test('ignores the scroll of elements inside the page', () => {
+  const { document, added } = startCapture();
+
+  scrollTo(document, 0, 50, el('div'));
+  registered.stop();
+
+  assert.equal(added.length, 0);
+});
+
+test('listens to mousemove and scroll in passive mode', () => {
+  const { document } = startCapture();
+  assert.equal(document.isPassive('mousemove'), true);
+  assert.equal(document.isPassive('scroll'), true);
+  assert.equal(document.isPassive('click'), false);
+  registered.stop();
+});
+
+test('stop discards the pending records and their timers', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  move(document, 1, 1);
+  move(document, 2, 2);
+  scrollTo(document, 0, 10);
+  scrollTo(document, 0, 20);
+  assert.equal(timers.pending(), 2);
+  registered.stop();
+
+  assert.equal(timers.pending(), 0);
+  await timers.advance(500);
+  assert.equal(added.length, 2);
+});
+
+test('refuses to start with a sampling rate that is not a positive number', () => {
+  for (const config of [{ scroll_hz: 10 }, { mousemove_hz: 0, scroll_hz: 10 }, { mousemove_hz: 50, scroll_hz: 'a' }]) {
+    const document = createFakeDocument();
+    globalThis.document = document;
+    const context = {
+      clock: { now: () => 0 },
+      batcher: { add() {} },
+      session: { get: () => null },
+      config: { capture: config },
+    };
+
+    assert.throws(() => registered.start(context), /positive number/);
+    assert.deepEqual(document.listenerTypes(), []);
+    registered.stop();
+  }
 });
