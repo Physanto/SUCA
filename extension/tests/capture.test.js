@@ -86,6 +86,7 @@ function createFakeDocument() {
   const passive = new Map();
   return {
     title: 'Carrito',
+    activeElement: null,
     addEventListener(type, listener, options) {
       const capture = typeof options === 'object' ? options.capture : options;
       assert.equal(capture, true, 'listeners must use the capture phase');
@@ -318,7 +319,7 @@ test('records element null when the target is not an element', () => {
 
 test('listens in the capture phase and stop removes every listener', () => {
   const { document, added, click } = startCapture();
-  assert.deepEqual(document.listenerTypes(), ['click', 'contextmenu', 'dblclick', 'mousemove', 'scroll']);
+  assert.deepEqual(document.listenerTypes(), ['click', 'contextmenu', 'dblclick', 'mousemove', 'scroll', 'selectionchange']);
 
   registered.stop();
 
@@ -524,4 +525,97 @@ test('refuses to start with a sampling rate that is not a positive number', () =
     assert.deepEqual(document.listenerTypes(), []);
     registered.stop();
   }
+});
+
+/** Simula una selección del navegador con el texto dado, anclada en `anchor`. */
+function selectText(text, anchor = el('p', {}, { text })) {
+  globalThis.getSelection = () => ({
+    rangeCount: text === '' ? 0 : 1,
+    anchorNode: { nodeType: 3, parentElement: anchor },
+    toString: () => text,
+  });
+}
+
+/** Avisa que la selección cambió, como hace el navegador. */
+const selectionChanged = (document) => document.dispatch({ type: 'selectionchange' });
+
+test('records one selection with only its length once the selection stops changing for 300 ms', async () => {
+  const { document, added, timers } = startCapture({ task_id: 6 }, { fakeClock: true });
+
+  selectText('Con');
+  selectionChanged(document);
+  await timers.advance(100);
+  selectText('Contar clics');
+  selectionChanged(document);
+  await timers.advance(299);
+  assert.equal(added.length, 0);
+  await timers.advance(1);
+  registered.stop();
+
+  assert.equal(added.length, 1);
+  assert.deepEqual(added[0].record, {
+    t: 400,
+    type: 'selection',
+    data: { length: 12 },
+    screen: { url: 'https://shop.local/cart', title: 'Carrito' },
+    task_id: 6,
+  });
+});
+
+test('never puts the selected text in the record', async () => {
+  const secret = 'texto-seleccionado-privado';
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  selectText(secret);
+  selectionChanged(document);
+  await timers.advance(300);
+  registered.stop();
+
+  assert.equal(added[0].record.data.length, secret.length);
+  assert.ok(!JSON.stringify(added).includes(secret));
+  assert.ok(!('x' in added[0].record) && !('element' in added[0].record));
+});
+
+test('does not record an empty selection', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  selectText('');
+  selectionChanged(document);
+  await timers.advance(300);
+  registered.stop();
+
+  assert.equal(added.length, 0);
+});
+
+test('does not record a selection made inside a form field or an editable zone', async () => {
+  const cases = [
+    { active: el('input', { type: 'password' }), anchor: undefined },
+    { active: el('textarea'), anchor: undefined },
+    { active: el('div', { contenteditable: 'true' }), anchor: undefined },
+    { active: null, anchor: el('div', { contenteditable: 'true' }) },
+  ];
+  for (const { active, anchor } of cases) {
+    const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+    document.activeElement = active;
+
+    selectText('lo que escribi', anchor);
+    selectionChanged(document);
+    await timers.advance(300);
+    registered.stop();
+
+    assert.equal(added.length, 0);
+  }
+});
+
+test('stop cancels a pending selection', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  selectText('algo');
+  selectionChanged(document);
+  assert.equal(timers.pending(), 1);
+  registered.stop();
+
+  assert.equal(timers.pending(), 0);
+  await timers.advance(500);
+  assert.equal(added.length, 0);
 });

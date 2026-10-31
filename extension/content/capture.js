@@ -5,7 +5,8 @@
  *
  * Por ahora registra los clics (`click`, `dblclick` y `contextmenu`) con el
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
- * con una frecuencia máxima configurable. Los demás tipos de evento se agregan
+ * con una frecuencia máxima configurable, y la longitud (nunca el contenido) del
+ * texto seleccionado. Los demás tipos de evento se agregan
  * en las siguientes tareas de M1.
  *
  * Mensajes:
@@ -26,6 +27,8 @@
 
   /** Largo máximo del texto del descriptor. */
   const TEXT_MAX_LENGTH = 50;
+  /** Espera, en milisegundos, a que termine de seleccionar antes de registrar la selección. */
+  const SELECTION_WAIT_MS = 300;
   /** Eventos de clic que se registran, todos con el mismo formato. */
   const CLICK_TYPES = ['click', 'dblclick', 'contextmenu'];
   /** Campos de formulario: su texto nunca se registra. */
@@ -295,6 +298,48 @@
     scrollSampler.request();
   }
 
+  /** Temporizadores de esta ejecución (se toman en `start`) y espera pendiente de la selección. */
+  let timers = null;
+  let selectionTimer = null;
+
+  /** Si el elemento es un campo de formulario o está dentro de una zona editable. */
+  function isFieldOrEditable(element) {
+    return FIELD_TAGS.includes(element.tagName.toLowerCase()) || Boolean(element.closest(EDITABLE_SELECTOR));
+  }
+
+  /** Reinicia la espera: solo se registra cuando la selección lleva 300 ms sin cambiar. */
+  function onSelectionChange() {
+    timers.clearTimeout(selectionTimer);
+    selectionTimer = timers.setTimeout(recordSelection, SELECTION_WAIT_MS);
+  }
+
+  /**
+   * Registra la longitud de la selección actual, nunca su contenido. No registra
+   * selecciones vacías ni las hechas dentro de campos o zonas editables, porque
+   * su longitud revelaría cuánto escribió el participante.
+   */
+  function recordSelection() {
+    selectionTimer = null;
+    const active = root.document.activeElement;
+    if (active && isFieldOrEditable(active)) {
+      return;
+    }
+    const selection = root.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return;
+    }
+    const anchor = selection.anchorNode;
+    const anchorElement = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
+    if (anchorElement && isFieldOrEditable(anchorElement)) {
+      return;
+    }
+    // El texto solo se usa para contar: no se guarda ni se envía.
+    const length = selection.toString().length;
+    if (length > 0) {
+      record(ctx.clock.now(), 'selection', { data: { length } });
+    }
+  }
+
   /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
   const PASSIVE = { capture: true, passive: true };
 
@@ -318,7 +363,7 @@
       ctx = context;
       // Se toman ahora y no al usarlos, para poder probarlos con temporizadores falsos.
       // `bind` es necesario: en el navegador, llamarlos desde otro objeto da "Illegal invocation".
-      const timers = {
+      timers = {
         setTimeout: root.setTimeout.bind(root),
         clearTimeout: root.clearTimeout.bind(root),
       };
@@ -341,6 +386,7 @@
       CLICK_TYPES.forEach((type) => root.document.addEventListener(type, onClick, true));
       root.document.addEventListener('mousemove', onMouseMove, PASSIVE);
       root.document.addEventListener('scroll', onScroll, PASSIVE);
+      root.document.addEventListener('selectionchange', onSelectionChange, true);
     },
 
     /**
@@ -352,11 +398,17 @@
       CLICK_TYPES.forEach((type) => root.document.removeEventListener(type, onClick, true));
       root.document.removeEventListener('mousemove', onMouseMove, PASSIVE);
       root.document.removeEventListener('scroll', onScroll, PASSIVE);
+      root.document.removeEventListener('selectionchange', onSelectionChange, true);
+      if (timers) {
+        timers.clearTimeout(selectionTimer);
+      }
+      selectionTimer = null;
       [mouseSampler, scrollSampler].forEach((sampler) => sampler && sampler.cancel());
       mouseSampler = null;
       scrollSampler = null;
       lastMove = null;
       lastScroll = null;
+      timers = null;
       ctx = null;
     },
   });

@@ -11,12 +11,13 @@ Arranca y se detiene con la sesión, a través de `bootstrap.js`: `start(ctx)` p
 | `click`, `dblclick`, `contextmenu` | Coordenadas del puntero (`x`, `y`), descriptor del elemento y `data: {}` |
 | `mousemove` | Coordenadas del puntero (`x`, `y`). Sin elemento, para no recorrer la página decenas de veces por segundo. Como máximo `capture.mousemove_hz` por segundo (50) |
 | `scroll` | Posición de la página en `data.scroll_x` y `data.scroll_y` (nunca negativa). Sin `x` ni `y`: esos campos son siempre la posición del puntero. Como máximo `capture.scroll_hz` por segundo (10). Solo el scroll de la página; el de cajas internas se ignora |
+| `selection` | Solo la longitud de lo seleccionado, en `data.length`; nunca el texto. Sin `x`, `y` ni elemento. Se registra una vez, cuando la selección lleva 300 ms sin cambiar. No se registra si está vacía ni si se hizo dentro de un campo de formulario o una zona editable (su longitud revelaría cuánto escribió el participante) |
 
 **Muestreo.** El primer movimiento o scroll se registra de inmediato. Los que llegan antes de que pase el intervalo mínimo (1000 ÷ frecuencia) no se pierden: se guarda el último y se registra al cumplirse el intervalo, para conservar la posición donde terminó el movimiento. Las frecuencias se leen de `ctx.config.capture` al iniciar; si no son números positivos, el módulo no arranca. Los oyentes son pasivos y `stop()` descarta lo pendiente.
 
 Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
 
-Los demás tipos de evento (selección, formularios, respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
+Los demás tipos de evento (formularios, respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
 
 ## Descriptor del elemento
 
@@ -37,6 +38,7 @@ Forma de `contracts/element.schema.json`:
 
 - `text` es `null` en `input`, `textarea` y `select` (incluidas las contraseñas), dentro de una zona `contenteditable` y en elementos que contienen una.
 - Nunca se lee `value` ni ningún contenido escrito.
+- De una selección solo se guarda su longitud, y no se guarda la hecha dentro de campos.
 
 ## Cómo se prueba
 
