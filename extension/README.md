@@ -135,7 +135,7 @@ El nombre del módulo usa `snake_case`, porque viaja en la respuesta de `session
 
 | Archivo | Nombre | Estado |
 |---|---|---|
-| `content/capture.js` | `capture` | **Provisional:** solo registra clics con un descriptor básico del elemento, para comprobar el recorrido de punta a punta. La captura completa lo reemplaza |
+| `content/capture.js` | `capture` | Completo: clics, cursor, scroll, selección, formularios, errores de validación, respuesta tras un clic y cambios de pantalla, con filtros de privacidad. Detalle en `content/capture/README.md` |
 | `content/camera.js` | `camera` | Esqueleto, sin lógica |
 | `content/calibration.js` | `calibration` | Esqueleto, sin lógica |
 | `content/task-end.js` | `task_end` | Esqueleto, sin lógica |
