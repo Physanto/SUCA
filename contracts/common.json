@@ -19,12 +19,12 @@
       "type": "object",
       "properties": {
         "url": {
-          "description": "URL completa de la pantalla, sin normalizar. La normaliza el análisis.",
+          "description": "URL de la pantalla, sin normalizar (la normaliza el análisis). Por privacidad, la captura quita el usuario y la clave de la dirección y reemplaza por 'redacted' el valor de los parámetros que suelen contener lo que escribe el participante o un secreto (q, search, email, token, code…), en la búsqueda y en el fragmento. El resto se conserva.",
           "type": "string",
           "minLength": 1
         },
         "title": {
-          "description": "Título del documento (document.title). Puede estar vacío.",
+          "description": "Título del documento (document.title). Puede estar vacío: cuando la página no tiene título o cuando la captura redactó la URL, porque el título suele repetir lo buscado.",
           "type": "string"
         }
       },
