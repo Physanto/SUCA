@@ -1,43 +1,371 @@
 /**
- * @file Cámara (M3): estima la mirada y registra los movimientos faciales con
- * una sola fuente de video, sin guardar ni enviar nunca imágenes.
+ * @file Cámara (M3), en la pestaña evaluada: recibe del motor de la cámara
+ * (documento offscreen `camera/engine.html`) la mirada y el rostro de cada
+ * cuadro y los registra.
  *
  * Responsabilidad:
- * - abrir la webcam una sola vez y alimentar con el mismo video a la mirada
- *   (`GazeProvider`, ~`camera.gaze_hz`) y al rostro (`FaceProvider`, ~`camera.face_hz`);
- * - asociar cada punto de mirada al elemento y a la zona de la página;
- * - registrar los intervalos sin datos de cámara.
+ * - mantener la conexión con el motor y reconectarse si se corta (el motor
+ *   puede estar arrancando);
+ * - registrar muestras `gaze` a `camera.gaze_hz` y `face` a `camera.face_hz`,
+ *   cada punto de mirada con su scroll, elemento y zona;
+ * - registrar los intervalos sin datos (`camera_gap`) que informa el motor.
+ *
+ * La cámara no se abre aquí: el motor la abre una sola vez y persiste entre
+ * navegaciones. A esta página solo llegan números, nunca imágenes.
  *
  * Mensajes:
- * - Envía: `camera.status` al panel lateral (`active`, `no_permission` o
- *   `error`), al iniciar y cada vez que cambia; lotes `gaze`, `face` y eventos
- *   `camera_gap` (lote `events`) con `ctx.batcher.add`.
- * - Recibe: ninguno propio. Arranca y se detiene con la sesión, a través del
- *   ciclo de vida de los módulos.
+ * - Envía: lotes `gaze`, `face` y eventos `camera_gap` (lote `events`) con
+ *   `ctx.batcher.add`. `camera.status` lo envía el motor directamente al panel.
+ * - Recibe: ninguno propio. Arranca y se detiene con la sesión.
  *
- * Esqueleto: todavía no tiene lógica.
+ * Expone `UX.cameraLink` para `calibration.js`: estado de la cámara, pedidos al
+ * motor, cuadros recibidos y pausa de la mirada durante la calibración.
  */
 
 (function (root) {
   'use strict';
 
-  root.UX.modules.register({
-    name: 'camera',
+  const UX = (root.UX = root.UX || {});
+
+  /** Nombre de la conexión con el motor. */
+  const PORT_NAME = 'camera';
+  /** Espera antes de reconectar, en milisegundos. */
+  const RECONNECT_MS = 1000;
+  /** Espera máxima de una respuesta del motor, en milisegundos. */
+  const REQUEST_TIMEOUT_MS = 3000;
+  /** Margen para no descartar una muestra que llega unos milisegundos antes. */
+  const RATE_TOLERANCE = 0.8;
+
+  /** Redondea a una cantidad de decimales, para no enviar ruido numérico. */
+  const round = (value, digits) => {
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
+  };
+
+  /**
+   * Crea la conexión con el motor de la cámara.
+   *
+   * @param {object} deps - Dependencias.
+   * @param {{connect: function(string): object}} deps.platform - Adaptador de plataforma.
+   * @param {{setTimeout: Function, clearTimeout: Function}} [deps.timers] - Temporizadores.
+   * @returns {object} Conexión con `open`, `close`, `status`, `request`, `onFrame`,
+   *   `onGap`, `pauseGaze` y `gazePaused`.
+   */
+  function createCameraLink({ platform, timers = root }) {
+    let port = null;
+    let wanted = false;
+    let reconnectTimer = null;
+    let status = 'unknown';
+    let nextId = 1;
+    let paused = false;
+    const pending = new Map();
+    const frameListeners = new Set();
+    const gapListeners = new Set();
+
+    /** Rechaza los pedidos sin respuesta: la conexión se cortó. */
+    function failPending(reason) {
+      for (const { reject, timer } of pending.values()) {
+        timers.clearTimeout(timer);
+        reject(new Error(reason));
+      }
+      pending.clear();
+    }
+
+    /** Atiende un mensaje del motor. */
+    function dispatch(message) {
+      switch (message && message.kind) {
+        case 'hello':
+        case 'status':
+          status = message.status;
+          break;
+        case 'frame':
+          frameListeners.forEach((listener) => listener(message));
+          break;
+        case 'gap':
+          gapListeners.forEach((listener) => listener(message));
+          break;
+        case 'reply': {
+          const request = pending.get(message.id);
+          if (request) {
+            pending.delete(message.id);
+            timers.clearTimeout(request.timer);
+            if (message.ok) {
+              request.resolve(message);
+            } else {
+              request.reject(new Error(message.error));
+            }
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+
+    /** Abre la conexión; si se corta, la vuelve a abrir mientras se quiera. */
+    function connect() {
+      reconnectTimer = null;
+      if (!wanted) {
+        return;
+      }
+      const current = platform.connect(PORT_NAME);
+      port = current;
+      current.onMessage(dispatch);
+      current.onDisconnect(() => {
+        if (port !== current) {
+          return;
+        }
+        port = null;
+        status = 'unknown';
+        failPending('camera engine disconnected');
+        if (wanted) {
+          reconnectTimer = timers.setTimeout(connect, RECONNECT_MS);
+        }
+      });
+    }
+
+    return Object.freeze({
+      /** Empieza a conectarse con el motor. */
+      open() {
+        if (!wanted) {
+          wanted = true;
+          connect();
+        }
+      },
+
+      /** Cierra la conexión y deja de reconectar. */
+      close() {
+        wanted = false;
+        if (reconnectTimer !== null) {
+          timers.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        const current = port;
+        port = null;
+        status = 'unknown';
+        failPending('camera link closed');
+        if (current) {
+          current.disconnect();
+        }
+      },
+
+      /**
+       * Estado de la cámara según el motor.
+       *
+       * @returns {string} `active`, `no_permission`, `error`, `starting` o
+       *   `unknown` (sin conexión).
+       */
+      status: () => status,
+
+      /**
+       * Pide algo al motor.
+       *
+       * @param {string} action - Pedido (`calibration.reset`, `calibration.point`,
+       *   `calibration.fit`, `stats`, `flush`).
+       * @param {object} [payload] - Datos del pedido.
+       * @returns {Promise<object>} Respuesta del motor.
+       */
+      request(action, payload = {}) {
+        if (port === null) {
+          return Promise.reject(new Error('camera engine not connected'));
+        }
+        const id = nextId;
+        nextId += 1;
+        return new Promise((resolve, reject) => {
+          const timer = timers.setTimeout(() => {
+            pending.delete(id);
+            reject(new Error(`camera request timed out: ${action}`));
+          }, REQUEST_TIMEOUT_MS);
+          pending.set(id, { resolve, reject, timer });
+          port.post({ ...payload, kind: 'request', action, id });
+        });
+      },
+
+      /**
+       * Escucha los cuadros que llegan del motor.
+       *
+       * @param {function(object): void} listener - Recibe cada cuadro.
+       * @returns {function(): void} Función que deja de escuchar.
+       */
+      onFrame(listener) {
+        frameListeners.add(listener);
+        return () => frameListeners.delete(listener);
+      },
+
+      /**
+       * Escucha los intervalos sin datos que informa el motor.
+       *
+       * @param {function(object): void} listener - Recibe `{ t, t_end, reason }`.
+       * @returns {function(): void} Función que deja de escuchar.
+       */
+      onGap(listener) {
+        gapListeners.add(listener);
+        return () => gapListeners.delete(listener);
+      },
+
+      /**
+       * Pausa o reanuda el registro de la mirada (durante la calibración).
+       *
+       * @param {boolean} value - `true` para pausar.
+       * @returns {void}
+       */
+      pauseGaze(value) {
+        paused = Boolean(value);
+      },
+
+      /** @returns {boolean} Si la mirada está en pausa. */
+      gazePaused: () => paused,
+    });
+  }
+
+  /**
+   * Crea el módulo de cámara de la pestaña.
+   *
+   * @param {object} deps - Dependencias.
+   * @param {object} deps.link - Conexión con el motor (`createCameraLink`).
+   * @param {object} deps.zones - Zonas y selectores (`UX.gazeZones`).
+   * @param {object} deps.page - Página: `window` con `document`, `location`,
+   *   `scrollX`, `scrollY`, `innerWidth` e `innerHeight`.
+   * @returns {{name: string, start: function(object): void, stop: function(): Promise<void>}} Módulo.
+   */
+  function createCameraModule({ link, zones, page }) {
+    let ctx = null;
+    let unsubscribe = [];
+    let lastGazeT = -Infinity;
+    let lastFaceT = -Infinity;
+
+    /** Tarea activa del modo guiado, o `null`. */
+    function activeTask() {
+      const state = ctx.session.get();
+      return state && Number.isInteger(state.task_id) ? state.task_id : null;
+    }
 
     /**
-     * Abrirá la cámara y empezará el muestreo. Lo que tarda (pedir permiso) debe
-     * seguir en segundo plano e informarse con `camera.status`.
-     *
-     * @param {object} ctx - Contexto del módulo.
-     * @returns {void}
+     * Pantalla de un intervalo sin datos. Solo origen y ruta: sin búsqueda ni
+     * fragmento, que pueden llevar lo que escribió el participante.
      */
-    start(ctx) {},
+    function currentScreen() {
+      const { origin, pathname } = page.location;
+      return { url: `${origin}${pathname}`, title: '' };
+    }
 
-    /**
-     * Cerrará la cámara y entregará lo pendiente.
-     *
-     * @returns {void}
-     */
-    stop() {},
-  });
+    /** Muestra de mirada con la forma de `gaze.schema.json`. */
+    function gazeRecord(t, gaze) {
+      const scroll = {
+        scroll_x: Math.max(0, round(page.scrollX || 0, 1)),
+        scroll_y: Math.max(0, round(page.scrollY || 0, 1)),
+      };
+      if (gaze === null) {
+        return { t, x: null, y: null, ...scroll, element_selector: null, zone: null, valid: false };
+      }
+      const x = round(gaze.x, 1);
+      const y = round(gaze.y, 1);
+      const width = page.innerWidth;
+      const height = page.innerHeight;
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        // Mira fuera de la página (por ejemplo, al panel lateral): no hay elemento ni zona.
+        return { t, x, y, ...scroll, element_selector: null, zone: null, valid: false };
+      }
+      const element = page.document.elementFromPoint(x, y);
+      return {
+        t,
+        x,
+        y,
+        ...scroll,
+        element_selector: element ? zones.selectorOf(element) : null,
+        zone: zones.zoneOf(element, x, y, width, height),
+        valid: true,
+      };
+    }
+
+    /** Muestra facial con la forma de `face.schema.json`. */
+    function faceRecord(frame) {
+      if (!frame.face_detected) {
+        return { t: frame.t, values: null, head_yaw: null, head_pitch: null, face_detected: false };
+      }
+      const values = Object.fromEntries(
+        Object.entries(frame.values).map(([name, value]) => [name, round(value, 4)]),
+      );
+      return {
+        t: frame.t,
+        values,
+        head_yaw: round(frame.head_yaw, 2),
+        head_pitch: round(frame.head_pitch, 2),
+        face_detected: true,
+      };
+    }
+
+    /** Registra un cuadro, respetando la frecuencia de cada tipo. */
+    function onFrame(frame) {
+      const { camera } = ctx.config;
+      if (frame.t - lastFaceT >= (1000 / camera.face_hz) * RATE_TOLERANCE) {
+        lastFaceT = frame.t;
+        ctx.batcher.add('face', faceRecord(frame));
+      }
+      if (!link.gazePaused() && frame.t - lastGazeT >= (1000 / camera.gaze_hz) * RATE_TOLERANCE) {
+        lastGazeT = frame.t;
+        ctx.batcher.add('gaze', gazeRecord(frame.t, frame.gaze));
+      }
+    }
+
+    /** Registra un intervalo sin datos como evento `camera_gap`. */
+    function recordGap({ t, t_end: tEnd, reason }) {
+      ctx.batcher.add('events', {
+        t,
+        type: 'camera_gap',
+        screen: currentScreen(),
+        task_id: activeTask(),
+        data: { t_end: tEnd, reason },
+      });
+    }
+
+    return Object.freeze({
+      name: 'camera',
+
+      /**
+       * Se conecta con el motor y empieza a registrar. No espera a la cámara:
+       * si todavía no está lista, los datos empiezan a llegar cuando lo esté.
+       *
+       * @param {object} context - Contexto del módulo.
+       * @returns {void}
+       */
+      start(context) {
+        ctx = context;
+        lastGazeT = -Infinity;
+        lastFaceT = -Infinity;
+        unsubscribe = [link.onFrame(onFrame), link.onGap(recordGap)];
+        link.open();
+      },
+
+      /**
+       * Deja de registrar. Si la cámara estaba sin datos, ese intervalo queda
+       * abierto (`t_end: null`), porque la sesión termina.
+       *
+       * @returns {Promise<void>}
+       */
+      async stop() {
+        unsubscribe.forEach((off) => off());
+        unsubscribe = [];
+        if (ctx !== null) {
+          try {
+            const { gap } = await link.request('flush');
+            if (gap) {
+              recordGap(gap);
+            }
+          } catch {
+            // El motor no responde: no hay nada que entregar.
+          }
+        }
+        link.close();
+        ctx = null;
+      },
+    });
+  }
+
+  UX.createCameraLink = createCameraLink;
+  UX.createCameraModule = createCameraModule;
+  if (UX.platform && UX.modules) {
+    UX.cameraLink = createCameraLink({ platform: UX.platform });
+    UX.modules.register(createCameraModule({ link: UX.cameraLink, zones: UX.gazeZones, page: root }));
+  }
 })(globalThis);
