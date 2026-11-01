@@ -7,8 +7,8 @@
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
  * con una frecuencia máxima configurable, la longitud (nunca el contenido) del
  * texto seleccionado y los eventos de formulario (foco, cambio de campo y
- * envío, sin valores). Los demás tipos de evento se agregan
- * en las siguientes tareas de M1.
+ * envío, sin valores) y los errores de validación. Los demás tipos de evento se
+ * agregan en las siguientes tareas de M1.
  *
  * Mensajes:
  * - Envía: lotes `events` con `ctx.batcher.add('events', registro)`; el
@@ -34,6 +34,13 @@
   const FIELD_CHANGE_INTERVAL_MS = 1000;
   /** Eventos de foco del navegador y el tipo de evento que se registra por cada uno. */
   const FOCUS_TYPES = { focusin: 'focus_in', focusout: 'focus_out' };
+  /** Espera, en milisegundos, tras salir de un campo para ver si el sitio le mostró un error. */
+  const ERROR_CHECK_DELAY_MS = 200;
+  /** Tipos de error que no vienen de la validación nativa (los demás salen de `validity`). */
+  const ARIA_INVALID = 'aria_invalid';
+  const VISIBLE_MESSAGE = 'visible_message';
+  /** Roles de elementos donde se escribe texto: su texto visible nunca se registra. */
+  const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
   /** Eventos de clic que se registran, todos con el mismo formato. */
   const CLICK_TYPES = ['click', 'dblclick', 'contextmenu'];
   /** Campos de formulario: su texto nunca se registra. */
@@ -138,14 +145,15 @@
   }
 
   /**
-   * Texto visible recortado, o `null`. Nunca se toma de campos, de zonas
-   * editables ni de elementos que contienen un `textarea` (su contenido inicial
+   * Texto visible recortado, o `null`. Nunca se toma de campos, de elementos con
+   * rol de cuadro de texto, de zonas editables ni de elementos que contienen un `textarea` (su contenido inicial
    * puede ser texto que el participante ya había escrito), porque contendría lo
    * que escribe el participante.
    */
   function textOf(element, tag) {
     if (
       FIELD_TAGS.includes(tag) ||
+      TEXT_INPUT_ROLES.includes(roleOf(element, tag)) ||
       element.closest(EDITABLE_SELECTOR) ||
       element.querySelector(EDITABLE_SELECTOR) ||
       element.querySelector('textarea')
@@ -372,6 +380,9 @@
     const target = event.target;
     if (target instanceof Element && isFormField(target)) {
       record(ctx.clock.now(), FOCUS_TYPES[event.type], { element: describe(target, true), data: {} });
+      if (event.type === 'focusout') {
+        scheduleFieldCheck(target);
+      }
     }
   }
 
@@ -400,6 +411,109 @@
     }
   }
 
+  /** Pares `[propiedad de validity, tipo de error]`, tomados de la enumeración del contrato en `start`. */
+  let nativeFlags = [];
+  /** Último error de cada campo ya registrado (aria o mensaje visible), para no repetirlo. */
+  let reportedErrors = new WeakMap();
+  /** Comprobaciones de error pendientes tras salir de un campo, y observador de `aria-invalid`. */
+  let pendingChecks = new Set();
+  let ariaObserver = null;
+
+  /** `value_missing` → `valueMissing`: nombre de la propiedad de `ValidityState`. */
+  function flagOf(errorType) {
+    return errorType.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  /** Entrega un `validation_error` del campo con su tipo. */
+  function recordError(element, errorType) {
+    record(ctx.clock.now(), 'validation_error', {
+      element: describe(element, true),
+      data: { error_type: errorType },
+    });
+  }
+
+  /** Validación nativa: el navegador avisa con `invalid` de cada campo inválido al intentar enviar. */
+  function onInvalid(event) {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.validity) {
+      return;
+    }
+    // Si hay varios problemas se registra el primero de la enumeración del contrato.
+    const found = nativeFlags.find(([flag]) => target.validity[flag]);
+    if (found) {
+      recordError(target, found[1]);
+    }
+  }
+
+  /** Registra el error de un campo salvo que ya se hubiera registrado y siga presente. */
+  function reportError(element, errorType) {
+    if (reportedErrors.get(element) !== errorType) {
+      reportedErrors.set(element, errorType);
+      recordError(element, errorType);
+    }
+  }
+
+  /** Cambios del atributo `aria-invalid`: un campo que pasa a "true" tiene un error. */
+  function onAriaMutations(mutations) {
+    for (const { target } of mutations) {
+      if (target.getAttribute('aria-invalid') === 'true') {
+        reportError(target, ARIA_INVALID);
+      } else {
+        reportedErrors.delete(target);
+      }
+    }
+  }
+
+  /** Si el elemento es visible y tiene texto. Solo se mira si hay texto, no cuál es. */
+  function hasVisibleText(node) {
+    return node.checkVisibility({ visibilityProperty: true }) && (node.textContent || '').trim() !== '';
+  }
+
+  /** Si el elemento parece un mensaje de error (rol `alert` o un nombre que lo indica). */
+  function looksLikeError(node) {
+    const names = `${node.id} ${node.getAttribute('class') || ''}`;
+    return node.getAttribute('role') === 'alert' || /err|invalid|danger/i.test(names);
+  }
+
+  /**
+   * Si el campo tiene un mensaje de error visible: el que declara con
+   * `aria-errormessage` o, entre los que lo describen con `aria-describedby`, uno
+   * que parezca de error (para no tomar el texto de ayuda como error).
+   */
+  function hasVisibleErrorMessage(field) {
+    const sources = [['aria-errormessage', false], ['aria-describedby', true]];
+    return sources.some(([attribute, mustLookLikeError]) =>
+      (field.getAttribute(attribute) || '')
+        .split(/\s+/)
+        .map((id) => (id ? root.document.getElementById(id) : null))
+        .some((node) => node && (!mustLookLikeError || looksLikeError(node)) && hasVisibleText(node)),
+    );
+  }
+
+  /** Revisa, algo después de salir de un campo, si el sitio le mostró un error. */
+  function checkFieldError(field) {
+    let errorType = null;
+    if (field.getAttribute('aria-invalid') === 'true') {
+      errorType = ARIA_INVALID;
+    } else if (hasVisibleErrorMessage(field)) {
+      errorType = VISIBLE_MESSAGE;
+    }
+    if (errorType) {
+      reportError(field, errorType);
+    } else {
+      reportedErrors.delete(field);
+    }
+  }
+
+  /** Programa la revisión; la espera da tiempo al sitio de mostrar su mensaje tras salir del campo. */
+  function scheduleFieldCheck(field) {
+    const timer = timers.setTimeout(() => {
+      pendingChecks.delete(timer);
+      checkFieldError(field);
+    }, ERROR_CHECK_DELAY_MS);
+    pendingChecks.add(timer);
+  }
+
   /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
   const PASSIVE = { capture: true, passive: true };
 
@@ -420,6 +534,15 @@
       // Se valida antes de escuchar nada: si falla, no queda nada a medias.
       const mouseInterval = intervalOf(mouseHz, 'mousemove_hz');
       const scrollInterval = intervalOf(scrollHz, 'scroll_hz');
+      const errorTypes = context.contracts.enums.validation_error_type;
+      for (const needed of [ARIA_INVALID, VISIBLE_MESSAGE]) {
+        if (!errorTypes.includes(needed)) {
+          throw new Error(`contract validation_error_type lacks ${needed}`);
+        }
+      }
+      nativeFlags = errorTypes
+        .filter((type) => type !== ARIA_INVALID && type !== VISIBLE_MESSAGE)
+        .map((type) => [flagOf(type), type]);
       ctx = context;
       // Se toman ahora y no al usarlos, para poder probarlos con temporizadores falsos.
       // `bind` es necesario: en el navegador, llamarlos desde otro objeto da "Illegal invocation".
@@ -450,6 +573,14 @@
       Object.keys(FOCUS_TYPES).forEach((type) => root.document.addEventListener(type, onFocus, true));
       root.document.addEventListener('input', onInput, true);
       root.document.addEventListener('submit', onSubmit, true);
+      root.document.addEventListener('invalid', onInvalid, true);
+      // Solo se observa un atributo, para que el costo en páginas con muchos cambios sea mínimo.
+      ariaObserver = new root.MutationObserver(onAriaMutations);
+      ariaObserver.observe(root.document.documentElement, {
+        attributes: true,
+        attributeFilter: ['aria-invalid'],
+        subtree: true,
+      });
     },
 
     /**
@@ -465,6 +596,17 @@
       Object.keys(FOCUS_TYPES).forEach((type) => root.document.removeEventListener(type, onFocus, true));
       root.document.removeEventListener('input', onInput, true);
       root.document.removeEventListener('submit', onSubmit, true);
+      root.document.removeEventListener('invalid', onInvalid, true);
+      if (ariaObserver) {
+        ariaObserver.disconnect();
+      }
+      ariaObserver = null;
+      if (timers) {
+        pendingChecks.forEach((timer) => timers.clearTimeout(timer));
+      }
+      pendingChecks = new Set();
+      reportedErrors = new WeakMap();
+      nativeFlags = [];
       lastChanges = new WeakMap();
       if (timers) {
         timers.clearTimeout(selectionTimer);

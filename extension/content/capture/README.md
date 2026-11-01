@@ -15,12 +15,21 @@ Arranca y se detiene con la sesión, a través de `bootstrap.js`: `start(ctx)` p
 | `focus_in`, `focus_out` | El campo (`input` salvo `hidden`, `textarea`, `select` o zona editable), descrito él mismo y no el interactivo más cercano. `data: {}` |
 | `field_change` | El campo y solo que hubo un cambio; nunca el valor. Como máximo uno por segundo por campo |
 | `form_submit` | El formulario. El navegador solo lo avisa si pasó la validación; un intento con errores genera `validation_error` |
+| `validation_error` | El campo y el tipo de error en `data.error_type` (`validation_error_type`). Tres orígenes, ver abajo |
+
+**Errores de validación.** Tres orígenes, en este orden de prioridad:
+
+1. **Nativa:** el evento `invalid` que el navegador dispara en cada campo inválido al intentar enviar. Se registra el primer problema de `validity` según el orden de la enumeración del contrato (las propiedades se derivan de ella: `value_missing` → `valueMissing`). Cada intento fallido se registra.
+2. **`aria-invalid`:** un observador que mira solo ese atributo en todo el documento registra cuando un campo pasa a `"true"`.
+3. **Mensaje visible:** 200 ms después de salir de un campo se comprueba si tiene un mensaje de error visible con texto, declarado con `aria-errormessage` o, entre los de `aria-describedby`, uno con `role="alert"` o con `err`, `invalid` o `danger` en su `id` o `class` (para no tomar el texto de ayuda como error). Solo se mira si hay texto, no cuál es.
+
+Los orígenes 2 y 3 se registran una sola vez mientras el error siga presente, y de nuevo si desaparece y reaparece.
 
 **Muestreo.** El primer movimiento o scroll se registra de inmediato. Los que llegan antes de que pase el intervalo mínimo (1000 ÷ frecuencia) no se pierden: se guarda el último y se registra al cumplirse el intervalo, para conservar la posición donde terminó el movimiento. Las frecuencias se leen de `ctx.config.capture` al iniciar; si no son números positivos, el módulo no arranca. Los oyentes son pasivos y `stop()` descarta lo pendiente.
 
 Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
 
-Los demás tipos de evento (errores de validación, respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
+Los demás tipos de evento (respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
 
 ## Descriptor del elemento
 
@@ -42,7 +51,7 @@ Forma de `contracts/element.schema.json`:
 - `text` es `null` en `input`, `textarea` y `select` (incluidas las contraseñas), dentro de una zona `contenteditable` y en elementos que contienen una.
 - Nunca se lee `value` ni ningún contenido escrito.
 - Los eventos de formulario nunca leen `value` ni los datos del evento `input` (`data`, `inputType`).
-- `text` también es `null` en los elementos que contienen un `textarea` (su contenido inicial puede ser texto ya escrito).
+- `text` también es `null` en los elementos con rol de cuadro de texto (`textbox`, `searchbox`, `combobox`, `spinbutton`) y en los que contienen un `textarea` (su contenido inicial puede ser texto ya escrito).
 - De una selección solo se guarda su longitud, y no se guarda la hecha dentro de campos.
 
 ## Cómo se prueba

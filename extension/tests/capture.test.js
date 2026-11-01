@@ -31,6 +31,11 @@ class FakeElement {
     return name in this.attributes ? this.attributes[name] : null;
   }
 
+  /** Visible salvo que la prueba lo oculte con `hidden = true`. */
+  checkVisibility() {
+    return !this.hidden;
+  }
+
   hasAttribute(name) {
     return name in this.attributes;
   }
@@ -86,9 +91,13 @@ const el = (tag, attributes, options) => new FakeElement(tag, attributes, option
 function createFakeDocument() {
   const listeners = new Map();
   const passive = new Map();
+  const ids = {};
   return {
     title: 'Carrito',
     activeElement: null,
+    ids,
+    getElementById: (id) => ids[id] || null,
+    documentElement: { tagName: 'HTML' },
     addEventListener(type, listener, options) {
       const capture = typeof options === 'object' ? options.capture : options;
       assert.equal(capture, true, 'listeners must use the capture phase');
@@ -116,6 +125,29 @@ function createFakeDocument() {
 // El módulo se registra al cargarse: se captura con un registro de pruebas.
 let registered = null;
 globalThis.UX = { modules: { register: (module) => (registered = module) } };
+require('../config.generated.js');
+const { UX } = globalThis;
+
+/** MutationObserver falso: guarda su función para que la prueba dispare cambios. */
+class FakeMutationObserver {
+  constructor(callback) {
+    this.callback = callback;
+    this.options = null;
+    this.connected = false;
+    FakeMutationObserver.instances.push(this);
+  }
+
+  observe(target, options) {
+    this.options = options;
+    this.connected = true;
+  }
+
+  disconnect() {
+    this.connected = false;
+  }
+}
+FakeMutationObserver.instances = [];
+globalThis.MutationObserver = FakeMutationObserver;
 globalThis.Element = FakeElement;
 globalThis.CSS = { escape: (value) => value };
 globalThis.location = { href: 'https://shop.local/cart' };
@@ -139,6 +171,7 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
   globalThis.document = document;
   const timers = createFakeTimers();
   const added = [];
+  FakeMutationObserver.instances = [];
   const real = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
   globalThis.setTimeout = timers.setTimeout;
   globalThis.clearTimeout = timers.clearTimeout;
@@ -150,6 +183,7 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
       batcher: { add: (type, record) => added.push({ type, record, at: timers.now() }) },
       session: { get: () => session },
       config: { capture: config },
+      contracts: UX.contracts,
     });
   } finally {
     globalThis.setTimeout = real.setTimeout;
@@ -322,7 +356,7 @@ test('records element null when the target is not an element', () => {
 test('listens in the capture phase and stop removes every listener', () => {
   const { document, added, click } = startCapture();
   assert.deepEqual(document.listenerTypes(), [
-    'click', 'contextmenu', 'dblclick', 'focusin', 'focusout', 'input', 'mousemove', 'scroll', 'selectionchange', 'submit',
+    'click', 'contextmenu', 'dblclick', 'focusin', 'focusout', 'input', 'invalid', 'mousemove', 'scroll', 'selectionchange', 'submit',
   ]);
 
   registered.stop();
@@ -375,6 +409,7 @@ test('reschedules a timer that fires a little early instead of delivering too so
       batcher: { add: (type, record) => added.push(record) },
       session: { get: () => null },
       config: { capture: CAPTURE_CONFIG },
+      contracts: UX.contracts,
     });
   } finally {
     globalThis.setTimeout = real.setTimeout;
@@ -739,4 +774,165 @@ test('records form_submit with the form as the element and no text from textarea
   assert.equal(added[1].record.element.text, null);
   assert.equal(added[0].record.task_id, 2);
   assert.deepEqual(added[0].record.data, {});
+});
+
+/** Campo con un estado de validación nativo falso. */
+function invalidField(validity, attributes = { type: 'text', id: 'name' }) {
+  const field = el('input', attributes);
+  field.validity = validity;
+  return field;
+}
+
+const errors = (added) =>
+  added.filter((entry) => entry.record.type === 'validation_error').map((entry) => entry.record.data.error_type);
+
+test('records one native validation_error per invalid field with the type from the contract', () => {
+  const { document, added } = startCapture({ task_id: 3 });
+  const field = invalidField({ valueMissing: true });
+
+  document.dispatch({ type: 'invalid', target: field });
+  registered.stop();
+
+  assert.equal(added.length, 1);
+  assert.equal(added[0].record.type, 'validation_error');
+  assert.deepEqual(added[0].record.data, { error_type: 'value_missing' });
+  assert.equal(added[0].record.element.id, 'name');
+  assert.equal(added[0].record.element.text, null);
+  assert.equal(added[0].record.task_id, 3);
+});
+
+test('maps every native validity flag to its contract type, in the order of the contract', () => {
+  const { enums } = UX.contracts;
+  const native = enums.validation_error_type.filter((type) => !['aria_invalid', 'visible_message'].includes(type));
+  assert.ok(native.length >= 10);
+  const { document, added } = startCapture();
+
+  for (const type of native) {
+    const flag = type.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    document.dispatch({ type: 'invalid', target: invalidField({ [flag]: true }) });
+  }
+  // Con varios problemas a la vez se registra el primero de la enumeración.
+  document.dispatch({ type: 'invalid', target: invalidField({ customError: true, tooShort: true }) });
+  registered.stop();
+
+  assert.deepEqual(errors(added), [...native, 'too_short']);
+});
+
+test('ignores an invalid event with no problem flag or from a non-element', () => {
+  const { document, added } = startCapture();
+
+  document.dispatch({ type: 'invalid', target: invalidField({}) });
+  document.dispatch({ type: 'invalid', target: { nodeType: 9 } });
+  registered.stop();
+
+  assert.equal(added.length, 0);
+});
+
+test('observes only the aria-invalid attribute of the whole document', () => {
+  const { stop } = startCapture();
+  const [observer] = FakeMutationObserver.instances;
+
+  assert.equal(observer.connected, true);
+  assert.deepEqual(observer.options, { attributes: true, attributeFilter: ['aria-invalid'], subtree: true });
+  stop();
+  assert.equal(observer.connected, false);
+});
+
+test('records aria_invalid once when a field becomes invalid and again only after it was fixed', () => {
+  const { added, stop } = startCapture();
+  const [observer] = FakeMutationObserver.instances;
+  const field = el('input', { type: 'text', id: 'email', 'aria-invalid': 'true' });
+
+  observer.callback([{ target: field }]);
+  observer.callback([{ target: field }]);
+  field.attributes['aria-invalid'] = 'false';
+  observer.callback([{ target: field }]);
+  field.attributes['aria-invalid'] = 'true';
+  observer.callback([{ target: field }]);
+  stop();
+
+  assert.deepEqual(errors(added), ['aria_invalid', 'aria_invalid']);
+  assert.equal(added[0].record.element.id, 'email');
+});
+
+test('records visible_message after leaving a field whose error message is shown', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  const message = el('span', { id: 'email-error' }, { text: 'Escribe un correo válido' });
+  document.ids['email-error'] = message;
+  const field = el('input', { type: 'email', id: 'email', 'aria-errormessage': 'email-error' });
+
+  document.dispatch({ type: 'focusout', target: field });
+  await timers.advance(199);
+  assert.deepEqual(errors(added), []);
+  await timers.advance(1);
+  assert.deepEqual(errors(added), ['visible_message']);
+
+  // Mientras el mensaje siga ahí no se repite; si desaparece y vuelve, sí.
+  document.dispatch({ type: 'focusout', target: field });
+  await timers.advance(200);
+  assert.deepEqual(errors(added), ['visible_message']);
+  message.hidden = true;
+  document.dispatch({ type: 'focusout', target: field });
+  await timers.advance(200);
+  message.hidden = false;
+  document.dispatch({ type: 'focusout', target: field });
+  await timers.advance(200);
+  registered.stop();
+
+  assert.deepEqual(errors(added), ['visible_message', 'visible_message']);
+});
+
+test('uses aria-describedby only for messages that look like errors, and ignores hidden or empty ones', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  const check = async (describedBy) => {
+    document.dispatch({ type: 'focusout', target: el('input', { type: 'text', 'aria-describedby': describedBy }) });
+    await timers.advance(200);
+  };
+  document.ids.help = el('span', { id: 'help' }, { text: 'Mínimo 8 caracteres' });
+  document.ids.alert = el('span', { id: 'alert', role: 'alert' }, { text: 'Campo obligatorio' });
+  document.ids['pw-error'] = el('span', { id: 'pw-error' }, { text: 'Muy corta' });
+  document.ids['empty-error'] = el('span', { id: 'empty-error' });
+  document.ids['hidden-error'] = el('span', { id: 'hidden-error' }, { text: 'Oculto' });
+  document.ids['hidden-error'].hidden = true;
+
+  await check('help');
+  await check('empty-error');
+  await check('hidden-error');
+  await check('missing-id');
+  assert.deepEqual(errors(added), []);
+  await check('alert');
+  await check('pw-error');
+  registered.stop();
+
+  assert.deepEqual(errors(added), ['visible_message', 'visible_message']);
+});
+
+test('records no error for a field left with no aria-invalid and no message', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  document.dispatch({ type: 'focusout', target: el('input', { type: 'text' }) });
+  await timers.advance(300);
+  registered.stop();
+
+  assert.deepEqual(errors(added), []);
+});
+
+test('stop cancels the checks that were waiting after leaving a field', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  document.ids['e-error'] = el('span', { id: 'e-error' }, { text: 'Error' });
+
+  document.dispatch({ type: 'focusout', target: el('input', { type: 'text', 'aria-errormessage': 'e-error' }) });
+  assert.equal(timers.pending(), 1);
+  registered.stop();
+
+  assert.equal(timers.pending(), 0);
+  await timers.advance(500);
+  assert.deepEqual(errors(added), []);
+});
+
+test('never takes text from elements with a text input role, such as custom text boxes', () => {
+  const widget = el('div', { role: 'textbox', 'aria-invalid': 'true' }, { text: 'lo que escribio' });
+  assert.equal(describeByClick(widget).text, null);
+  assert.equal(describeByClick(el('div', { role: 'combobox' }, { text: 'valor' })).text, null);
+  assert.equal(describeByClick(el('div', { role: 'button' }, { text: 'Pagar' })).text, 'Pagar');
 });
