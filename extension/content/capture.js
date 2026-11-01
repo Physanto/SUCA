@@ -49,6 +49,10 @@
   const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
   /** Elemento con uno de esos roles; con `closest` alcanza también a quienes están dentro de él. */
   const TEXT_INPUT_SELECTOR = TEXT_INPUT_ROLES.map((role) => `[role="${role}"]`).join(',');
+  /** Lista de opciones: las sugerencias de un buscador suelen ir en una. */
+  const LISTBOX_SELECTOR = '[role="listbox"]';
+  /** Tipos de `input` donde se escribe texto (los demás son casillas, botones, fechas…). */
+  const TEXT_ENTRY_INPUT_TYPES = ['text', 'search', 'email', 'url', 'tel', 'number', 'password'];
   /** Valor que reemplaza a los parámetros sensibles de una URL. */
   const REDACTED = 'redacted';
   /**
@@ -170,6 +174,61 @@
     return element;
   }
 
+  /** Si el elemento es un campo donde se escribe texto: `input` de texto, `textarea`, zona editable o rol de cuadro de texto. */
+  function isTextEntry(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'input') {
+      return TEXT_ENTRY_INPUT_TYPES.includes((element.getAttribute('type') || 'text').toLowerCase());
+    }
+    return tag === 'textarea' || Boolean(element.closest(EDITABLE_SELECTOR)) || Boolean(element.closest(TEXT_INPUT_SELECTOR));
+  }
+
+  /**
+   * Si el elemento es una opción de una lista de sugerencias de un campo de texto
+   * (autocompletado). Su texto suele repetir lo que el participante escribió
+   * ("zapat" → "zapatos deportivos"), y las sugerencias no están dentro del campo.
+   * La lista se reconoce por tres enlaces con un campo, porque los sitios no usan el mismo:
+   *
+   * 1. `aria-controls` o `aria-owns` de otro elemento nombran el `id` de la lista (ARIA 1.2).
+   * 2. `aria-activedescendant` de otro elemento apunta a algo dentro de la lista.
+   * 3. Un campo de texto comparte con la lista su `aria-labelledby` (react.dev enlaza así
+   *    sus listas, que además repiten el mismo `id`).
+   *
+   * Una lista de selección normal, sin campo que la acompañe (elegir país), no cumple
+   * ninguno y conserva el texto de sus opciones.
+   *
+   * @param {Element} element - Elemento sobre el que se hizo clic.
+   * @returns {boolean} `true` si está dentro de una lista de sugerencias.
+   */
+  function isAutocompleteOption(element) {
+    const list = element.closest(LISTBOX_SELECTOR);
+    if (!list) {
+      return false;
+    }
+    const doc = root.document;
+    if (list.id) {
+      const id = CSS.escape(list.id);
+      if (doc.querySelector(`[aria-controls~="${id}"], [aria-owns~="${id}"]`)) {
+        return true;
+      }
+    }
+    const activeOwner = [...doc.querySelectorAll('[aria-activedescendant]')].some((owner) => {
+      const target = doc.getElementById(owner.getAttribute('aria-activedescendant'));
+      return Boolean(target) && list.contains(target);
+    });
+    if (activeOwner) {
+      return true;
+    }
+    return (list.getAttribute('aria-labelledby') || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .some((label) =>
+        [...doc.querySelectorAll(`[aria-labelledby~="${CSS.escape(label)}"]`)].some(
+          (field) => field !== list && !list.contains(field) && isTextEntry(field),
+        ),
+      );
+  }
+
   /**
    * Texto visible recortado, o `null`. Solo se toma de elementos interactivos
    * (botones, enlaces, pestañas…): el de contenedores, párrafos o títulos puede ser
@@ -178,14 +237,16 @@
    * interactivos. Tampoco se toma de campos, de zonas editables ni de cuadros de
    * texto personalizados (rol `textbox`, `searchbox`, `combobox` o `spinbutton`), ni
    * de elementos que los contienen, ni de los que contienen un `textarea` (su contenido
-   * inicial puede ser texto que el participante ya había escrito).
+   * inicial puede ser texto que el participante ya había escrito). Tampoco de las
+   * sugerencias de autocompletado de un campo (`isAutocompleteOption`).
    */
   function textOf(element, tag) {
     if (
       !isInteractive(element) ||
       FIELD_TAGS.includes(tag) ||
       element.closest(EDITABLE_SELECTOR) ||
-      element.closest(TEXT_INPUT_SELECTOR)
+      element.closest(TEXT_INPUT_SELECTOR) ||
+      isAutocompleteOption(element)
     ) {
       return null;
     }
