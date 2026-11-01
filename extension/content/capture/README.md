@@ -17,6 +17,9 @@ Arranca y se detiene con la sesión, a través de `bootstrap.js`: `start(ctx)` p
 | `form_submit` | El formulario. El navegador solo lo avisa si pasó la validación; un intento con errores genera `validation_error` |
 | `validation_error` | El campo y el tipo de error en `data.error_type` (`validation_error_type`). Tres orígenes, ver abajo |
 | `click_response` | Solo si la página respondió a un `click` en `capture.click_response_wait_ms` (1,5 s): `data.click_t` (el `t` del clic), `data.mutation_count` y `data.navigated`. Sin `x`, `y` ni elemento |
+| `screen_change` | La pantalla nueva, en `screen` (URL y título). Sin `x`, `y` ni elemento. Se registra al iniciar la captura y cuando la dirección cambia |
+
+**Cambios de pantalla.** Cada carga de página ejecuta de nuevo el módulo, que al iniciar registra la pantalla actual: la de cada carga completa o la primera de la sesión si se inició sobre una página ya cargada. Para las aplicaciones de una sola página, el módulo (que corre en un contexto aislado y no puede interceptar el `pushState` de la página) compara `location.href` cada 250 ms y, 50 ms después de cada `popstate` o `hashchange`, para dar tiempo a la página de actualizar su título. Solo cuenta la dirección: un cambio de `#` es un cambio de pantalla y un cambio solo del título no lo es. Límites: un cambio de ida y vuelta (A → B → A) en menos de 250 ms no se ve, y si la página actualiza el título mucho después de la dirección, el registro lleva el título anterior. La URL se guarda completa, con su parte de búsqueda (pendiente de revisar en la revisión de privacidad).
 
 **Respuesta tras un clic y clics muertos.** Cada `click` crea un `MutationObserver` propio sobre todo el documento (hijos, atributos y texto), antes de que el sitio atienda el clic. Al terminar la espera se cuentan los cambios, incluidos los que el navegador aún no había entregado, y el observador se desconecta. Se registra `click_response` si hubo cambios o si `navigated` es verdadero: la URL cambió (aplicaciones de una sola página, también con `#`) o la página se descargó durante la espera (en ese caso se registra de inmediato y se vacía el acumulador, que ya había vaciado lo suyo con el mismo aviso). **Si no hubo nada, no se registra nada**: un `click` sin su `click_response` (unido por `click_t`) es lo que el análisis toma como clic muerto. Solo se vigila `click`, no `dblclick` ni `contextmenu`. `stop()` abandona las esperas pendientes sin registrar nada.
 
@@ -34,7 +37,7 @@ Los orígenes 2 y 3 se registran una sola vez mientras el error siga presente, y
 
 Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
 
-Los demás tipos de evento (cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
+Todos los tipos de evento de la captura están documentados arriba.
 
 ## Descriptor del elemento
 

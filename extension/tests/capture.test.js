@@ -213,10 +213,22 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
     globalThis.setTimeout = real.setTimeout;
     globalThis.clearTimeout = real.clearTimeout;
   }
+  // Al iniciar se registra la pantalla inicial; las pruebas de otros eventos la dejan aparte.
+  const initial = added.splice(0);
   const click = (target, type = 'click', x = 845, y = 560) =>
     document.dispatch({ type, target, clientX: x, clientY: y });
   const pageHide = () => pageListeners.get('pagehide')({ type: 'pagehide' });
-  return { document, added, click, timers, flushes, pageHide, pageListeners, stop: () => registered.stop() };
+  return {
+    document,
+    added,
+    initial,
+    click,
+    timers,
+    flushes,
+    pageHide,
+    pageListeners,
+    stop: () => registered.stop(),
+  };
 }
 
 /** Descriptor del último clic sobre `target`. */
@@ -440,6 +452,7 @@ test('reschedules a timer that fires a little early instead of delivering too so
     globalThis.setTimeout = real.setTimeout;
     globalThis.clearTimeout = real.clearTimeout;
   }
+  added.length = 0;
 
   move(document, 1, 1);
   move(document, 2, 2);
@@ -566,7 +579,7 @@ test('stop discards the pending records and their timers', async () => {
   move(document, 2, 2);
   scrollTo(document, 0, 10);
   scrollTo(document, 0, 20);
-  assert.equal(timers.pending(), 2);
+  assert.equal(timers.pending(), 3);
   registered.stop();
 
   assert.equal(timers.pending(), 0);
@@ -676,7 +689,7 @@ test('stop cancels a pending selection', async () => {
 
   selectText('algo');
   selectionChanged(document);
-  assert.equal(timers.pending(), 1);
+  assert.equal(timers.pending(), 2);
   registered.stop();
 
   assert.equal(timers.pending(), 0);
@@ -947,7 +960,7 @@ test('stop cancels the checks that were waiting after leaving a field', async ()
   document.ids['e-error'] = el('span', { id: 'e-error' }, { text: 'Error' });
 
   document.dispatch({ type: 'focusout', target: el('input', { type: 'text', 'aria-errormessage': 'e-error' }) });
-  assert.equal(timers.pending(), 1);
+  assert.equal(timers.pending(), 2);
   registered.stop();
 
   assert.equal(timers.pending(), 0);
@@ -1054,7 +1067,7 @@ test('records navigated at once, and flushes the batcher, when the page unloads 
 
   assert.deepEqual(responses(added), [{ click_t: 0, mutation_count: 1, navigated: true }]);
   assert.deepEqual(flushes, [200]);
-  assert.equal(timers.pending(), 0);
+  assert.equal(timers.pending(), 1);
   await timers.advance(2000);
   assert.equal(responses(added).length, 1);
   registered.stop();
@@ -1076,7 +1089,7 @@ test('only a simple click is watched, not dblclick or contextmenu', async () => 
   click(el('button'), 'contextmenu');
 
   assert.equal(clickObservers().length, 0);
-  assert.equal(timers.pending(), 0);
+  assert.equal(timers.pending(), 1);
   registered.stop();
 });
 
@@ -1104,7 +1117,7 @@ test('stop disconnects the observers, cancels the waits and unhooks pagehide', a
   click(el('button'));
   click(el('button'));
   clickObservers().forEach((observer) => observer.emit(2));
-  assert.equal(timers.pending(), 2);
+  assert.equal(timers.pending(), 3);
   registered.stop();
 
   assert.ok(clickObservers().every((observer) => !observer.connected));
@@ -1138,4 +1151,111 @@ test('reads the wait from the configuration and refuses to start without a posit
     assert.throws(() => registered.start(context), /click_response_wait_ms must be a positive number/);
     registered.stop();
   }
+});
+
+/** Los registros `screen_change` entregados, con la pantalla que llevan. */
+const screens = (added) =>
+  added.filter((entry) => entry.record.type === 'screen_change').map((entry) => entry.record.screen);
+
+test('records the current screen when the capture starts', () => {
+  const { initial } = startCapture({ task_id: 5 });
+  registered.stop();
+
+  assert.equal(initial.length, 1);
+  assert.deepEqual(initial[0].record, {
+    t: 1791380123456.2,
+    type: 'screen_change',
+    data: {},
+    screen: { url: 'https://shop.local/cart', title: 'Carrito' },
+    task_id: 5,
+  });
+});
+
+test('records a screen change within 250 ms of the address changing, with the title of that moment', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  await timers.advance(100);
+  globalThis.location.href = 'https://shop.local/checkout';
+  document.title = 'Pago';
+  await timers.advance(149);
+  assert.deepEqual(screens(added), []);
+  await timers.advance(1);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/checkout', title: 'Pago' }]);
+  assert.deepEqual(added[0].record.data, {});
+  assert.ok(!('x' in added[0].record) && !('element' in added[0].record));
+});
+
+test('records nothing while the address stays the same, even if the title changes', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  document.title = 'Otro título';
+  await timers.advance(1000);
+  registered.stop();
+
+  assert.deepEqual(screens(added), []);
+});
+
+test('counts a change of the hash as a screen change', async () => {
+  const { added, timers } = startCapture(undefined, { fakeClock: true });
+
+  globalThis.location.href = 'https://shop.local/cart#resumen';
+  await timers.advance(250);
+  registered.stop();
+
+  assert.deepEqual(screens(added).map((screen) => screen.url), ['https://shop.local/cart#resumen']);
+});
+
+test('popstate and hashchange are checked after a short pause, without waiting for the next poll', async () => {
+  for (const type of ['popstate', 'hashchange']) {
+    const { document, added, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+
+    await timers.advance(10);
+    globalThis.location.href = `https://shop.local/${type}`;
+    document.title = type;
+    pageListeners.get(type)({ type });
+    await timers.advance(49);
+    assert.deepEqual(screens(added), []);
+    await timers.advance(1);
+    registered.stop();
+
+    assert.deepEqual(screens(added), [{ url: `https://shop.local/${type}`, title: type }]);
+  }
+});
+
+test('records one screen change per different address and none for a repeated one', async () => {
+  const { added, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+
+  globalThis.location.href = 'https://shop.local/a';
+  await timers.advance(250);
+  pageListeners.get('popstate')({ type: 'popstate' });
+  await timers.advance(300);
+  globalThis.location.href = 'https://shop.local/b';
+  await timers.advance(250);
+  globalThis.location.href = 'https://shop.local/cart';
+  await timers.advance(250);
+  registered.stop();
+
+  assert.deepEqual(screens(added).map((screen) => screen.url), [
+    'https://shop.local/a',
+    'https://shop.local/b',
+    'https://shop.local/cart',
+  ]);
+});
+
+test('uses the active task and stop cancels the checks and unhooks popstate and hashchange', async () => {
+  const { added, timers, pageListeners } = startCapture({ task_id: 8 }, { fakeClock: true });
+  assert.deepEqual([...pageListeners.keys()].sort(), ['hashchange', 'pagehide', 'popstate']);
+
+  globalThis.location.href = 'https://shop.local/a';
+  await timers.advance(250);
+  assert.equal(added[0].record.task_id, 8);
+  registered.stop();
+
+  assert.equal(pageListeners.size, 0);
+  assert.equal(timers.pending(), 0);
+  globalThis.location.href = 'https://shop.local/b';
+  await timers.advance(1000);
+  assert.equal(screens(added).length, 1);
 });

@@ -7,8 +7,8 @@
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
  * con una frecuencia máxima configurable, la longitud (nunca el contenido) del
  * texto seleccionado y los eventos de formulario (foco, cambio de campo y
- * envío, sin valores), los errores de validación y la respuesta de la página tras un
- * clic. Los demás tipos de evento se agregan en las siguientes tareas de M1.
+ * envío, sin valores), los errores de validación, la respuesta de la página tras un
+ * clic y los cambios de pantalla.
  *
  * Mensajes:
  * - Envía: lotes `events` con `ctx.batcher.add('events', registro)`; el
@@ -41,6 +41,10 @@
   const VISIBLE_MESSAGE = 'visible_message';
   /** Roles de elementos donde se escribe texto: su texto visible nunca se registra. */
   const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
+  /** Cada cuántos milisegundos se revisa si la dirección de la página cambió (aplicaciones de una sola página). */
+  const SCREEN_POLL_MS = 250;
+  /** Espera tras `popstate` o `hashchange`, para que la página actualice su título antes de registrar. */
+  const SCREEN_SETTLE_MS = 50;
   /** Eventos de clic que se registran, todos con el mismo formato. */
   const CLICK_TYPES = ['click', 'dblclick', 'contextmenu'];
   /** Campos de formulario: su texto nunca se registra. */
@@ -594,6 +598,44 @@
     pendingChecks.add(timer);
   }
 
+  /** Última dirección registrada y temporizadores de la revisión periódica y de la espera tras `popstate`. */
+  let lastHref = null;
+  let screenTimer = null;
+  let settleTimer = null;
+
+  /** Registra la pantalla actual (URL y título van en `screen`, como en todo registro). */
+  function recordScreen() {
+    record(ctx.clock.now(), 'screen_change', { data: {} });
+  }
+
+  /** Registra un cambio de pantalla si la dirección es distinta de la última registrada. */
+  function checkScreen() {
+    const href = root.location.href;
+    if (href !== lastHref) {
+      lastHref = href;
+      recordScreen();
+    }
+  }
+
+  /**
+   * Revisa la dirección cada `SCREEN_POLL_MS`. El módulo corre en un contexto
+   * aislado y no puede interceptar el `pushState` de la página, así que las
+   * aplicaciones de una sola página solo se notan comparando la dirección.
+   */
+  function pollScreen() {
+    checkScreen();
+    screenTimer = timers.setTimeout(pollScreen, SCREEN_POLL_MS);
+  }
+
+  /** `popstate` y `hashchange`: se revisa sin esperar a la próxima vuelta, tras una pausa corta. */
+  function onHistoryChange() {
+    timers.clearTimeout(settleTimer);
+    settleTimer = timers.setTimeout(() => {
+      settleTimer = null;
+      checkScreen();
+    }, SCREEN_SETTLE_MS);
+  }
+
   /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
   const PASSIVE = { capture: true, passive: true };
 
@@ -657,6 +699,13 @@
       root.document.addEventListener('submit', onSubmit, true);
       root.document.addEventListener('invalid', onInvalid, true);
       root.addEventListener('pagehide', onPageHide);
+      root.addEventListener('popstate', onHistoryChange);
+      root.addEventListener('hashchange', onHistoryChange);
+      // Cada carga de página inicia la captura de nuevo, así que esta es la pantalla de la carga
+      // (o la primera de la sesión, si se inició sobre una página ya cargada).
+      lastHref = root.location.href;
+      recordScreen();
+      screenTimer = timers.setTimeout(pollScreen, SCREEN_POLL_MS);
       // Solo se observa un atributo, para que el costo en páginas con muchos cambios sea mínimo.
       ariaObserver = new root.MutationObserver(onAriaMutations);
       ariaObserver.observe(root.document.documentElement, {
@@ -681,6 +730,15 @@
       root.document.removeEventListener('submit', onSubmit, true);
       root.document.removeEventListener('invalid', onInvalid, true);
       root.removeEventListener('pagehide', onPageHide);
+      root.removeEventListener('popstate', onHistoryChange);
+      root.removeEventListener('hashchange', onHistoryChange);
+      if (timers) {
+        timers.clearTimeout(screenTimer);
+        timers.clearTimeout(settleTimer);
+      }
+      screenTimer = null;
+      settleTimer = null;
+      lastHref = null;
       pendingResponses.forEach((watch) => watch.cancel());
       pendingResponses = new Set();
       if (ariaObserver) {
