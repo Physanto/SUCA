@@ -24,6 +24,7 @@ Estima hacia dónde mira el participante y registra sus movimientos faciales con
   - el modelo de mirada entrenado en la calibración sigue sirviendo después de cada navegación;
   - MediaPipe carga sus archivos de WebAssembly desde la extensión, sin depender de la política de seguridad de cada sitio.
 - **Un solo modelo para todo.** MediaPipe Face Landmarker da, por cada cuadro, los 478 puntos del rostro (incluidos los iris), los valores de los movimientos faciales y la orientación de la cabeza. La mirada se calcula con esos mismos puntos (ver "Mirada"), así que no hay un segundo modelo de rostro corriendo en paralelo.
+- **GPU o CPU, según la computadora.** El motor empieza con la GPU y mide sus primeros 20 cuadros. Si tarda más de 25 ms por cuadro, carga también la CPU, la mide y se queda con la más rápida (en Chrome sin aceleración gráfica, la GPU simulada puede ser cinco veces más lenta). La elección se ve en `stats` (`delegate`, `benchmark_ms`).
 - **Adaptadores.** `createFaceProvider` (en `engine-main.mjs`) es el único lugar que conoce a MediaPipe; `gaze-model.js` y `eye-features.js` forman el estimador de mirada. Cambiar de librería no toca ni la pestaña ni el motor.
 
 ## Archivos
@@ -124,7 +125,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 | `calibration.reset` | — | `ok` |
 | `calibration.point` | `x`, `y`, `t_start`, `t_end`, `group` | `samples`: cuadros usados |
 | `calibration.fit` | — | `ok`, `samples`, `groups`, `lambda`, `cv_error_px` |
-| `stats` | — | `delegate` (`GPU` o `CPU`), `status`, `calibrated`, `frames`, `hz`, `delay_ms`, `face_ratio` |
+| `stats` | — | `delegate` (`GPU` o `CPU`), `benchmark_ms` (tiempo medio por cuadro de cada procesador probado), `status`, `calibrated`, `frames`, `hz`, `delay_ms`, `face_ratio` |
 | `flush` | — | `gap`: el intervalo abierto con `t_end: null`, o `null` |
 
 **Intervalos sin datos (motor).** Un intervalo se abre cuando la última pestaña se desconecta (`navigation`) o la cámara pasa a `no_permission` o `error`. Empieza en el último cuadro entregado y se cierra con el primer cuadro que vuelve a llegar a una pestaña. No se registran los de menos de 250 ms.
@@ -145,7 +146,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 2. Inicia el servidor y la app de prueba, y empieza una sesión desde el panel.
 3. En `chrome://extensions` → SUCA → **Inspeccionar vistas: camera/engine.html**, en la consola del motor no debe haber errores. Mientras hay sesión, Chrome muestra el indicador de cámara en uso.
 4. Pide una calibración inicial desde el panel y complétala. Anota `error_px`, `error_deg` y si se aceptó.
-5. **Frecuencia, retraso y CPU:** en la consola del motor, el estado (`hz`, `delay_ms`, `delegate`, `face_ratio`) se lee con:
+5. **Frecuencia, retraso y CPU:** en la consola del motor, el estado (`hz`, `delay_ms`, `delegate`, `benchmark_ms`, `face_ratio`) se lee con:
    ```javascript
    const p = chrome.runtime.connect({ name: 'camera' });
    p.onMessage.addListener((m) => m.kind === 'reply' && console.log(m));

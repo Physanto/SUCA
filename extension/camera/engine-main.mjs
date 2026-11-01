@@ -44,7 +44,7 @@ const engine = UX.createCameraEngine({
       // Nadie escucha (el panel está cerrado): el estado se vuelve a enviar al cambiar.
     });
   },
-  info: () => ({ delegate }),
+  info: () => ({ delegate, benchmark_ms: { ...benchmark } }),
 });
 
 platform.onConnect(PORT_NAME, (port) => {
@@ -53,44 +53,122 @@ platform.onConnect(PORT_NAME, (port) => {
   port.onDisconnect(() => link.disconnect());
 });
 
+/** Cuadros que se miden con cada procesador antes de elegir entre GPU y CPU. */
+const BENCHMARK_FRAMES = 20;
+/** Si la GPU analiza un cuadro en menos que esto, no se prueba la CPU. */
+const FAST_ENOUGH_MS = 25;
+
+/** Archivos de WebAssembly de MediaPipe, servidos por la extensión. */
+const FILESET = {
+  wasmLoaderPath: platform.extensionUrl('lib/vision_wasm_internal.js'),
+  wasmBinaryPath: platform.extensionUrl('lib/vision_wasm_internal.wasm'),
+};
+
+/** Mediana de una lista de números. */
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1];
+}
+
+/** Carga Face Landmarker con un procesador (`GPU` o `CPU`). */
+function createLandmarker(processor) {
+  return FaceLandmarker.createFromOptions(FILESET, {
+    baseOptions: {
+      modelAssetPath: platform.extensionUrl('lib/face_landmarker.task'),
+      delegate: processor,
+    },
+    runningMode: 'VIDEO',
+    numFaces: 1,
+    outputFaceBlendshapes: true,
+    outputFacialTransformationMatrixes: true,
+  });
+}
+
+/** Tiempo medio por cuadro de cada procesador probado, para las estadísticas. */
+const benchmark = {};
+
 /**
  * Adaptador de MediaPipe Face Landmarker (`FaceProvider`): carga el modelo
- * desde `lib/` y analiza un cuadro. Si la GPU no funciona, usa la CPU.
+ * desde `lib/` y analiza un cuadro.
+ *
+ * Empieza con la GPU. Según la computadora, la GPU puede ser más lenta que la
+ * CPU (por ejemplo, sin aceleración gráfica): si sus primeros cuadros tardan
+ * más de `FAST_ENOUGH_MS`, carga también la CPU, la mide con los cuadros
+ * siguientes y se queda con la más rápida. Si la GPU no carga, usa la CPU.
  *
  * @returns {Promise<{detect: function(VideoFrame, number): object}>} Analizador.
  */
 async function createFaceProvider() {
-  const fileset = {
-    wasmLoaderPath: platform.extensionUrl('lib/vision_wasm_internal.js'),
-    wasmBinaryPath: platform.extensionUrl('lib/vision_wasm_internal.wasm'),
-  };
-  let landmarker = null;
+  const landmarkers = {};
+  let current = null;
   let lastError = null;
-  for (const candidate of ['GPU', 'CPU']) {
+  for (const processor of ['GPU', 'CPU']) {
     try {
-      landmarker = await FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: {
-          modelAssetPath: platform.extensionUrl('lib/face_landmarker.task'),
-          delegate: candidate,
-        },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: true,
-      });
-      delegate = candidate;
+      landmarkers[processor] = await createLandmarker(processor);
+      current = processor;
       break;
     } catch (error) {
       lastError = error;
-      console.warn(`face landmarker could not start with ${candidate}:`, error);
+      console.warn(`face landmarker could not start with ${processor}:`, error);
     }
   }
-  if (landmarker === null) {
+  if (current === null) {
     throw lastError;
   }
+  delegate = current;
+  const timings = { GPU: [], CPU: [] };
+  let decided = current === 'CPU';
+  let loadingCpu = false;
+
+  /** Usa un procesador y libera el otro. */
+  function settle(chosen) {
+    const other = chosen === 'GPU' ? 'CPU' : 'GPU';
+    if (landmarkers[other]) {
+      landmarkers[other].close();
+      delete landmarkers[other];
+    }
+    current = chosen;
+    delegate = chosen;
+    decided = true;
+    console.info(`face landmarker uses ${chosen}`, benchmark);
+  }
+
+  /** Decide con lo medido hasta ahora; puede pedir que se pruebe la CPU. */
+  function decide() {
+    benchmark[current] = median(timings[current]);
+    if (current === 'GPU') {
+      if (benchmark.GPU <= FAST_ENOUGH_MS) {
+        settle('GPU');
+      } else if (!loadingCpu) {
+        loadingCpu = true;
+        createLandmarker('CPU').then(
+          (landmarker) => {
+            landmarkers.CPU = landmarker;
+            current = 'CPU';
+            delegate = 'CPU';
+          },
+          () => settle('GPU'),
+        );
+      }
+      return;
+    }
+    settle(benchmark.CPU < benchmark.GPU ? 'CPU' : 'GPU');
+  }
+
   return {
     /** Analiza un cuadro; `timestampMs` debe crecer en cada llamada. */
-    detect: (frame, timestampMs) => landmarker.detectForVideo(frame, timestampMs),
+    detect(frame, timestampMs) {
+      const processor = current;
+      const start = performance.now();
+      const result = landmarkers[processor].detectForVideo(frame, timestampMs);
+      if (!decided && !(processor === 'GPU' && loadingCpu)) {
+        timings[processor].push(performance.now() - start);
+        if (timings[processor].length >= BENCHMARK_FRAMES) {
+          decide();
+        }
+      }
+      return result;
+    },
   };
 }
 
