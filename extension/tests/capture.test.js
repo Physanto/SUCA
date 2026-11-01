@@ -10,6 +10,8 @@ const assert = require('node:assert/strict');
 const { createFakeTimers, createFakeWorld, settle } = require('./fakes.js');
 
 const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
+const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
+const TEXT_INPUT = TEXT_INPUT_ROLES.map((role) => `[role="${role}"]`).join(',');
 
 /** Elemento falso con lo justo que usa la captura: árbol, atributos, texto y caja. */
 class FakeElement {
@@ -57,22 +59,29 @@ class FakeElement {
     return this.hasAttribute('contenteditable') && this.getAttribute('contenteditable') !== 'false';
   }
 
+  /** Solo entiende los selectores que usa la captura: zonas editables, cuadros de texto por rol y `textarea`. */
+  matches(selector) {
+    const matchers = {
+      [EDITABLE]: (node) => node.isEditable(),
+      [TEXT_INPUT]: (node) => TEXT_INPUT_ROLES.includes(node.getAttribute('role')),
+      textarea: (node) => node.tagName === 'TEXTAREA',
+    };
+    assert.ok(selector in matchers, `unexpected selector ${selector}`);
+    return matchers[selector](this);
+  }
+
   closest(selector) {
-    assert.equal(selector, EDITABLE);
     for (let node = this; node; node = node.parentElement) {
-      if (node.isEditable()) {
+      if (node.matches(selector)) {
         return node;
       }
     }
     return null;
   }
 
-  /** Solo entiende los dos selectores que usa la captura: zonas editables y `textarea`. */
   querySelector(selector) {
-    const matchers = { [EDITABLE]: (node) => node.isEditable(), textarea: (node) => node.tagName === 'TEXTAREA' };
-    assert.ok(selector in matchers, `unexpected selector ${selector}`);
     for (const child of this.children) {
-      if (matchers[selector](child)) {
+      if (child.matches(selector)) {
         return child;
       }
       const found = child.querySelector(selector);
@@ -355,7 +364,7 @@ test('never takes text from editable zones or from elements that contain one', (
   const inside = el('p', {}, { text: secret });
   el('div', { contenteditable: '' }, { children: [inside] });
   const container = el('div', { onclick: '' }, { text: 'Resumen', children: [el('div', { contenteditable: 'true' }, { text: secret })] });
-  const readonly = el('div', { contenteditable: 'false' }, { text: 'Solo lectura' });
+  const readonly = el('button', { contenteditable: 'false' }, { text: 'Solo lectura' });
 
   assert.equal(describeByClick(editor).text, null);
   assert.equal(describeByClick(inside).text, null);
@@ -609,10 +618,11 @@ test('refuses to start with a sampling rate that is not a positive number', () =
 });
 
 /** Simula una selección del navegador con el texto dado, anclada en `anchor`. */
-function selectText(text, anchor = el('p', {}, { text })) {
+function selectText(text, anchor = el('p', {}, { text }), focus = anchor) {
   globalThis.getSelection = () => ({
     rangeCount: text === '' ? 0 : 1,
     anchorNode: { nodeType: 3, parentElement: anchor },
+    focusNode: { nodeType: 3, parentElement: focus },
     toString: () => text,
   });
 }
@@ -812,7 +822,7 @@ test('records form_submit with the form as the element and no text from textarea
   assert.deepEqual(added.map((entry) => entry.record.type), ['form_submit', 'form_submit']);
   assert.equal(added[0].record.element.tag, 'form');
   assert.equal(added[0].record.element.role, 'form');
-  assert.equal(added[0].record.element.text, 'Registro');
+  assert.equal(added[0].record.element.text, null);
   assert.equal(added[1].record.element.text, null);
   assert.equal(added[0].record.task_id, 2);
   assert.deepEqual(added[0].record.data, {});
@@ -1387,4 +1397,162 @@ test('sees the task the panel sets through the real session state, without resta
   click(el('button'));
   assert.equal(lastTask(), null);
   registered.stop();
+});
+
+test('records text only for interactive elements, never for containers, paragraphs or headings', () => {
+  assert.equal(describeByClick(el('button', {}, { text: 'Pagar' })).text, 'Pagar');
+  assert.equal(describeByClick(el('a', { href: '/x' }, { text: 'Ir al carrito' })).text, 'Ir al carrito');
+  assert.equal(describeByClick(el('div', { role: 'tab' }, { text: 'Resumen' })).text, 'Resumen');
+  for (const tag of ['div', 'p', 'h2', 'main', 'section', 'span', 'form', 'li']) {
+    assert.equal(describeByClick(el(tag, {}, { text: 'mensaje que escribi hace un momento' })).text, null, tag);
+  }
+});
+
+test('never takes text from, or records a selection inside, a custom text box or anything holding one', async () => {
+  const secret = 'CANARIO-EDITOR-1';
+  const inner = el('button', {}, { text: secret });
+  const editor = el('div', { role: 'textbox' }, { children: [inner] });
+  const toolbar = el('button', { id: 'wrap' }, { text: secret, children: [el('div', { role: 'searchbox' })] });
+
+  assert.equal(describeByClick(inner).text, null);
+  assert.equal(describeByClick(editor).text, null);
+  assert.equal(describeByClick(toolbar).text, null);
+
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  selectText(secret, inner);
+  selectionChanged(document);
+  await timers.advance(300);
+  registered.stop();
+  assert.equal(added.length, 0);
+});
+
+test('redacts the value of sensitive url parameters in every record and keeps the rest', () => {
+  const cases = [
+    ['https://shop.local/buscar?q=CANARIO&view=cart', 'https://shop.local/buscar?q=redacted&view=cart'],
+    ['https://shop.local/?Q=Hola&Query=x&page=2', 'https://shop.local/?Q=redacted&Query=redacted&page=2'],
+    ['https://shop.local/?%71=hola&id=3', 'https://shop.local/?%71=redacted&id=3'],
+    ['https://shop.local/?view=cart&id=1', 'https://shop.local/?view=cart&id=1'],
+    ['https://shop.local/?q&flag=1', 'https://shop.local/?q&flag=1'],
+    ['https://shop.local/?q=#top', 'https://shop.local/?q=redacted#top'],
+    ['https://shop.local/cb#access_token=CANARIO&state=ok', 'https://shop.local/cb#access_token=redacted&state=ok'],
+    ['https://shop.local/#/buscar?q=CANARIO&page=2', 'https://shop.local/#/buscar?q=redacted&page=2'],
+    ['https://shop.local/#/ruta', 'https://shop.local/#/ruta'],
+    ['https://shop.local/#seccion', 'https://shop.local/#seccion'],
+    ['https://user:CANARIO@shop.local/x?token=CANARIO', 'https://shop.local/x?token=redacted'],
+    ['https://shop.local/?%E0%A4%A=1&q=x', 'https://shop.local/?%E0%A4%A=1&q=redacted'],
+  ];
+  for (const [href, expected] of cases) {
+    const { document, added, click, initial } = startCapture();
+    globalThis.location.href = href;
+    click(el('button'));
+    move(document, 1, 1);
+    registered.stop();
+
+    assert.equal(added[0].record.screen.url, expected, href);
+    assert.equal(added[1].record.screen.url, expected, href);
+    assert.ok(!JSON.stringify([...initial, ...added]).includes('CANARIO'), href);
+  }
+});
+
+test('still records a screen change when only a redacted parameter changes', async () => {
+  const { added, timers } = startCapture(undefined, { fakeClock: true });
+
+  globalThis.location.href = 'https://shop.local/buscar?q=primera';
+  await timers.advance(250);
+  globalThis.location.href = 'https://shop.local/buscar?q=segunda';
+  await timers.advance(250);
+  registered.stop();
+
+  assert.deepEqual(screens(added).map((screen) => screen.url), [
+    'https://shop.local/buscar?q=redacted',
+    'https://shop.local/buscar?q=redacted',
+  ]);
+});
+
+/** Un campo de cada clase, con su contenido y con un valor que no se debe poder leer. */
+function privacyFixture(canary) {
+  const guard = (node) =>
+    Object.defineProperty(node, 'value', {
+      get() {
+        throw new Error('the value of a field must never be read');
+      },
+    });
+  const named = (tag, attributes, text) => guard(el(tag, attributes, { text: `${canary} ${text}` }));
+  const textbox = el('div', { role: 'textbox' }, { children: [el('span', {}, { text: `${canary} editor` })] });
+  const plain = named('input', { type: 'text', id: 'name' }, 'nombre');
+  const password = named('input', { type: 'password', id: 'password' }, 'clave');
+  const area = named('textarea', { id: 'comments' }, 'comentario');
+  const select = named('select', { id: 'country' }, 'pais');
+  const editable = named('div', { contenteditable: 'true', id: 'rich' }, 'enriquecido');
+  const hidden = named('input', { type: 'hidden', id: 'csrf' }, 'oculto');
+  const label = el('label', {}, { text: `${canary} etiqueta`, children: [guard(el('input', { type: 'text', id: 'wrapped' }))] });
+  const preview = el('div', { id: 'preview' }, { text: `${canary} vista previa` });
+  const form = el('form', { id: 'f' }, { text: canary, children: [plain, password, area, select, editable, hidden, label, textbox] });
+  return { form, fields: [plain, password, area, select, editable, hidden, label.children[0], textbox], extras: [preview, form, label] };
+}
+
+test('no event type ever lets a typed value reach a record, whatever the field', async () => {
+  const canary = 'CANARIO-ESCRITO-731';
+  const { form, fields, extras } = privacyFixture(canary);
+  const { document, added, initial, click, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+  globalThis.location.href = `https://shop.local/buscar?q=${canary}&view=cart#access_token=${canary}`;
+
+  for (const field of [...fields, ...extras]) {
+    field.validity = { valueMissing: true, customError: true };
+    click(field, 'click');
+    click(field, 'dblclick');
+    click(field, 'contextmenu');
+    document.dispatch(guardedEvent('focusin', field));
+    document.dispatch(guardedEvent('input', field));
+    document.dispatch(guardedEvent('focusout', field));
+    document.dispatch(guardedEvent('invalid', field));
+    document.activeElement = field;
+    selectText(`${canary} seleccionado`, field);
+    selectionChanged(document);
+    await timers.advance(1000);
+    document.activeElement = null;
+    FakeMutationObserver.instances[0].callback([{ target: field }]);
+  }
+  document.dispatch(guardedEvent('submit', form));
+  pageListeners.get('popstate')({ type: 'popstate' });
+  await timers.advance(2000);
+  registered.stop();
+
+  const records = [...initial, ...added].map((entry) => entry.record);
+  assert.ok(records.length > 40, `only ${records.length} records were produced`);
+  const everything = JSON.stringify(records);
+  assert.ok(!everything.includes(canary), 'a typed value reached a record');
+  assert.ok(!everything.includes('CANARIO'));
+});
+
+test('never takes text from an interactive element that holds a textarea with a saved draft', () => {
+  const draft = 'CANARIO-BORRADOR-9';
+  const holder = el('div', { onclick: '' }, { text: 'Comentar', children: [el('textarea', {}, { text: draft })] });
+
+  assert.equal(describeByClick(holder).text, null);
+  assert.equal(describeByClick(el('button', {}, { text: 'Comentar' })).text, 'Comentar');
+});
+
+test('does not record a selection that starts or ends inside a field, a custom text box or an editable zone', async () => {
+  const outside = el('h2', {}, { text: 'Titulo' });
+  const inside = [el('div', { role: 'textbox' }), el('div', { contenteditable: 'true' }), el('textarea')];
+
+  for (const field of inside) {
+    for (const [anchor, focus] of [[outside, field], [field, outside]]) {
+      const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+      selectText('CANARIO-ARRASTRE texto de la pagina', anchor, focus);
+      selectionChanged(document);
+      await timers.advance(300);
+      registered.stop();
+
+      assert.equal(added.length, 0);
+    }
+  }
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  selectText('texto normal', outside, el('p'));
+  selectionChanged(document);
+  await timers.advance(300);
+  registered.stop();
+  assert.equal(added.length, 1);
 });

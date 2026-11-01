@@ -42,6 +42,19 @@
   const VISIBLE_MESSAGE = 'visible_message';
   /** Roles de elementos donde se escribe texto: su texto visible nunca se registra. */
   const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
+  /** Elemento con uno de esos roles; con `closest` alcanza también a quienes están dentro de él. */
+  const TEXT_INPUT_SELECTOR = TEXT_INPUT_ROLES.map((role) => `[role="${role}"]`).join(',');
+  /** Valor que reemplaza a los parámetros sensibles de una URL. */
+  const REDACTED = 'redacted';
+  /**
+   * Parámetros de URL cuyo valor suele ser lo que el participante escribió en un
+   * buscador o un secreto (credenciales, tokens, códigos). Se comparan en minúsculas.
+   */
+  const SENSITIVE_PARAMS = [
+    'q', 'query', 'search', 's', 'keyword', 'keywords', 'term', 'email', 'user', 'username',
+    'token', 'access_token', 'id_token', 'refresh_token', 'key', 'api_key', 'apikey',
+    'password', 'pass', 'pwd', 'auth', 'session', 'sid', 'code', 'otp',
+  ];
   /** Cada cuántos milisegundos se revisa si la dirección de la página cambió (aplicaciones de una sola página). */
   const SCREEN_POLL_MS = 250;
   /** Espera tras `popstate` o `hashchange`, para que la página actualice su título antes de registrar. */
@@ -150,17 +163,23 @@
   }
 
   /**
-   * Texto visible recortado, o `null`. Nunca se toma de campos, de elementos con
-   * rol de cuadro de texto, de zonas editables ni de elementos que contienen un `textarea` (su contenido inicial
-   * puede ser texto que el participante ya había escrito), porque contendría lo
-   * que escribe el participante.
+   * Texto visible recortado, o `null`. Solo se toma de elementos interactivos
+   * (botones, enlaces, pestañas…): el de contenedores, párrafos o títulos puede ser
+   * un eco de lo que el participante escribió (un mensaje enviado, una vista previa)
+   * o datos personales visibles, y los pasos de una tarea son solo clics en
+   * interactivos. Tampoco se toma de campos, de zonas editables ni de cuadros de
+   * texto personalizados (rol `textbox`, `searchbox`, `combobox` o `spinbutton`), ni
+   * de elementos que los contienen, ni de los que contienen un `textarea` (su contenido
+   * inicial puede ser texto que el participante ya había escrito).
    */
   function textOf(element, tag) {
     if (
+      !isInteractive(element) ||
       FIELD_TAGS.includes(tag) ||
-      TEXT_INPUT_ROLES.includes(roleOf(element, tag)) ||
       element.closest(EDITABLE_SELECTOR) ||
       element.querySelector(EDITABLE_SELECTOR) ||
+      element.closest(TEXT_INPUT_SELECTOR) ||
+      element.querySelector(TEXT_INPUT_SELECTOR) ||
       element.querySelector('textarea')
     ) {
       return null;
@@ -241,9 +260,61 @@
       t,
       type,
       ...fields,
-      screen: { url: root.location.href, title: root.document.title },
+      screen: { url: redactUrl(root.location.href), title: root.document.title },
       task_id: taskId,
     });
+  }
+
+  /** Decodifica el nombre de un parámetro; si está mal codificado, lo deja como está. */
+  function decodeName(name) {
+    try {
+      return decodeURIComponent(name);
+    } catch {
+      return name;
+    }
+  }
+
+  /** Reemplaza el valor de los parámetros sensibles de una lista `a=1&b=2`; el resto queda igual. */
+  function redactParams(list) {
+    return list
+      .split('&')
+      .map((part) => {
+        const equals = part.indexOf('=');
+        if (equals < 0 || !SENSITIVE_PARAMS.includes(decodeName(part.slice(0, equals)).toLowerCase())) {
+          return part;
+        }
+        return `${part.slice(0, equals)}=${REDACTED}`;
+      })
+      .join('&');
+  }
+
+  /**
+   * URL sin lo que el participante pudo escribir ni secretos: quita usuario y clave de
+   * la dirección (`https://usuario:clave@sitio`) y reemplaza por `redacted` el valor de
+   * los parámetros sensibles (`SENSITIVE_PARAMS`) de la parte de búsqueda y del
+   * fragmento (`#access_token=…`, `#/buscar?q=…`). El resto se conserva, porque muchas
+   * aplicaciones identifican la pantalla con la ruta, `?view=…` o `#/ruta`.
+   *
+   * @param {string} href - Dirección de la página.
+   * @returns {string} Dirección sin valores sensibles.
+   */
+  function redactUrl(href) {
+    const hashAt = href.indexOf('#');
+    const fragment = hashAt < 0 ? '' : href.slice(hashAt + 1);
+    const base = (hashAt < 0 ? href : href.slice(0, hashAt)).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, '$1');
+    const queryAt = base.indexOf('?');
+    const path = queryAt < 0 ? base : base.slice(0, queryAt);
+    const query = queryAt < 0 ? '' : `?${redactParams(base.slice(queryAt + 1))}`;
+    if (hashAt < 0) {
+      return path + query;
+    }
+    // Un fragmento puede ser una lista de parámetros o una ruta con su propia búsqueda.
+    const routeQueryAt = fragment.indexOf('?');
+    const redactedFragment =
+      routeQueryAt < 0
+        ? redactParams(fragment)
+        : `${fragment.slice(0, routeQueryAt)}?${redactParams(fragment.slice(routeQueryAt + 1))}`;
+    return `${path}${query}#${redactedFragment}`;
   }
 
   /**
@@ -435,9 +506,13 @@
   /** Tarea activa en el último cambio de la selección. */
   let selectionTask = null;
 
-  /** Si el elemento es un campo de formulario o está dentro de una zona editable. */
+  /** Si el elemento es un campo, o está dentro de una zona editable o de un cuadro de texto personalizado. */
   function isFieldOrEditable(element) {
-    return FIELD_TAGS.includes(element.tagName.toLowerCase()) || Boolean(element.closest(EDITABLE_SELECTOR));
+    return (
+      FIELD_TAGS.includes(element.tagName.toLowerCase()) ||
+      Boolean(element.closest(EDITABLE_SELECTOR)) ||
+      Boolean(element.closest(TEXT_INPUT_SELECTOR))
+    );
   }
 
   /** Reinicia la espera: solo se registra cuando la selección lleva 300 ms sin cambiar. */
@@ -462,9 +537,13 @@
     if (!selection || selection.rangeCount === 0) {
       return;
     }
-    const anchor = selection.anchorNode;
-    const anchorElement = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
-    if (anchorElement && isFieldOrEditable(anchorElement)) {
+    // Se miran los dos extremos: una selección que empieza fuera de un campo y termina
+    // dentro (o al revés) también incluye lo escrito, y su longitud lo revelaría.
+    const endsInField = [selection.anchorNode, selection.focusNode].some((node) => {
+      const element = node && (node.nodeType === 1 ? node : node.parentElement);
+      return Boolean(element) && isFieldOrEditable(element);
+    });
+    if (endsInField) {
       return;
     }
     // El texto solo se usa para contar: no se guarda ni se envía.

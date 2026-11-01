@@ -47,7 +47,7 @@ Forma de `contracts/element.schema.json`:
 |---|---|
 | `tag`, `id` | Etiqueta en minúsculas y atributo `id` (o `null`) |
 | `role` | El atributo `role` o, si no tiene, el rol implícito de la etiqueta (`a` con `href` → `link`, `h1`–`h6` → `heading`, `input` según su `type`…) |
-| `text` | Texto visible con espacios colapsados, recortado a 50 caracteres; `null` si no hay |
+| `text` | Texto visible con espacios colapsados, recortado a 50 caracteres; `null` si no hay o si el elemento no es interactivo ni está permitido por las reglas de privacidad |
 | `selector` | `#id` o la ruta desde `body` con `:nth-of-type` |
 | `box` | `getBoundingClientRect()` como `x`, `y`, `w`, `h` |
 | `interactive` | Enlace con `href`, botón, campo, elemento con rol interactivo o con `onclick` |
@@ -56,11 +56,27 @@ Forma de `contracts/element.schema.json`:
 
 ## Privacidad
 
-- `text` es `null` en `input`, `textarea` y `select` (incluidas las contraseñas), dentro de una zona `contenteditable` y en elementos que contienen una.
-- Nunca se lee `value` ni ningún contenido escrito.
-- Los eventos de formulario nunca leen `value` ni los datos del evento `input` (`data`, `inputType`).
-- `text` también es `null` en los elementos con rol de cuadro de texto (`textbox`, `searchbox`, `combobox`, `spinbutton`) y en los que contienen un `textarea` (su contenido inicial puede ser texto ya escrito).
-- De una selección solo se guarda su longitud, y no se guarda la hecha dentro de campos.
+**Regla:** nunca se guarda lo que el participante escribe, ni nada de los campos de contraseña. La captura no lee `value` ni los datos del evento `input` (`data`, `inputType`), y solo registra que un campo cambió y cuál es.
+
+**Qué se guarda de cada evento y qué se descarta:**
+
+| Dato | Regla |
+|---|---|
+| `text` del descriptor | Solo en elementos **interactivos** (botones, enlaces, pestañas…). En contenedores, párrafos, títulos y mensajes es `null`: podrían repetir lo que el participante escribió (un mensaje enviado, una vista previa) o mostrar datos personales, y los pasos de una tarea son solo clics en interactivos |
+| `text` en campos | `null` en `input`, `textarea` y `select` (incluidas las contraseñas), en zonas `contenteditable`, en cuadros de texto personalizados (rol `textbox`, `searchbox`, `combobox` o `spinbutton`) y en todo elemento que esté dentro de uno, que contenga uno o contenga un `textarea` (su contenido inicial puede ser texto ya escrito) |
+| `selection` | Solo la longitud. No se registra si la selección empieza o termina en un campo, una zona editable o un cuadro de texto personalizado |
+| `screen.url` | Se quitan usuario y clave de la dirección y se reemplaza por `redacted` el valor de los parámetros sensibles, tanto en la búsqueda (`?q=…`) como en el fragmento (`#access_token=…`, `#/buscar?q=…`): `q`, `query`, `search`, `s`, `keyword`, `keywords`, `term`, `email`, `user`, `username`, `token`, `access_token`, `id_token`, `refresh_token`, `key`, `api_key`, `apikey`, `password`, `pass`, `pwd`, `auth`, `session`, `sid`, `code` y `otp`. El resto se conserva (`?view=cart&id=1`, `#/ruta`), porque muchas aplicaciones identifican la pantalla con ellos. Esto aplica a todos los registros, no solo a `screen_change`; un cambio solo en un parámetro redactado sigue registrándose como cambio de pantalla |
+| Mirada y rostro | No son de este módulo |
+
+**Límites conocidos (no se pueden resolver desde la captura):**
+
+- El **título** del documento (`screen.title`) no se limpia: un buscador que lo escriba con lo buscado ("Resultados de audífonos") lo dejaría en la base.
+- El `text` de un elemento **interactivo** que repita lo escrito (un botón que muestra tu último mensaje) se guarda tal cual, recortado a 50 caracteres.
+- El `id` y el `selector` se toman de la página tal como están.
+- Una página con un campo que dibuja lo escrito con `div` sin rol de cuadro de texto ni `contenteditable` (algunos editores de código) no se puede distinguir de contenido normal; su texto solo se guardaría si el elemento clicado es interactivo.
+- Los *iframes* no se capturan.
+
+**Cómo se comprueba:** las pruebas cargan valores "canario" en todo tipo de campo, disparan cada tipo de evento sobre cada uno y fallan si el canario aparece en cualquier parte de un registro; los campos y los eventos de prueba lanzan un error si el código lee `value`, `data` o `inputType`. Además se rompió cada regla a propósito para confirmar que alguna prueba lo detecta. La revisión manual busca lo escrito en toda la base (`data/suca.db`).
 
 ## Cómo se prueba
 
