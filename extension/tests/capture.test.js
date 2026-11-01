@@ -62,10 +62,12 @@ class FakeElement {
     return null;
   }
 
+  /** Solo entiende los dos selectores que usa la captura: zonas editables y `textarea`. */
   querySelector(selector) {
-    assert.equal(selector, EDITABLE);
+    const matchers = { [EDITABLE]: (node) => node.isEditable(), textarea: (node) => node.tagName === 'TEXTAREA' };
+    assert.ok(selector in matchers, `unexpected selector ${selector}`);
     for (const child of this.children) {
-      if (child.isEditable()) {
+      if (matchers[selector](child)) {
         return child;
       }
       const found = child.querySelector(selector);
@@ -319,7 +321,9 @@ test('records element null when the target is not an element', () => {
 
 test('listens in the capture phase and stop removes every listener', () => {
   const { document, added, click } = startCapture();
-  assert.deepEqual(document.listenerTypes(), ['click', 'contextmenu', 'dblclick', 'mousemove', 'scroll', 'selectionchange']);
+  assert.deepEqual(document.listenerTypes(), [
+    'click', 'contextmenu', 'dblclick', 'focusin', 'focusout', 'input', 'mousemove', 'scroll', 'selectionchange', 'submit',
+  ]);
 
   registered.stop();
 
@@ -618,4 +622,121 @@ test('stop cancels a pending selection', async () => {
   assert.equal(timers.pending(), 0);
   await timers.advance(500);
   assert.equal(added.length, 0);
+});
+
+/** Campo falso que lanza un error si alguien intenta leer lo que contiene. */
+function secretField(tag, attributes = {}) {
+  const field = el(tag, attributes);
+  Object.defineProperty(field, 'value', {
+    get() {
+      throw new Error('the value of a field must never be read');
+    },
+  });
+  return field;
+}
+
+/** Evento de campo cuyos datos de entrada lanzan un error si se leen. */
+function guardedEvent(type, target) {
+  const event = { type, target };
+  for (const name of ['data', 'inputType', 'value']) {
+    Object.defineProperty(event, name, {
+      get() {
+        throw new Error(`event.${name} must never be read`);
+      },
+    });
+  }
+  return event;
+}
+
+test('records focus_in and focus_out only for form fields, describing the field itself', () => {
+  const { document, added } = startCapture();
+  const name = el('input', { id: 'name', type: 'text' });
+  const editor = el('div', { contenteditable: 'true' });
+  // Un campo dentro de un enlace: se describe el campo, no el interactivo más cercano.
+  el('a', { href: '/x' }, { children: [editor] });
+
+  document.dispatch({ type: 'focusin', target: name });
+  document.dispatch({ type: 'focusout', target: name });
+  document.dispatch({ type: 'focusin', target: editor });
+  document.dispatch({ type: 'focusin', target: el('button') });
+  document.dispatch({ type: 'focusin', target: el('input', { type: 'hidden' }) });
+  document.dispatch({ type: 'focusin', target: { nodeType: 9 } });
+  registered.stop();
+
+  assert.deepEqual(added.map((entry) => entry.record.type), ['focus_in', 'focus_out', 'focus_in']);
+  assert.equal(added[0].record.element.id, 'name');
+  assert.equal(added[0].record.element.text, null);
+  assert.deepEqual(added[0].record.data, {});
+  assert.equal(added[2].record.element.tag, 'div');
+});
+
+test('never reads or records what the participant typed in any kind of field', () => {
+  const fields = [
+    secretField('input', { type: 'text' }),
+    secretField('input', { type: 'password', id: 'password' }),
+    secretField('textarea'),
+    secretField('select'),
+    secretField('div', { contenteditable: 'true' }),
+  ];
+  const { document, added } = startCapture(undefined, { fakeClock: true });
+
+  for (const field of fields) {
+    document.dispatch(guardedEvent('focusin', field));
+    document.dispatch(guardedEvent('input', field));
+    document.dispatch(guardedEvent('focusout', field));
+  }
+  registered.stop();
+
+  assert.equal(added.length, 15);
+  assert.deepEqual(
+    [...new Set(added.map((entry) => entry.record.type))].sort(),
+    ['field_change', 'focus_in', 'focus_out'],
+  );
+  for (const { record } of added) {
+    assert.equal(record.element.text, null);
+    assert.deepEqual(record.data, {});
+  }
+});
+
+test('records at most one field_change per second for each field', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  const name = el('input', { id: 'name' });
+  const email = el('input', { id: 'email' });
+  const changes = () => added.filter((entry) => entry.record.type === 'field_change');
+
+  document.dispatch({ type: 'input', target: name });
+  await timers.advance(300);
+  document.dispatch({ type: 'input', target: name });
+  document.dispatch({ type: 'input', target: email });
+  assert.deepEqual(changes().map((entry) => entry.record.element.id), ['name', 'email']);
+
+  await timers.advance(699);
+  document.dispatch({ type: 'input', target: name });
+  assert.equal(changes().length, 2);
+  await timers.advance(1);
+  document.dispatch({ type: 'input', target: name });
+  registered.stop();
+
+  assert.equal(changes().length, 3);
+  assert.equal(changes()[2].record.element.id, 'name');
+});
+
+test('records form_submit with the form as the element and no text from textareas', () => {
+  const { document, added } = startCapture({ task_id: 2 });
+  const plain = el('form', { id: 'signup-form' }, { text: 'Registro' });
+  const withTextarea = el('form', { id: 'comment-form' }, { children: [el('textarea', {}, { text: 'borrador guardado' })] });
+
+  document.dispatch({ type: 'submit', target: plain });
+  document.dispatch({ type: 'submit', target: withTextarea });
+  document.dispatch({ type: 'submit', target: { nodeType: 9 } });
+  registered.stop();
+
+  assert.equal(added.length, 2);
+  assert.deepEqual(added.map((entry) => entry.record.type), ['form_submit', 'form_submit']);
+  assert.equal(added[0].record.element.tag, 'form');
+  assert.equal(added[0].record.element.role, 'form');
+  assert.equal(added[0].record.element.text, 'Registro');
+  assert.equal(added[1].record.element.text, null);
+  assert.equal(added[0].record.task_id, 2);
+  assert.deepEqual(added[0].record.data, {});
 });

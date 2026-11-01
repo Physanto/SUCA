@@ -5,8 +5,9 @@
  *
  * Por ahora registra los clics (`click`, `dblclick` y `contextmenu`) con el
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
- * con una frecuencia máxima configurable, y la longitud (nunca el contenido) del
- * texto seleccionado. Los demás tipos de evento se agregan
+ * con una frecuencia máxima configurable, la longitud (nunca el contenido) del
+ * texto seleccionado y los eventos de formulario (foco, cambio de campo y
+ * envío, sin valores). Los demás tipos de evento se agregan
  * en las siguientes tareas de M1.
  *
  * Mensajes:
@@ -29,6 +30,10 @@
   const TEXT_MAX_LENGTH = 50;
   /** Espera, en milisegundos, a que termine de seleccionar antes de registrar la selección. */
   const SELECTION_WAIT_MS = 300;
+  /** Tiempo mínimo, en milisegundos, entre dos `field_change` del mismo campo. */
+  const FIELD_CHANGE_INTERVAL_MS = 1000;
+  /** Eventos de foco del navegador y el tipo de evento que se registra por cada uno. */
+  const FOCUS_TYPES = { focusin: 'focus_in', focusout: 'focus_out' };
   /** Eventos de clic que se registran, todos con el mismo formato. */
   const CLICK_TYPES = ['click', 'dblclick', 'contextmenu'];
   /** Campos de formulario: su texto nunca se registra. */
@@ -133,11 +138,18 @@
   }
 
   /**
-   * Texto visible recortado, o `null`. Nunca se toma de campos ni de zonas
-   * editables, porque contendría lo que escribe el participante.
+   * Texto visible recortado, o `null`. Nunca se toma de campos, de zonas
+   * editables ni de elementos que contienen un `textarea` (su contenido inicial
+   * puede ser texto que el participante ya había escrito), porque contendría lo
+   * que escribe el participante.
    */
   function textOf(element, tag) {
-    if (FIELD_TAGS.includes(tag) || element.closest(EDITABLE_SELECTOR) || element.querySelector(EDITABLE_SELECTOR)) {
+    if (
+      FIELD_TAGS.includes(tag) ||
+      element.closest(EDITABLE_SELECTOR) ||
+      element.querySelector(EDITABLE_SELECTOR) ||
+      element.querySelector('textarea')
+    ) {
       return null;
     }
     const text = (element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim();
@@ -169,13 +181,15 @@
    * Describe un elemento con la forma de `contracts/element.schema.json`.
    *
    * Si el elemento está dentro de uno interactivo (por ejemplo, un `span` dentro
-   * de un botón), describe al interactivo más cercano.
+   * de un botón), describe al interactivo más cercano, salvo que `exact` sea
+   * verdadero: los eventos de formulario describen el campo o formulario mismo.
    *
    * @param {Element} target - Elemento sobre el que ocurrió el evento.
+   * @param {boolean} [exact=false] - Describir `target` y no el interactivo más cercano.
    * @returns {object} Descriptor del elemento.
    */
-  function describe(target) {
-    const element = nearestInteractive(target);
+  function describe(target, exact = false) {
+    const element = exact ? target : nearestInteractive(target);
     const tag = element.tagName.toLowerCase();
     const box = element.getBoundingClientRect();
     return {
@@ -340,6 +354,52 @@
     }
   }
 
+  /** Si el elemento es un campo donde el participante escribe o elige (no un campo oculto). */
+  function isFormField(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'input') {
+      return (element.getAttribute('type') || 'text').toLowerCase() !== 'hidden';
+    }
+    const editable = element.hasAttribute('contenteditable') && element.getAttribute('contenteditable') !== 'false';
+    return tag === 'textarea' || tag === 'select' || editable;
+  }
+
+  /** Último `field_change` registrado de cada campo, para limitarlos a uno por segundo. */
+  let lastChanges = new WeakMap();
+
+  /** Registra que un campo ganó o perdió el foco. Solo el campo, nunca su valor. */
+  function onFocus(event) {
+    const target = event.target;
+    if (target instanceof Element && isFormField(target)) {
+      record(ctx.clock.now(), FOCUS_TYPES[event.type], { element: describe(target, true), data: {} });
+    }
+  }
+
+  /**
+   * Registra que un campo cambió: solo que hubo un cambio y en qué campo. No se lee
+   * `value` ni nada del evento (`data`, `inputType`), porque contendría lo escrito.
+   */
+  function onInput(event) {
+    const target = event.target;
+    if (!(target instanceof Element) || !isFormField(target)) {
+      return;
+    }
+    const now = ctx.clock.now();
+    const last = lastChanges.get(target);
+    if (last !== undefined && now - last < FIELD_CHANGE_INTERVAL_MS) {
+      return;
+    }
+    lastChanges.set(target, now);
+    record(now, 'field_change', { element: describe(target, true), data: {} });
+  }
+
+  /** Registra el envío de un formulario. El navegador solo lo avisa si pasó la validación. */
+  function onSubmit(event) {
+    if (event.target instanceof Element) {
+      record(ctx.clock.now(), 'form_submit', { element: describe(event.target, true), data: {} });
+    }
+  }
+
   /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
   const PASSIVE = { capture: true, passive: true };
 
@@ -387,6 +447,9 @@
       root.document.addEventListener('mousemove', onMouseMove, PASSIVE);
       root.document.addEventListener('scroll', onScroll, PASSIVE);
       root.document.addEventListener('selectionchange', onSelectionChange, true);
+      Object.keys(FOCUS_TYPES).forEach((type) => root.document.addEventListener(type, onFocus, true));
+      root.document.addEventListener('input', onInput, true);
+      root.document.addEventListener('submit', onSubmit, true);
     },
 
     /**
@@ -399,6 +462,10 @@
       root.document.removeEventListener('mousemove', onMouseMove, PASSIVE);
       root.document.removeEventListener('scroll', onScroll, PASSIVE);
       root.document.removeEventListener('selectionchange', onSelectionChange, true);
+      Object.keys(FOCUS_TYPES).forEach((type) => root.document.removeEventListener(type, onFocus, true));
+      root.document.removeEventListener('input', onInput, true);
+      root.document.removeEventListener('submit', onSubmit, true);
+      lastChanges = new WeakMap();
       if (timers) {
         timers.clearTimeout(selectionTimer);
       }
