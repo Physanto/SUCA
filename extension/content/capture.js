@@ -29,6 +29,11 @@
 
   /** Largo máximo del texto del descriptor. */
   const TEXT_MAX_LENGTH = 50;
+  /**
+   * Si el elemento tiene más texto que esto no se lee: no sirve como etiqueta, y leer
+   * `innerText` de un enlace que envuelve una página entera tardó más de 100 ms.
+   */
+  const TEXT_SCAN_MAX_LENGTH = 1000;
   /** Espera, en milisegundos, a que termine de seleccionar antes de registrar la selección. */
   const SELECTION_WAIT_MS = 300;
   /** Tiempo mínimo, en milisegundos, entre dos `field_change` del mismo campo. */
@@ -177,14 +182,25 @@
       !isInteractive(element) ||
       FIELD_TAGS.includes(tag) ||
       element.closest(EDITABLE_SELECTOR) ||
+      element.closest(TEXT_INPUT_SELECTOR)
+    ) {
+      return null;
+    }
+    // Antes de recorrer lo que contiene (cada `querySelector` recorre todo el subárbol), se
+    // descartan los elementos con demasiado texto. `textContent` no fuerza el cálculo de la
+    // página; `innerText` sí, y solo se lee si el texto es corto.
+    const raw = element.textContent || '';
+    if (raw.length > TEXT_SCAN_MAX_LENGTH) {
+      return null;
+    }
+    if (
       element.querySelector(EDITABLE_SELECTOR) ||
-      element.closest(TEXT_INPUT_SELECTOR) ||
       element.querySelector(TEXT_INPUT_SELECTOR) ||
       element.querySelector('textarea')
     ) {
       return null;
     }
-    const text = (element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = (element.innerText || raw).replace(/\s+/g, ' ').trim();
     return text === '' ? null : text.slice(0, TEXT_MAX_LENGTH);
   }
 

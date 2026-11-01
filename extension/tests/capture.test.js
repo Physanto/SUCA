@@ -1577,3 +1577,12 @@ test('empties the title when the url had to be redacted, and keeps it otherwise'
   assert.deepEqual(screens(added)[0], { url: 'https://shop.local/buscar?q=redacted', title: '' });
   assert.ok(!JSON.stringify(added).includes('CANARIO'));
 });
+
+test('does not read the text of an interactive element holding a huge amount of text', () => {
+  const huge = el('a', { href: '/x' }, { text: 'palabra '.repeat(200) });
+  const large = el('a', { href: '/x' }, { text: `Título ${'x'.repeat(980)}` });
+
+  assert.equal(describeByClick(huge).text, null);
+  assert.equal(describeByClick(large).text.length, 50);
+  assert.ok(describeByClick(large).text.startsWith('Título xxx'));
+});
