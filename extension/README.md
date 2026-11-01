@@ -223,4 +223,5 @@ Ejecuta `node --test` sobre `tests/*.test.js`:
 - `worker.test.js` carga `worker.js` entero, como lo haría Chrome, en un contexto aislado;
 - `modules.test.js` y `bootstrap.test.js` prueban el registro y el ciclo de vida de los módulos con la sesión;
 - `panel-controller.test.js` prueba la lógica del panel sin DOM;
-- `camera-math.test.js`, `camera-engine.test.js` y `camera-content.test.js` prueban la cámara: modelo de mirada, características de los ojos y del rostro, motor, registro en la pestaña, zonas y calibración.
+- `camera-math.test.js`, `camera-engine.test.js` y `camera-content.test.js` prueban la cámara: modelo de mirada, características de los ojos y del rostro, motor, registro en la pestaña, zonas y calibración;
+- `camera-records.js` no es una prueba de Node: genera registros de la cámara que `tests/contracts/test_camera_records.py` valida contra los contratos.

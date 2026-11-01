@@ -140,7 +140,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 
 ## Pruebas
 
-`npm test` incluye `camera-math.test.js` (modelo de mirada, ojos, rostro), `camera-engine.test.js` (motor con cuadros sintéticos) y `camera-content.test.js` (registro en la pestaña, zonas y calibración con una capa falsa).
+`npm test` incluye `camera-math.test.js` (modelo de mirada, ojos, rostro), `camera-engine.test.js` (motor con cuadros sintéticos) y `camera-content.test.js` (registro en la pestaña, zonas y calibración con una capa falsa). Además, `pytest` ejecuta `tests/contracts/test_camera_records.py`, que corre `extension/tests/camera-records.js` con Node y valida contra los contratos cada registro que produce la pestaña (`gaze`, `face`, `calibration` y `camera_gap`), incluso cuando el motor envía datos de más. La capa visual real (`createOverlay`) necesita un DOM: se revisa en la prueba manual.
 
 ### Prueba manual (con la cámara real)
 
@@ -158,4 +158,6 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 6. **Orientación:** gira la cabeza hacia tu derecha: `head_yaw` debe ser positivo. Mira hacia arriba: `head_pitch` debe ser positivo.
 7. **Navegación:** navega a otra página con recarga completa (no dentro de la aplicación de una sola página): debe quedar un `camera_gap` con `reason: navigation` y la mirada debe seguir sin calibrar de nuevo.
 8. **Sin video:** en DevTools de la pestaña evaluada → **Network**, durante la sesión no debe haber más que los mensajes de la extensión; en el servidor, los lotes `gaze` y `face` solo traen números.
-9. Cierra la sesión: el indicador de cámara de Chrome se apaga.
+9. **Capa de calibración:** durante una calibración, mueve el cursor, usa la rueda y las flechas: la página de abajo no se desplaza y en la base no quedan `mousemove` ni `scroll` de ese tiempo. Pide una calibración apenas empieza la sesión: la capa debe mostrar "Preparando la cámara…" y seguir sola cuando la cámara esté activa.
+10. **Motor reemplazado:** en `chrome://extensions` → **Inspeccionar vistas: camera/engine.html**, ejecuta `close()` en su consola; luego navega dentro de la app (o recarga) para que el worker lo cree de nuevo. Debe quedar un `camera_gap` con `reason: error` (si no hubo recarga completa) y la mirada debe pasar a `valid: false` hasta calibrar otra vez.
+11. Cierra la sesión: el indicador de cámara de Chrome se apaga.
