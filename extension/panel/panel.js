@@ -114,6 +114,19 @@
     byId('active-capture').textContent = capture.join(' ');
   }
 
+  /** Muestra el tiempo transcurrido de la sesión libre. */
+  function renderElapsed(state) {
+    const visible = state.session !== null && state.session.mode === 'free';
+    byId('elapsed-label').hidden = !visible;
+    byId('active-elapsed').hidden = !visible;
+    if (visible) {
+      byId('active-elapsed').textContent =
+        state.startedAt === null
+          ? strings.elapsedUnknown
+          : strings.elapsedTime(UX.clock.now() - state.startedAt);
+    }
+  }
+
   /** Muestra el estado de la cámara y los botones y resultados de la calibración. */
   function renderCamera(state) {
     const status = state.camera === null ? 'unknown' : state.camera;
@@ -186,6 +199,7 @@
     byId('start-fields').disabled = phase === 'starting' || state.studies.length === 0;
     byId('close').disabled = phase === 'closing';
     renderActive(state);
+    renderElapsed(state);
     renderCamera(state);
     renderGuided(state);
     renderMessage(state);
@@ -231,6 +245,9 @@
   byId('task-start').addEventListener('click', () => controller.startTask());
   byId('task-done').addEventListener('click', () => controller.endTask('done'));
   byId('task-gave-up').addEventListener('click', () => controller.endTask('gave_up'));
+
+  // El tiempo transcurrido avanza solo, sin esperar a un cambio de estado.
+  setInterval(() => renderElapsed(controller.getState()), 1000);
 
   controller.init();
 })(globalThis);

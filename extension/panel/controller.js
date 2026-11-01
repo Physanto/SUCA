@@ -12,6 +12,8 @@
  *   pestaña no respondió) o `unknown` (el panel se abrió con la sesión en curso);
  * - `failedModules`: módulos que no arrancaron en la pestaña;
  * - `error`: `{ code, fields, detail }` o `null`; `notice`: `{ code, session_id }` o `null`;
+ * - `startedAt`: marca de tiempo del inicio de la sesión según el reloj común, o `null` si
+ *   se desconoce (el panel se abrió con la sesión en curso: el estado de la sesión no la guarda);
  * - `guided`: solo en modo guiado, `null` en los demás. Tiene `loaded` (si ya
  *   llegaron las tareas), `tasks` (las del estudio, en orden), `index` (posición
  *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas) y
@@ -116,6 +118,7 @@
       failedModules: [],
       error: null,
       notice: null,
+      startedAt: null,
       guided: null,
       camera: null,
       calibration: NO_CALIBRATION,
@@ -136,6 +139,7 @@
       tab: null,
       tabStatus: null,
       failedModules: [],
+      startedAt: null,
       guided: null,
       camera: null,
       calibration: NO_CALIBRATION,
@@ -349,6 +353,7 @@
             phase: PHASES.ACTIVE,
             session: session.get(),
             tab: { title: tab.title, url: tab.url },
+            startedAt: clock.now(),
           });
           await announce(session.get());
           await loadTasks();

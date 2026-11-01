@@ -54,6 +54,16 @@
     },
     failedModules: (names) => `No arrancaron: ${names.join(', ')}. Revisa la consola de la pestaña.`,
     closeButton: 'Cerrar sesión',
+    elapsedLabel: 'Tiempo',
+    elapsedUnknown: '—',
+    /** Tiempo transcurrido como `mm:ss`, o `h:mm:ss` desde la primera hora. */
+    elapsedTime: (ms) => {
+      const total = Math.max(Math.floor(ms / 1000), 0);
+      const two = (value) => String(value).padStart(2, '0');
+      const hours = Math.floor(total / 3600);
+      const rest = `${two(Math.floor((total % 3600) / 60))}:${two(total % 60)}`;
+      return hours > 0 ? `${hours}:${rest}` : rest;
+    },
 
     // Cámara y calibración.
     cameraTitle: 'Cámara y calibración',

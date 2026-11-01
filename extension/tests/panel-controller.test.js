@@ -11,6 +11,7 @@ require('../common/messages.js');
 require('../common/session.js');
 require('../common/api.js');
 require('../panel/controller.js');
+require('../panel/strings.js');
 const { createFakeWorld, settle } = require('./fakes.js');
 
 const { UX } = globalThis;
@@ -669,4 +670,59 @@ test('ignores camera messages that arrive while there is no session', async () =
   handlers.get(types.CAMERA_STATUS)({ status: 'active' });
 
   assert.equal(controller.getState().camera, null);
+});
+
+test('the free session remembers when it started, and forgets it on close', async () => {
+  const { controller, clock } = setup();
+  await controller.init();
+  assert.equal(controller.getState().startedAt, null);
+  clock.time = 1791380100000;
+
+  await controller.startSession(FORM);
+  assert.equal(controller.getState().startedAt, 1791380100000);
+
+  await controller.closeSession();
+  assert.equal(controller.getState().startedAt, null);
+});
+
+test('does not know when a session started if the panel opens during it', async () => {
+  const { controller, world } = setup();
+  world.areas.session.set('session', {
+    session_id: 12,
+    mode: 'free',
+    study_id: 1,
+    tab_id: 42,
+    task_id: null,
+  });
+
+  await controller.init();
+
+  assert.equal(controller.getState().phase, 'active');
+  assert.equal(controller.getState().startedAt, null);
+});
+
+test('what the panel still holds is sent before the session is closed', async () => {
+  const { controller, calls } = await startGuided();
+  await controller.startTask();
+  calls.length = 0;
+  await controller.endTask('done');
+
+  await controller.closeSession();
+
+  assert.deepEqual(
+    calls.map((call) => (typeof call === 'string' ? call : call.add || call.send)),
+    ['tasks', 'flush', 'session.closed'],
+  );
+});
+
+test('formats the elapsed time as mm:ss and h:mm:ss', () => {
+  const { elapsedTime } = UX.strings;
+
+  assert.equal(elapsedTime(0), '00:00');
+  assert.equal(elapsedTime(999), '00:00');
+  assert.equal(elapsedTime(65000), '01:05');
+  assert.equal(elapsedTime(59 * 60000 + 59999), '59:59');
+  assert.equal(elapsedTime(3600000), '1:00:00');
+  assert.equal(elapsedTime(3723000), '1:02:03');
+  assert.equal(elapsedTime(-500), '00:00');
 });
