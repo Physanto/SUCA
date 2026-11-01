@@ -12,6 +12,7 @@ const { createFakeTimers, createFakeWorld, settle } = require('./fakes.js');
 const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
 const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
 const TEXT_INPUT = TEXT_INPUT_ROLES.map((role) => `[role="${role}"]`).join(',');
+const LISTBOX = '[role="listbox"]';
 
 /** Elemento falso con lo justo que usa la captura: árbol, atributos, texto y caja. */
 class FakeElement {
@@ -65,9 +66,20 @@ class FakeElement {
       [EDITABLE]: (node) => node.isEditable(),
       [TEXT_INPUT]: (node) => TEXT_INPUT_ROLES.includes(node.getAttribute('role')),
       textarea: (node) => node.tagName === 'TEXTAREA',
+      [LISTBOX]: (node) => node.getAttribute('role') === 'listbox',
     };
     assert.ok(selector in matchers, `unexpected selector ${selector}`);
     return matchers[selector](this);
+  }
+
+  /** Si `node` es este elemento o está dentro de él. */
+  contains(node) {
+    for (let current = node; current; current = current.parentElement) {
+      if (current === this) {
+        return true;
+      }
+    }
+    return false;
   }
 
   closest(selector) {
@@ -101,11 +113,40 @@ function createFakeDocument() {
   const listeners = new Map();
   const passive = new Map();
   const ids = {};
+  const registered = [];
+  const tokens = (element, attribute) => (element.getAttribute(attribute) || '').split(/\s+/).filter(Boolean);
+  /** Solo entiende las consultas que usa la captura para reconocer listas de sugerencias. */
+  const queryAll = (selector) => {
+    let match = /^\[aria-controls~="(.+)"\], \[aria-owns~="(.+)"\]$/.exec(selector);
+    if (match) {
+      assert.equal(match[1], match[2]);
+      return registered.filter((node) => tokens(node, 'aria-controls').includes(match[1]) || tokens(node, 'aria-owns').includes(match[1]));
+    }
+    if (selector === '[aria-activedescendant]') {
+      return registered.filter((node) => node.hasAttribute('aria-activedescendant'));
+    }
+    match = /^\[aria-labelledby~="(.+)"\]$/.exec(selector);
+    assert.ok(match, `unexpected document query ${selector}`);
+    return registered.filter((node) => tokens(node, 'aria-labelledby').includes(match[1]));
+  };
   return {
     title: 'Carrito',
     activeElement: null,
     ids,
+    /** Registra un árbol de elementos como si estuviera en la página. */
+    add(...trees) {
+      const visit = (node) => {
+        registered.push(node);
+        if (node.id) {
+          ids[node.id] = ids[node.id] || node;
+        }
+        node.children.forEach(visit);
+      };
+      trees.forEach(visit);
+    },
     getElementById: (id) => ids[id] || null,
+    querySelector: (selector) => queryAll(selector)[0] || null,
+    querySelectorAll: (selector) => queryAll(selector),
     documentElement: { tagName: 'HTML' },
     addEventListener(type, listener, options) {
       const capture = typeof options === 'object' ? options.capture : options;
@@ -1488,13 +1529,23 @@ function privacyFixture(canary) {
   const label = el('label', {}, { text: `${canary} etiqueta`, children: [guard(el('input', { type: 'text', id: 'wrapped' }))] });
   const preview = el('div', { id: 'preview' }, { text: `${canary} vista previa` });
   const form = el('form', { id: 'f' }, { text: canary, children: [plain, password, area, select, editable, hidden, label, textbox] });
-  return { form, fields: [plain, password, area, select, editable, hidden, label.children[0], textbox], extras: [preview, form, label] };
+  // Autocompletado: la sugerencia repite lo escrito y la lista está fuera del campo (ARIA 1.2).
+  const search = el('input', { type: 'search', id: 'buscador', role: 'combobox', 'aria-controls': 'sugerencias' });
+  const suggestion = el('li', { role: 'option', id: 'sugerencia-1' }, { text: `${canary} sugerencia` });
+  const list = el('ul', { role: 'listbox', id: 'sugerencias' }, { children: [suggestion] });
+  return {
+    form,
+    fields: [plain, password, area, select, editable, hidden, label.children[0], textbox, search],
+    extras: [preview, form, label, suggestion],
+    page: [form, search, list],
+  };
 }
 
 test('no event type ever lets a typed value reach a record, whatever the field', async () => {
   const canary = 'CANARIO-ESCRITO-731';
-  const { form, fields, extras } = privacyFixture(canary);
+  const { form, fields, extras, page } = privacyFixture(canary);
   const { document, added, initial, click, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+  document.add(...page);
   globalThis.location.href = `https://shop.local/buscar?q=${canary}&view=cart#access_token=${canary}`;
 
   for (const field of [...fields, ...extras]) {
@@ -1686,4 +1737,93 @@ test('the title wait applies to popstate and redacts the address like any other 
 
   assert.deepEqual(screens(added), [{ url: 'https://shop.local/buscar?q=redacted', title: '' }]);
   assert.ok(!JSON.stringify(added).includes('CANARIO'));
+});
+
+/** Un buscador con su lista de sugerencias; `link` dice cómo se enlazan. */
+function suggestionsPage(document, link, { optionText = 'zapatos deportivos' } = {}) {
+  const option = el('li', { role: 'option', id: 'op-1' }, { text: optionText });
+  const other = el('li', { role: 'option', id: 'op-2' }, { text: 'zapatillas' });
+  const list = el('ul', { role: 'listbox', id: 'sugerencias' }, { children: [option, other] });
+  const attributes = { type: 'search', id: 'q' };
+  if (link === 'controls') {
+    attributes['aria-controls'] = 'sugerencias';
+  } else if (link === 'owns') {
+    attributes['aria-owns'] = 'sugerencias';
+  } else if (link === 'owns-among-others') {
+    attributes['aria-owns'] = 'otra-lista sugerencias tercera';
+  } else if (link === 'active') {
+    attributes['aria-activedescendant'] = 'op-1';
+  }
+  const input = el('input', attributes);
+  document.add(input, list);
+  return { input, list, option, other };
+}
+
+test('records no text for a suggestion of a list that a field controls or owns by id', () => {
+  for (const link of ['controls', 'owns', 'owns-among-others']) {
+    const { document, added, click } = startCapture();
+    const { option, other } = suggestionsPage(document, link);
+
+    click(option);
+    click(other);
+    registered.stop();
+
+    const clicks = added.filter((entry) => entry.record.type === 'click').map((entry) => entry.record.element);
+    assert.deepEqual(clicks.map((element) => [element.role, element.interactive, element.text]), [['option', true, null], ['option', true, null]], link);
+    assert.ok(!JSON.stringify(added).includes('zapat'), link);
+  }
+});
+
+test('records no text for the suggestions when a field names one of them as its active descendant', () => {
+  const { document, added, click } = startCapture();
+  const { option, other, list } = suggestionsPage(document, 'active');
+
+  click(other);
+  registered.stop();
+
+  assert.equal(added[0].record.element.text, null);
+  assert.ok(list.contains(option));
+});
+
+test('records no text for suggestions that share their label with a text field, even when several lists repeat one id', () => {
+  const { document, added, click } = startCapture();
+  const field = el('input', { type: 'text', id: 'docsearch-input', 'aria-labelledby': 'docsearch-label', 'aria-controls': 'no-existe-1 no-existe-2' });
+  const lists = [0, 1, 2].map((group) =>
+    el('ul', { role: 'listbox', id: 'docsearch-list', 'aria-labelledby': 'docsearch-label' }, {
+      children: [el('li', { role: 'option', id: `docsearch-hits${group}-item-0` }, { text: `useState ${group}` })],
+    }),
+  );
+  document.add(el('label', { id: 'docsearch-label' }), field, ...lists);
+
+  lists.forEach((list) => click(list.children[0]));
+  registered.stop();
+
+  assert.deepEqual(added.map((entry) => entry.record.element.text), [null, null, null]);
+});
+
+test('keeps the text of the options of a list that no field controls, describes or labels', () => {
+  const { document, added, click } = startCapture();
+  const colombia = el('li', { role: 'option', id: 'co' }, { text: 'Colombia' });
+  const countries = el('ul', { role: 'listbox', id: 'paises', 'aria-labelledby': 'pais-etiqueta' }, { children: [colombia, el('li', { role: 'option' }, { text: 'México' })] });
+  // Elementos que NO convierten la lista en sugerencias: otra lista, un campo ajeno, y no de texto con la misma etiqueta.
+  const unrelated = el('input', { type: 'text', id: 'otro', 'aria-controls': 'otra-lista', 'aria-owns': 'tercera', 'aria-activedescendant': 'en-otra-parte' });
+  const checkbox = el('input', { type: 'checkbox', id: 'acepto', 'aria-labelledby': 'pais-etiqueta' });
+  const elsewhere = el('li', { role: 'option', id: 'en-otra-parte' }, { text: 'Otra cosa' });
+  document.add(el('span', { id: 'pais-etiqueta' }), countries, unrelated, checkbox, el('ul', { role: 'listbox', id: 'otra-lista' }, { children: [elsewhere] }));
+
+  click(colombia);
+  registered.stop();
+
+  assert.equal(added[0].record.element.text, 'Colombia');
+});
+
+test('keeps the text of an option when the list has no id and nothing points to it', () => {
+  const { document, added, click } = startCapture();
+  const option = el('li', { role: 'option' }, { text: 'Rojo' });
+  document.add(el('ul', { role: 'listbox' }, { children: [option] }));
+
+  click(option);
+  registered.stop();
+
+  assert.equal(added[0].record.element.text, 'Rojo');
 });
