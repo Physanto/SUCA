@@ -7,8 +7,8 @@
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
  * con una frecuencia máxima configurable, la longitud (nunca el contenido) del
  * texto seleccionado y los eventos de formulario (foco, cambio de campo y
- * envío, sin valores) y los errores de validación. Los demás tipos de evento se
- * agregan en las siguientes tareas de M1.
+ * envío, sin valores), los errores de validación y la respuesta de la página tras un
+ * clic. Los demás tipos de evento se agregan en las siguientes tareas de M1.
  *
  * Mensajes:
  * - Envía: lotes `events` con `ctx.batcher.add('events', registro)`; el
@@ -223,23 +223,103 @@
     });
   }
 
-  /** Registra un clic, doble clic o clic derecho con sus coordenadas y el elemento. */
+  /**
+   * Registra un clic, doble clic o clic derecho con sus coordenadas y el elemento.
+   * Después de un clic simple se vigila si la página responde.
+   */
   function onClick(event) {
     const target = event.target instanceof Element ? event.target : null;
-    record(ctx.clock.now(), event.type, {
+    const t = ctx.clock.now();
+    record(t, event.type, {
       x: event.clientX,
       y: event.clientY,
       element: target ? describe(target) : null,
       data: {},
     });
+    if (event.type === 'click') {
+      watchResponse(t);
+    }
+  }
+
+  /** Valida que un valor de configuración de la captura sea un número positivo. */
+  function requirePositive(value, key) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`config capture.${key} must be a positive number`);
+    }
+    return value;
   }
 
   /** Intervalo mínimo, en milisegundos, de una frecuencia máxima en Hz. */
   function intervalOf(hz, key) {
-    if (typeof hz !== 'number' || !Number.isFinite(hz) || hz <= 0) {
-      throw new Error(`config capture.${key} must be a positive number`);
+    return 1000 / requirePositive(hz, key);
+  }
+
+  /** Espera, en milisegundos, para ver si la página responde a un clic (de la configuración). */
+  let responseWaitMs = 0;
+  /** Vigilancias de respuesta en curso, una por clic. */
+  let pendingResponses = new Set();
+
+  /**
+   * Vigila si la página responde a un clic. Un `MutationObserver` propio del clic
+   * cuenta los cambios del documento durante `responseWaitMs`. Si hubo cambios o
+   * navegación se registra un `click_response` unido al clic por `click_t`; si no
+   * hubo nada no se registra nada, y el análisis toma ese clic como un clic muerto.
+   * El observador se crea antes de que el código del sitio atienda el clic, porque
+   * este oyente corre primero (fase de captura).
+   *
+   * @param {number} clickT - Momento del clic, tal como quedó en su registro.
+   * @returns {void}
+   */
+  function watchResponse(clickT) {
+    const urlAtClick = root.location.href;
+    let mutationCount = 0;
+    const observer = new root.MutationObserver((records) => {
+      mutationCount += records.length;
+    });
+    observer.observe(root.document.documentElement, {
+      childList: true,
+      attributes: true,
+      characterData: true,
+      subtree: true,
+    });
+    const watch = {
+      timer: null,
+      /** Termina la espera y registra la respuesta si la hubo; `unloading` si la página se descarga. */
+      finish(unloading) {
+        timers.clearTimeout(watch.timer);
+        pendingResponses.delete(watch);
+        // Cambios detectados pero que el observador aún no había entregado.
+        mutationCount += observer.takeRecords().length;
+        observer.disconnect();
+        // Una aplicación de una sola página navega sin descargar la página: cambia la URL.
+        const navigated = unloading || root.location.href !== urlAtClick;
+        if (mutationCount > 0 || navigated) {
+          record(ctx.clock.now(), 'click_response', {
+            data: { click_t: clickT, mutation_count: mutationCount, navigated },
+          });
+        }
+      },
+      /** Abandona la vigilancia sin registrar nada. */
+      cancel() {
+        timers.clearTimeout(watch.timer);
+        observer.disconnect();
+      },
+    };
+    watch.timer = timers.setTimeout(() => watch.finish(false), responseWaitMs);
+    pendingResponses.add(watch);
+  }
+
+  /**
+   * Si la página se descarga durante una espera, la respuesta es una navegación:
+   * se registra ya y se pide vaciar el acumulador, porque el acumulador ya vació
+   * lo suyo al recibir este mismo aviso, antes que nosotros.
+   */
+  function onPageHide() {
+    const waiting = [...pendingResponses];
+    waiting.forEach((watch) => watch.finish(true));
+    if (waiting.length > 0) {
+      Promise.resolve(ctx.batcher.flush()).catch(() => {});
     }
-    return 1000 / hz;
   }
 
   /**
@@ -534,6 +614,7 @@
       // Se valida antes de escuchar nada: si falla, no queda nada a medias.
       const mouseInterval = intervalOf(mouseHz, 'mousemove_hz');
       const scrollInterval = intervalOf(scrollHz, 'scroll_hz');
+      const responseWait = requirePositive(context.config.capture.click_response_wait_ms, 'click_response_wait_ms');
       const errorTypes = context.contracts.enums.validation_error_type;
       for (const needed of [ARIA_INVALID, VISIBLE_MESSAGE]) {
         if (!errorTypes.includes(needed)) {
@@ -544,6 +625,7 @@
         .filter((type) => type !== ARIA_INVALID && type !== VISIBLE_MESSAGE)
         .map((type) => [flagOf(type), type]);
       ctx = context;
+      responseWaitMs = responseWait;
       // Se toman ahora y no al usarlos, para poder probarlos con temporizadores falsos.
       // `bind` es necesario: en el navegador, llamarlos desde otro objeto da "Illegal invocation".
       timers = {
@@ -574,6 +656,7 @@
       root.document.addEventListener('input', onInput, true);
       root.document.addEventListener('submit', onSubmit, true);
       root.document.addEventListener('invalid', onInvalid, true);
+      root.addEventListener('pagehide', onPageHide);
       // Solo se observa un atributo, para que el costo en páginas con muchos cambios sea mínimo.
       ariaObserver = new root.MutationObserver(onAriaMutations);
       ariaObserver.observe(root.document.documentElement, {
@@ -597,6 +680,9 @@
       root.document.removeEventListener('input', onInput, true);
       root.document.removeEventListener('submit', onSubmit, true);
       root.document.removeEventListener('invalid', onInvalid, true);
+      root.removeEventListener('pagehide', onPageHide);
+      pendingResponses.forEach((watch) => watch.cancel());
+      pendingResponses = new Set();
       if (ariaObserver) {
         ariaObserver.disconnect();
       }

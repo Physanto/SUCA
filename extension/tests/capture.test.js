@@ -145,6 +145,18 @@ class FakeMutationObserver {
   disconnect() {
     this.connected = false;
   }
+
+  /** Cambios que el navegador aún no había entregado (la prueba los pone en `queued`). */
+  takeRecords() {
+    const queued = this.queued || [];
+    this.queued = [];
+    return queued;
+  }
+
+  /** Entrega `count` cambios a la función del módulo, como haría el navegador. */
+  emit(count) {
+    this.callback(Array.from({ length: count }, () => ({})));
+  }
 }
 FakeMutationObserver.instances = [];
 globalThis.MutationObserver = FakeMutationObserver;
@@ -169,8 +181,17 @@ const CAPTURE_CONFIG = { mousemove_hz: 50, scroll_hz: 10, click_response_wait_ms
 function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeClock = false } = {}) {
   const document = createFakeDocument();
   globalThis.document = document;
+  globalThis.location = { href: 'https://shop.local/cart' };
+  const pageListeners = new Map();
+  globalThis.addEventListener = (type, listener) => pageListeners.set(type, listener);
+  globalThis.removeEventListener = (type, listener) => {
+    if (pageListeners.get(type) === listener) {
+      pageListeners.delete(type);
+    }
+  };
   const timers = createFakeTimers();
   const added = [];
+  const flushes = [];
   FakeMutationObserver.instances = [];
   const real = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
   globalThis.setTimeout = timers.setTimeout;
@@ -180,7 +201,10 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
       clock: { now: fakeClock ? timers.now : () => 1791380123456.2 },
       // `at` es el momento en que se entregó el registro, distinto de `record.t`
       // cuando el muestreador retrasó un valor pendiente.
-      batcher: { add: (type, record) => added.push({ type, record, at: timers.now() }) },
+      batcher: {
+        add: (type, record) => added.push({ type, record, at: timers.now() }),
+        flush: async () => flushes.push(timers.now()),
+      },
       session: { get: () => session },
       config: { capture: config },
       contracts: UX.contracts,
@@ -191,7 +215,8 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
   }
   const click = (target, type = 'click', x = 845, y = 560) =>
     document.dispatch({ type, target, clientX: x, clientY: y });
-  return { document, added, click, timers, stop: () => registered.stop() };
+  const pageHide = () => pageListeners.get('pagehide')({ type: 'pagehide' });
+  return { document, added, click, timers, flushes, pageHide, pageListeners, stop: () => registered.stop() };
 }
 
 /** Descriptor del último clic sobre `target`. */
@@ -466,7 +491,7 @@ test('never delivers mousemove records closer than the configured interval', asy
 });
 
 test('reads the sampling rates from the configuration', async () => {
-  const config = { mousemove_hz: 10, scroll_hz: 2 };
+  const config = { ...CAPTURE_CONFIG, mousemove_hz: 10, scroll_hz: 2 };
   const { document, added, timers } = startCapture(undefined, { config, fakeClock: true });
 
   move(document, 1, 1);
@@ -935,4 +960,182 @@ test('never takes text from elements with a text input role, such as custom text
   assert.equal(describeByClick(widget).text, null);
   assert.equal(describeByClick(el('div', { role: 'combobox' }, { text: 'valor' })).text, null);
   assert.equal(describeByClick(el('div', { role: 'button' }, { text: 'Pagar' })).text, 'Pagar');
+});
+
+/** Los registros `click_response` entregados, solo sus datos. */
+const responses = (added) =>
+  added.filter((entry) => entry.record.type === 'click_response').map((entry) => entry.record.data);
+
+/** Observadores creados por los clics (el primero es el de `aria-invalid`). */
+const clickObservers = () => FakeMutationObserver.instances.slice(1);
+
+test('records a click_response joined to its click by click_t when the page changes', async () => {
+  const { added, click, timers } = startCapture({ task_id: 9 }, { fakeClock: true });
+
+  await timers.advance(40);
+  click(el('button'));
+  const [observer] = clickObservers();
+  assert.deepEqual(observer.options, { childList: true, attributes: true, characterData: true, subtree: true });
+  await timers.advance(100);
+  observer.emit(3);
+  await timers.advance(300);
+  observer.emit(2);
+  await timers.advance(1099);
+  assert.deepEqual(responses(added), []);
+  await timers.advance(1);
+  registered.stop();
+
+  assert.deepEqual(responses(added), [{ click_t: 40, mutation_count: 5, navigated: false }]);
+  const response = added.find((entry) => entry.record.type === 'click_response').record;
+  assert.equal(response.t, 1540);
+  assert.equal(response.task_id, 9);
+  assert.ok(!('x' in response) && !('element' in response));
+  assert.equal(added[0].record.t, responses(added)[0].click_t);
+  assert.equal(observer.connected, false);
+});
+
+test('records nothing for a click the page does not respond to, and disconnects the observer', async () => {
+  const { added, click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'));
+  const [observer] = clickObservers();
+  assert.equal(observer.connected, true);
+  await timers.advance(1500);
+  registered.stop();
+
+  assert.equal(added.length, 1);
+  assert.deepEqual(responses(added), []);
+  assert.equal(observer.connected, false);
+  assert.equal(timers.pending(), 0);
+});
+
+test('does not count changes that happen after the wait', async () => {
+  const { added, click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'));
+  const [observer] = clickObservers();
+  await timers.advance(1500);
+  observer.emit(4);
+  await timers.advance(100);
+  registered.stop();
+
+  assert.deepEqual(responses(added), []);
+});
+
+test('counts the changes the observer had not delivered yet when the wait ends', async () => {
+  const { added, click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'));
+  clickObservers()[0].queued = [{}, {}];
+  await timers.advance(1500);
+  registered.stop();
+
+  assert.deepEqual(responses(added), [{ click_t: 0, mutation_count: 2, navigated: false }]);
+});
+
+test('records navigated when the address changes without the page changing', async () => {
+  const { added, click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('a', { href: '#formulario' }));
+  globalThis.location.href = 'https://shop.local/cart#formulario';
+  await timers.advance(1500);
+  registered.stop();
+
+  assert.deepEqual(responses(added), [{ click_t: 0, mutation_count: 0, navigated: true }]);
+});
+
+test('records navigated at once, and flushes the batcher, when the page unloads during the wait', async () => {
+  const { added, click, timers, flushes, pageHide } = startCapture(undefined, { fakeClock: true });
+
+  click(el('a', { href: '/otra' }));
+  await timers.advance(200);
+  clickObservers()[0].emit(1);
+  pageHide();
+
+  assert.deepEqual(responses(added), [{ click_t: 0, mutation_count: 1, navigated: true }]);
+  assert.deepEqual(flushes, [200]);
+  assert.equal(timers.pending(), 0);
+  await timers.advance(2000);
+  assert.equal(responses(added).length, 1);
+  registered.stop();
+});
+
+test('does not flush on page hide when no click is waiting', () => {
+  const { flushes, pageHide } = startCapture();
+
+  pageHide();
+
+  assert.deepEqual(flushes, []);
+  registered.stop();
+});
+
+test('only a simple click is watched, not dblclick or contextmenu', async () => {
+  const { click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'), 'dblclick');
+  click(el('button'), 'contextmenu');
+
+  assert.equal(clickObservers().length, 0);
+  assert.equal(timers.pending(), 0);
+  registered.stop();
+});
+
+test('joins each click_response to its own click when clicks come one after another', async () => {
+  const { added, click, timers } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'));
+  await timers.advance(100);
+  click(el('button'));
+  await timers.advance(100);
+  click(el('button'));
+  const [first, second, third] = clickObservers();
+  second.emit(7);
+  third.emit(1);
+  await timers.advance(1500);
+  registered.stop();
+
+  assert.deepEqual(responses(added).map((data) => [data.click_t, data.mutation_count]), [[100, 7], [200, 1]]);
+  assert.equal(first.connected, false);
+});
+
+test('stop disconnects the observers, cancels the waits and unhooks pagehide', async () => {
+  const { added, click, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+
+  click(el('button'));
+  click(el('button'));
+  clickObservers().forEach((observer) => observer.emit(2));
+  assert.equal(timers.pending(), 2);
+  registered.stop();
+
+  assert.ok(clickObservers().every((observer) => !observer.connected));
+  assert.equal(timers.pending(), 0);
+  assert.equal(pageListeners.size, 0);
+  await timers.advance(3000);
+  assert.deepEqual(responses(added), []);
+});
+
+test('reads the wait from the configuration and refuses to start without a positive one', async () => {
+  const config = { ...CAPTURE_CONFIG, click_response_wait_ms: 300 };
+  const { added, click, timers } = startCapture(undefined, { config, fakeClock: true });
+
+  click(el('button'));
+  clickObservers()[0].emit(1);
+  await timers.advance(299);
+  assert.equal(responses(added).length, 0);
+  await timers.advance(1);
+  assert.equal(responses(added).length, 1);
+  registered.stop();
+
+  for (const wait of [undefined, 0, 'a']) {
+    globalThis.document = createFakeDocument();
+    const context = {
+      clock: { now: () => 0 },
+      batcher: { add() {}, flush: async () => {} },
+      session: { get: () => null },
+      config: { capture: { ...CAPTURE_CONFIG, click_response_wait_ms: wait } },
+      contracts: UX.contracts,
+    };
+    assert.throws(() => registered.start(context), /click_response_wait_ms must be a positive number/);
+    registered.stop();
+  }
 });

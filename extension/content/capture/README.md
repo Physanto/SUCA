@@ -16,6 +16,11 @@ Arranca y se detiene con la sesión, a través de `bootstrap.js`: `start(ctx)` p
 | `field_change` | El campo y solo que hubo un cambio; nunca el valor. Como máximo uno por segundo por campo |
 | `form_submit` | El formulario. El navegador solo lo avisa si pasó la validación; un intento con errores genera `validation_error` |
 | `validation_error` | El campo y el tipo de error en `data.error_type` (`validation_error_type`). Tres orígenes, ver abajo |
+| `click_response` | Solo si la página respondió a un `click` en `capture.click_response_wait_ms` (1,5 s): `data.click_t` (el `t` del clic), `data.mutation_count` y `data.navigated`. Sin `x`, `y` ni elemento |
+
+**Respuesta tras un clic y clics muertos.** Cada `click` crea un `MutationObserver` propio sobre todo el documento (hijos, atributos y texto), antes de que el sitio atienda el clic. Al terminar la espera se cuentan los cambios, incluidos los que el navegador aún no había entregado, y el observador se desconecta. Se registra `click_response` si hubo cambios o si `navigated` es verdadero: la URL cambió (aplicaciones de una sola página, también con `#`) o la página se descargó durante la espera (en ese caso se registra de inmediato y se vacía el acumulador, que ya había vaciado lo suyo con el mismo aviso). **Si no hubo nada, no se registra nada**: un `click` sin su `click_response` (unido por `click_t`) es lo que el análisis toma como clic muerto. Solo se vigila `click`, no `dblclick` ni `contextmenu`. `stop()` abandona las esperas pendientes sin registrar nada.
+
+Limitación: en una página con cambios constantes (un reloj, un carrusel) todos los clics parecerán tener respuesta, y no se detectarán clics muertos.
 
 **Errores de validación.** Tres orígenes, en este orden de prioridad:
 
@@ -29,7 +34,7 @@ Los orígenes 2 y 3 se registran una sola vez mientras el error siga presente, y
 
 Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
 
-Los demás tipos de evento (respuesta tras un clic y cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
+Los demás tipos de evento (cambios de pantalla) se agregan en las siguientes tareas de M1 y se documentan aquí al hacerlo.
 
 ## Descriptor del elemento
 
