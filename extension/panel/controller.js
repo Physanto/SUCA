@@ -15,7 +15,11 @@
  * - `guided`: solo en modo guiado, `null` en los demás. Tiene `loaded` (si ya
  *   llegaron las tareas), `tasks` (las del estudio, en orden), `index` (posición
  *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas) y
- *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`).
+ *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`);
+ * - `camera`: estado que informa la cámara (`active`, `no_permission` o `error`), o
+ *   `null` si no ha informado (el aviso llega al abrirla y al cambiar, no al abrir el panel);
+ * - `calibration`: `pending` (tipo pedido, `initial` o `final`, o `null`) y el último
+ *   resultado de cada tipo, `{ error_px, error_deg, accepted }` o `null`.
  *
  * Los códigos de error y de aviso son claves de `strings.js`.
  */
@@ -36,6 +40,12 @@
 
   /** Chrome no inyecta content scripts en sus propias páginas: solo se evalúan páginas web. */
   const EVALUABLE_URL = /^https?:\/\//;
+
+  /** Calibración sin pedir y sin resultados. */
+  const NO_CALIBRATION = Object.freeze({ pending: null, initial: null, final: null });
+
+  /** Tipos de calibración del contrato. */
+  const CALIBRATION_TYPES = Object.freeze(['initial', 'final']);
 
   /** Formas de terminar una tarea con un botón del panel (`ended_by` del contrato). */
   const BUTTON_ENDS = Object.freeze(['done', 'gave_up']);
@@ -107,6 +117,8 @@
       error: null,
       notice: null,
       guided: null,
+      camera: null,
+      calibration: NO_CALIBRATION,
     });
 
     /** Publica un estado nuevo, con los cambios dados, a la vista. */
@@ -125,6 +137,8 @@
       tabStatus: null,
       failedModules: [],
       guided: null,
+      camera: null,
+      calibration: NO_CALIBRATION,
       ...changes,
     });
 
@@ -251,6 +265,21 @@
         messages.on(types.TASK_COMPLETED, ({ task_id, ended_by }) =>
           ended_by === 'reference' ? finishTask('reference', task_id) : undefined,
         );
+        // La cámara informa su estado y el resultado de cada calibración que se pidió.
+        messages.on(types.CAMERA_STATUS, ({ status }) => {
+          if (state.phase !== PHASES.IDLE) {
+            setState({ camera: status });
+          }
+        });
+        messages.on(types.CALIBRATION_RESULT, ({ error_px, error_deg, accepted }) => {
+          // El resultado no dice de qué calibración es: es la que se pidió último.
+          const { pending } = state.calibration;
+          if (state.phase !== PHASES.IDLE && pending !== null) {
+            setState({
+              calibration: { ...state.calibration, [pending]: { error_px, error_deg, accepted } },
+            });
+          }
+        });
         await loadStudies();
         // Se relee lo guardado: otro contexto pudo escribirlo y su aviso no haber llegado.
         const current = await session.reload();
@@ -376,6 +405,32 @@
           throw new Error(`a button cannot end a task with ${endedBy}`);
         }
         await finishTask(endedBy);
+      },
+
+      /**
+       * Pide una calibración de mirada a la cámara de la pestaña evaluada. Con la
+       * cámara sin permiso o con error no se pide: la sesión sigue sin ella.
+       *
+       * @param {string} type - `initial` o `final`.
+       * @returns {Promise<void>}
+       */
+      async requestCalibration(type) {
+        if (!CALIBRATION_TYPES.includes(type)) {
+          throw new Error(`unknown calibration type: ${type}`);
+        }
+        const { camera } = state;
+        if (state.phase !== PHASES.ACTIVE || (camera !== null && camera !== 'active')) {
+          return;
+        }
+        setState({ calibration: { ...state.calibration, pending: type, [type]: null }, error: null });
+        try {
+          await messages.send(types.CALIBRATION_REQUEST, { type });
+        } catch (error) {
+          setState({
+            calibration: { ...state.calibration, pending: null },
+            error: { code: 'calibration_unavailable', fields: [], detail: error.message },
+          });
+        }
       },
 
       /**

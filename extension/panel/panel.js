@@ -114,6 +114,25 @@
     byId('active-capture').textContent = capture.join(' ');
   }
 
+  /** Muestra el estado de la cámara y los botones y resultados de la calibración. */
+  function renderCamera(state) {
+    const status = state.camera === null ? 'unknown' : state.camera;
+    byId('camera-status').textContent = strings.cameraStatus[status];
+    // Solo se bloquea cuando se sabe que la cámara no sirve; la sesión sigue igual.
+    const blocked = !['unknown', 'active'].includes(status) || state.phase === 'closing';
+    for (const type of ['initial', 'final']) {
+      const button = byId(`calibrate-${type}`);
+      button.textContent = strings.calibrationButtons[type];
+      button.disabled = blocked;
+      const result = state.calibration[type];
+      byId(`calibration-${type}`).textContent = result
+        ? strings.calibrationResult(result)
+        : state.calibration.pending === type
+          ? strings.calibrationWaiting
+          : '';
+    }
+  }
+
   /** Muestra la tarea que toca en el modo guiado, con los botones que corresponden. */
   function renderGuided(state) {
     const guided = state.guided;
@@ -167,6 +186,7 @@
     byId('start-fields').disabled = phase === 'starting' || state.studies.length === 0;
     byId('close').disabled = phase === 'closing';
     renderActive(state);
+    renderCamera(state);
     renderGuided(state);
     renderMessage(state);
   }
@@ -204,6 +224,9 @@
     controller.startSession(readForm());
   });
   byId('close').addEventListener('click', () => controller.closeSession());
+  for (const button of document.querySelectorAll('[data-calibration]')) {
+    button.addEventListener('click', () => controller.requestCalibration(button.dataset.calibration));
+  }
   byId('retry').addEventListener('click', () => controller.retry());
   byId('task-start').addEventListener('click', () => controller.startTask());
   byId('task-done').addEventListener('click', () => controller.endTask('done'));

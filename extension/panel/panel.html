@@ -65,6 +65,18 @@
           <dd id="active-capture"></dd>
         </dl>
 
+        <!-- Cámara y calibración: disponibles en cualquier modo. -->
+        <section id="camera-section">
+          <h2 data-string="cameraTitle"></h2>
+          <p><strong data-string="cameraLabel"></strong> <span id="camera-status"></span></p>
+          <div class="calibration">
+            <button id="calibrate-initial" type="button" data-calibration="initial"></button>
+            <p id="calibration-initial" class="hint"></p>
+            <button id="calibrate-final" type="button" data-calibration="final"></button>
+            <p id="calibration-final" class="hint"></p>
+          </div>
+        </section>
+
         <!-- Modo guiado: la tarea que toca, con sus botones. -->
         <section id="guided-section" hidden>
           <h2 data-string="tasksTitle"></h2>

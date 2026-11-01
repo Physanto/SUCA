@@ -522,3 +522,151 @@ test('a button press and task.completed together record the task once', async ()
   assert.equal(calls.filter((call) => call.add === 'tasks').length, 1);
   assert.equal(controller.getState().guided.index, 1);
 });
+
+/** Inicia una sesión libre con el panel listo para recibir mensajes de la cámara. */
+async function startFree(options) {
+  const result = setup(options);
+  await result.controller.init();
+  await result.controller.startSession(FORM);
+  result.camera = (status) => result.handlers.get(types.CAMERA_STATUS)({ status });
+  result.calibrated = (payload) => result.handlers.get(types.CALIBRATION_RESULT)(payload);
+  return result;
+}
+
+test('shows no camera information until the camera reports', async () => {
+  const { controller } = await startFree();
+
+  assert.equal(controller.getState().camera, null);
+  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null });
+});
+
+test('follows the camera status and the session goes on without a camera', async () => {
+  const { controller, camera, calls } = await startFree();
+
+  for (const status of ['active', 'no_permission', 'error']) {
+    camera(status);
+    assert.equal(controller.getState().camera, status);
+  }
+  calls.length = 0;
+  await controller.closeSession();
+  assert.equal(controller.getState().phase, 'idle');
+  assert.equal(calls.some((call) => call.send === 'session.closed'), true);
+});
+
+test('requests the initial calibration and shows its result', async () => {
+  const { controller, camera, calibrated, calls } = await startFree();
+  camera('active');
+  calls.length = 0;
+
+  await controller.requestCalibration('initial');
+  assert.deepEqual(calls, [{ send: 'calibration.request', payload: { type: 'initial' } }]);
+  assert.equal(controller.getState().calibration.pending, 'initial');
+
+  calibrated({ error_px: 112.5, error_deg: 2.8, accepted: true });
+  assert.deepEqual(controller.getState().calibration.initial, {
+    error_px: 112.5,
+    error_deg: 2.8,
+    accepted: true,
+  });
+  assert.equal(controller.getState().calibration.final, null);
+});
+
+test('keeps the initial result when the final calibration is requested', async () => {
+  const { controller, calibrated } = await startFree();
+  await controller.requestCalibration('initial');
+  calibrated({ error_px: 90, error_deg: 2.1, accepted: true });
+
+  await controller.requestCalibration('final');
+  calibrated({ error_px: 300, error_deg: 7.5, accepted: false });
+
+  const { calibration } = controller.getState();
+  assert.equal(calibration.initial.accepted, true);
+  assert.deepEqual(calibration.final, { error_px: 300, error_deg: 7.5, accepted: false });
+});
+
+test('a repeated calibration replaces the earlier result of its type', async () => {
+  const { controller, calibrated } = await startFree();
+  await controller.requestCalibration('initial');
+  calibrated({ error_px: 400, error_deg: 9, accepted: false });
+
+  calibrated({ error_px: 100, error_deg: 2.5, accepted: true });
+  assert.equal(controller.getState().calibration.initial.accepted, true);
+
+  await controller.requestCalibration('initial');
+  assert.equal(controller.getState().calibration.initial, null);
+});
+
+test('ignores a calibration result that nobody asked for', async () => {
+  const { controller, calibrated } = await startFree();
+
+  calibrated({ error_px: 100, error_deg: 2.5, accepted: true });
+
+  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null });
+});
+
+test('does not ask for a calibration when the camera is known not to work', async () => {
+  for (const status of ['no_permission', 'error']) {
+    const { controller, camera, calls } = await startFree();
+    camera(status);
+    calls.length = 0;
+
+    await controller.requestCalibration('initial');
+
+    assert.deepEqual(calls, []);
+    assert.equal(controller.getState().calibration.pending, null);
+  }
+});
+
+test('asks for the calibration while the camera has not reported yet', async () => {
+  const { controller, calls } = await startFree();
+  calls.length = 0;
+
+  await controller.requestCalibration('final');
+
+  assert.equal(calls.length, 1);
+});
+
+test('reports a tab that does not answer the calibration and keeps the session', async () => {
+  const { controller } = await startFree({
+    replies: { [types.CALIBRATION_REQUEST]: new Error('no receiver') },
+  });
+
+  await controller.requestCalibration('initial');
+
+  const state = controller.getState();
+  assert.equal(state.error.code, 'calibration_unavailable');
+  assert.equal(state.calibration.pending, null);
+  assert.equal(state.phase, 'active');
+});
+
+test('rejects an unknown calibration type and does nothing without a session', async () => {
+  const { controller, calls } = setup();
+  await controller.init();
+
+  await assert.rejects(() => controller.requestCalibration('middle'), /unknown calibration type/);
+  await controller.requestCalibration('initial');
+
+  assert.deepEqual(calls, []);
+});
+
+test('closing the session forgets the camera and the calibration', async () => {
+  const { controller, camera, calibrated } = await startFree();
+  camera('active');
+  await controller.requestCalibration('initial');
+  calibrated({ error_px: 100, error_deg: 2.5, accepted: true });
+
+  await controller.closeSession();
+
+  const state = controller.getState();
+  assert.equal(state.camera, null);
+  assert.deepEqual(state.calibration, { pending: null, initial: null, final: null });
+});
+
+test('ignores camera messages that arrive while there is no session', async () => {
+  const { controller, handlers } = setup();
+  await controller.init();
+
+  handlers.get(types.CAMERA_STATUS)({ status: 'active' });
+
+  assert.equal(controller.getState().camera, null);
+});

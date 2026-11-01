@@ -117,6 +117,15 @@ button:disabled {
   cursor: pointer;
 }
 
+.calibration {
+  display: grid;
+  gap: 4px;
+}
+
+.calibration button {
+  cursor: pointer;
+}
+
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;

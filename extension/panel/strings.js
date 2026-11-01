@@ -55,6 +55,23 @@
     failedModules: (names) => `No arrancaron: ${names.join(', ')}. Revisa la consola de la pestaña.`,
     closeButton: 'Cerrar sesión',
 
+    // Cámara y calibración.
+    cameraTitle: 'Cámara y calibración',
+    cameraLabel: 'Cámara:',
+    cameraStatus: {
+      unknown: 'Sin información todavía.',
+      active: 'Activa.',
+      no_permission: 'Sin permiso de cámara. La sesión puede seguir sin ella.',
+      error: 'Con error. La sesión puede seguir sin ella.',
+    },
+    calibrationButtons: { initial: 'Calibración inicial', final: 'Calibración final' },
+    calibrationWaiting: 'Esperando el resultado en la pestaña…',
+    calibrationResult: (result) => {
+      const number = (value) => value.toFixed(1).replace('.', ',');
+      const verdict = result.accepted ? 'Aceptada' : 'No aceptada';
+      return `Error ${number(result.error_px)} px (${number(result.error_deg)}°) · ${verdict}`;
+    },
+
     // Modo guiado.
     tasksTitle: 'Tareas',
     taskProgress: (number, total) => `Tarea ${number} de ${total}`,
@@ -76,6 +93,8 @@
         'No se pudo conectar con el servidor local. Comprueba que esté en marcha (python -m server).',
       tab_not_evaluable:
         'La pestaña activa no se puede evaluar. Abre en ella la página del estudio (http o https) y vuelve a intentarlo.',
+      calibration_unavailable:
+        'La pestaña evaluada no respondió a la calibración. Si es una página web, recárgala e inténtalo de nuevo.',
       invalid_request: 'Revisa los datos marcados.',
       unexpected: (detail) => `Error inesperado: ${detail}`,
     },
