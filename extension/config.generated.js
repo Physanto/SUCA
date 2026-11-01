@@ -50,7 +50,12 @@
     },
     "camera": {
       "gaze_hz": 30,
-      "face_hz": 15
+      "face_hz": 15,
+      "video_width": 640,
+      "video_height": 480,
+      "viewing_distance_cm": 60.0,
+      "css_px_per_cm": 37.8,
+      "calibration_max_error_deg": 5.0
     }
   });
 
