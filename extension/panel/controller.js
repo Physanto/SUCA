@@ -18,6 +18,10 @@
  *   llegaron las tareas), `tasks` (las del estudio, en orden), `index` (posición
  *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas) y
  *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`);
+ * - `reference`: solo en modo referencia, `null` en los demás. Tiene `loaded`, `tasks` (las
+ *   del estudio), `recording` (`{ task_id, t_start }` de la tarea que se graba, o `null`),
+ *   `saved` (`{ task_id, reference_id }` de las que ya se guardaron en esta sesión) y
+ *   `unsaved` (tarea grabada cuyo guardado falló y espera un reintento, o `null`);
  * - `camera`: estado que informa la cámara (`active`, `no_permission` o `error`), o
  *   `null` si no ha informado (el aviso llega al abrirla y al cambiar, no al abrir el panel);
  * - `calibration`: `pending` (tipo pedido, `initial` o `final`, o `null`) y el último
@@ -96,7 +100,8 @@
    *   chromeVersion: function(): Promise<string>}} deps.environment - Datos de
    *   la pantalla y del navegador para `screen_info`.
    * @returns {object} Controlador con `init`, `loadStudies`, `loadTasks`, `retry`,
-   *   `startSession`, `startTask`, `endTask`, `closeSession`, `getState` y `subscribe`.
+   *   `startSession`, `startTask`, `endTask`, `startRecording`, `stopRecording`, `retrySave`,
+   *   `requestCalibration`, `closeSession`, `getState` y `subscribe`.
    */
   function createPanelController({
     api,
@@ -120,9 +125,12 @@
       notice: null,
       startedAt: null,
       guided: null,
+      reference: null,
       camera: null,
       calibration: NO_CALIBRATION,
     });
+    /** Hay un guardado de referencia en curso (evita repetirlo con un segundo clic). */
+    let saving = false;
 
     /** Publica un estado nuevo, con los cambios dados, a la vista. */
     function setState(changes) {
@@ -141,6 +149,7 @@
       failedModules: [],
       startedAt: null,
       guided: null,
+      reference: null,
       camera: null,
       calibration: NO_CALIBRATION,
       ...changes,
@@ -192,7 +201,8 @@
     }
 
     /**
-     * Carga las tareas del estudio de una sesión guiada. En otros modos no hace nada.
+     * Carga las tareas del estudio de una sesión guiada o de referencia. En el
+     * modo libre no hace nada.
      *
      * Si el panel se abrió con una tarea en curso, la retoma: el estado de la
      * sesión guarda cuál es (`task_id`), pero no cuándo empezó, así que su
@@ -202,26 +212,68 @@
      */
     async function loadTasks() {
       const current = session.get();
-      if (current === null || current.mode !== 'guided') {
+      if (current === null || !['guided', 'reference'].includes(current.mode)) {
         return;
       }
+      const isGuided = current.mode === 'guided';
       try {
         const tasks = await api.listTasks(current.study_id);
         const running = tasks.findIndex((task) => task.id === current.task_id);
+        const resumed = running >= 0 ? { task_id: current.task_id, t_start: clock.now() } : null;
         setState({
-          guided: {
-            loaded: true,
-            tasks,
-            index: Math.max(running, 0),
-            current: running >= 0 ? { task_id: current.task_id, t_start: clock.now() } : null,
-          },
+          ...(isGuided
+            ? { guided: { loaded: true, tasks, index: Math.max(running, 0), current: resumed } }
+            : { reference: { loaded: true, tasks, recording: resumed, saved: [], unsaved: null } }),
           error: null,
         });
       } catch (error) {
         setState({
-          guided: { loaded: false, tasks: [], index: 0, current: null },
+          ...(isGuided
+            ? { guided: { loaded: false, tasks: [], index: 0, current: null } }
+            : {
+                reference: { loaded: false, tasks: [], recording: null, saved: [], unsaved: null },
+              }),
           error: describeError(error),
         });
+      }
+    }
+
+    /**
+     * Guarda en el servidor la referencia de una tarea ya grabada: primero vacía
+     * el acumulador, para que el registro de la tarea y sus eventos salgan antes.
+     * Si falla, la tarea queda en `unsaved` para reintentar.
+     *
+     * @param {number} taskId - Tarea grabada.
+     * @returns {Promise<void>}
+     */
+    async function saveReference(taskId) {
+      const current = session.get();
+      if (saving || current === null) {
+        return;
+      }
+      saving = true;
+      try {
+        await batcher.flush();
+        const created = await api.createReference({
+          task_id: taskId,
+          source_session_id: current.session_id,
+        });
+        const { reference } = state;
+        if (reference !== null) {
+          setState({
+            reference: {
+              ...reference,
+              unsaved: null,
+              saved: [...reference.saved, { task_id: taskId, reference_id: created.reference_id }],
+            },
+            notice: { code: 'reference_saved', task_id: taskId, reference_id: created.reference_id },
+            error: null,
+          });
+        }
+      } catch (error) {
+        setState({ error: describeError(error) });
+      } finally {
+        saving = false;
       }
     }
 
@@ -306,7 +358,8 @@
        */
       async retry() {
         await loadStudies();
-        if (state.guided !== null && !state.guided.loaded) {
+        const tasks = state.guided || state.reference;
+        if (tasks !== null && !tasks.loaded) {
           await loadTasks();
         }
       },
@@ -410,6 +463,90 @@
           throw new Error(`a button cannot end a task with ${endedBy}`);
         }
         await finishTask(endedBy);
+      },
+
+      /**
+       * Empieza a grabar una tarea en modo referencia: la anota en el estado de la
+       * sesión, para que la captura marque con ella sus registros, y avisa a la
+       * pestaña sin condición final (la grabación la termina el evaluador).
+       *
+       * @param {number} taskId - Tarea que se graba; una vez por sesión.
+       * @returns {Promise<void>}
+       */
+      async startRecording(taskId) {
+        const { reference } = state;
+        if (
+          state.phase !== PHASES.ACTIVE ||
+          reference === null ||
+          reference.recording !== null ||
+          reference.unsaved !== null ||
+          !reference.tasks.some((task) => task.id === taskId) ||
+          reference.saved.some((item) => item.task_id === taskId)
+        ) {
+          return;
+        }
+        // El estado cambia antes de esperar, para que un segundo clic no repita el inicio.
+        setState({
+          reference: { ...reference, recording: { task_id: taskId, t_start: clock.now() } },
+          error: null,
+          notice: null,
+        });
+        try {
+          await session.update({ task_id: taskId });
+        } catch (error) {
+          setState({ reference, error: describeError(error) });
+          return;
+        }
+        try {
+          await messages.send(types.TASK_STARTED, { task_id: taskId, end_condition: null });
+        } catch (error) {
+          // Sin content scripts, la grabación sigue: la captura lee la tarea de la sesión.
+          setState({ tabStatus: 'pending' });
+        }
+      },
+
+      /**
+       * Termina la grabación en curso y guarda su referencia en borrador. El
+       * registro de la tarea sale con `ended_by: done`.
+       *
+       * @returns {Promise<void>}
+       */
+      async stopRecording() {
+        const { reference } = state;
+        if (state.phase !== PHASES.ACTIVE || reference === null || reference.recording === null) {
+          return;
+        }
+        const { task_id, t_start } = reference.recording;
+        // El estado cambia antes de esperar, para que un segundo clic no repita el registro.
+        setState({
+          reference: { ...reference, recording: null, unsaved: task_id },
+          error: null,
+          notice: null,
+        });
+        batcher.add('tasks', {
+          task_id,
+          t_start,
+          t_end: Math.max(clock.now(), t_start),
+          ended_by: 'done',
+        });
+        try {
+          await session.update({ task_id: null });
+        } catch (error) {
+          setState({ error: describeError(error) });
+        }
+        await saveReference(task_id);
+      },
+
+      /**
+       * Repite el guardado de la referencia de una tarea grabada que no se pudo guardar.
+       *
+       * @returns {Promise<void>}
+       */
+      async retrySave() {
+        const { reference } = state;
+        if (state.phase === PHASES.ACTIVE && reference !== null && reference.unsaved !== null) {
+          await saveReference(reference.unsaved);
+        }
       },
 
       /**

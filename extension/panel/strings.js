@@ -82,6 +82,21 @@
       return `Error ${number(result.error_px)} px (${number(result.error_deg)}°) · ${verdict}`;
     },
 
+    // Modo referencia.
+    referenceTitle: 'Grabación de referencia',
+    referenceTaskLabel: 'Tarea a grabar',
+    referenceTaskOption: (position, instruction) => `${position}. ${instruction}`,
+    referenceStartButton: 'Iniciar grabación',
+    referenceStopButton: 'Terminar y guardar',
+    referenceRetryButton: 'Reintentar guardado',
+    referenceLoading: 'Cargando las tareas…',
+    referenceNoTasks: 'Este estudio no tiene tareas.',
+    referenceRecording: (position) => `Grabando la tarea ${position}. Haz el recorrido en la pestaña y termina aquí.`,
+    referenceUnsaved: (position) => `La tarea ${position} se grabó, pero su referencia no se guardó.`,
+    referenceSavedItem: (position, referenceId) =>
+      `Tarea ${position} grabada (referencia ${referenceId}, en borrador).`,
+    referenceAllRecorded: 'Ya grabaste todas las tareas de este estudio.',
+
     // Modo guiado.
     tasksTitle: 'Tareas',
     taskProgress: (number, total) => `Tarea ${number} de ${total}`,
@@ -95,6 +110,8 @@
     // Avisos.
     notices: {
       session_closed: (sessionId) => `Sesión ${sessionId} cerrada.`,
+      reference_saved: (sessionId, notice) =>
+        `Referencia ${notice.reference_id} guardada en borrador para la tarea ${notice.position}.`,
     },
 
     // Errores. Las claves son los códigos que informa la lógica del panel.

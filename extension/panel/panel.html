@@ -79,6 +79,21 @@
           </div>
         </section>
 
+        <!-- Modo referencia: el evaluador elige una tarea, la graba y guarda su referencia. -->
+        <section id="reference-section" hidden>
+          <h2 data-string="referenceTitle"></h2>
+          <p id="reference-status" class="hint" hidden></p>
+          <div id="reference-picker">
+            <label for="reference-task" data-string="referenceTaskLabel"></label>
+            <select id="reference-task"></select>
+            <button id="reference-start" type="button" class="primary" data-string="referenceStartButton"></button>
+          </div>
+          <p id="reference-recording" class="instruction" hidden></p>
+          <button id="reference-stop" type="button" class="primary" data-string="referenceStopButton" hidden></button>
+          <button id="reference-retry" type="button" data-string="referenceRetryButton" hidden></button>
+          <ul id="reference-saved" class="saved"></ul>
+        </section>
+
         <!-- Modo guiado: la tarea que toca, con sus botones. -->
         <section id="guided-section" hidden>
           <h2 data-string="tasksTitle"></h2>

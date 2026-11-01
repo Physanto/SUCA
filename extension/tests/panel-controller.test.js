@@ -54,6 +54,10 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
         calls.push({ listTasks: studyId });
         return TASKS;
       },
+      createReference: async (body) => {
+        calls.push({ createReference: body });
+        return { reference_id: 31 };
+      },
       ...api,
     },
     session,
@@ -287,15 +291,14 @@ test('guided mode loads the tasks of the study and waits for the first one', asy
   assert.equal(guided.current, null);
 });
 
-test('free and reference modes do not load tasks', async () => {
-  for (const mode of ['free', 'reference']) {
-    const { controller, calls } = setup();
-    await controller.init();
-    await controller.startSession({ ...FORM, mode });
+test('the free mode does not load tasks', async () => {
+  const { controller, calls } = setup();
+  await controller.init();
+  await controller.startSession(FORM);
 
-    assert.equal(controller.getState().guided, null);
-    assert.equal(calls.some((call) => call.listTasks !== undefined), false);
-  }
+  assert.equal(controller.getState().guided, null);
+  assert.equal(controller.getState().reference, null);
+  assert.equal(calls.some((call) => call.listTasks !== undefined), false);
 });
 
 test('starting a task saves it in the session and tells the tab its end condition', async () => {
@@ -725,4 +728,268 @@ test('formats the elapsed time as mm:ss and h:mm:ss', () => {
   assert.equal(elapsedTime(3600000), '1:00:00');
   assert.equal(elapsedTime(3723000), '1:02:03');
   assert.equal(elapsedTime(-500), '00:00');
+});
+
+/** Inicia una sesión de referencia con las tareas cargadas. */
+async function startReference(options) {
+  const result = setup(options);
+  await result.controller.init();
+  await result.controller.startSession({ ...FORM, mode: 'reference' });
+  return result;
+}
+
+test('reference mode loads the tasks of the study and records nothing yet', async () => {
+  const { controller, calls } = await startReference();
+
+  const { reference, guided } = controller.getState();
+  assert.equal(guided, null);
+  assert.deepEqual(calls.filter((call) => call.listTasks !== undefined), [{ listTasks: 1 }]);
+  assert.equal(reference.loaded, true);
+  assert.deepEqual(reference.tasks, TASKS);
+  assert.equal(reference.recording, null);
+  assert.deepEqual(reference.saved, []);
+});
+
+test('starting a recording marks the task in the session and tells the tab without an end condition', async () => {
+  const { controller, calls, world, clock } = await startReference();
+  calls.length = 0;
+  clock.time = 1791380005000;
+
+  await controller.startRecording(8);
+
+  assert.equal(world.areas.session.get('session').task_id, 8);
+  assert.deepEqual(calls, [{ send: 'task.started', payload: { task_id: 8, end_condition: null } }]);
+  assert.deepEqual(controller.getState().reference.recording, { task_id: 8, t_start: 1791380005000 });
+});
+
+test('stopping saves the task record, flushes, and only then creates the draft reference', async () => {
+  const { controller, calls, world, clock } = await startReference();
+  clock.time = 1791380005000;
+  await controller.startRecording(7);
+  clock.time = 1791380047000;
+  calls.length = 0;
+
+  await controller.stopRecording();
+
+  assert.deepEqual(calls, [
+    {
+      add: 'tasks',
+      record: { task_id: 7, t_start: 1791380005000, t_end: 1791380047000, ended_by: 'done' },
+    },
+    'flush',
+    { createReference: { task_id: 7, source_session_id: 12 } },
+  ]);
+  assert.equal(world.areas.session.get('session').task_id, null);
+  const state = controller.getState();
+  assert.equal(state.reference.recording, null);
+  assert.equal(state.reference.unsaved, null);
+  assert.deepEqual(state.reference.saved, [{ task_id: 7, reference_id: 31 }]);
+  assert.deepEqual(state.notice, { code: 'reference_saved', task_id: 7, reference_id: 31 });
+});
+
+test('a task already saved in this session cannot be recorded again', async () => {
+  const { controller, calls } = await startReference();
+  await controller.startRecording(7);
+  await controller.stopRecording();
+  calls.length = 0;
+
+  await controller.startRecording(7);
+
+  assert.deepEqual(calls, []);
+  assert.equal(controller.getState().reference.recording, null);
+  // Otra tarea sí.
+  await controller.startRecording(8);
+  assert.equal(controller.getState().reference.recording.task_id, 8);
+});
+
+test('only one task is recorded at a time, and unknown tasks are ignored', async () => {
+  const { controller, calls } = await startReference();
+  await controller.startRecording(7);
+  calls.length = 0;
+
+  await controller.startRecording(8);
+  assert.deepEqual(calls, []);
+  assert.equal(controller.getState().reference.recording.task_id, 7);
+
+  await controller.stopRecording();
+  await controller.startRecording(999);
+  assert.equal(controller.getState().reference.recording, null);
+});
+
+test('a second press does not repeat the start, the record or the reference', async () => {
+  const { controller, calls } = await startReference();
+  calls.length = 0;
+
+  await Promise.all([controller.startRecording(7), controller.startRecording(7)]);
+  assert.equal(calls.filter((call) => call.send === 'task.started').length, 1);
+
+  await Promise.all([controller.stopRecording(), controller.stopRecording()]);
+  assert.equal(calls.filter((call) => call.add === 'tasks').length, 1);
+  assert.equal(calls.filter((call) => call.createReference !== undefined).length, 1);
+});
+
+test('a reference that could not be saved is kept for a retry', async () => {
+  let fail = true;
+  const { controller, calls } = await startReference({
+    api: {
+      createReference: async (body) => {
+        calls.push({ createReference: body });
+        if (fail) {
+          throw new UX.ApiError({ status: 0, detail: 'server unreachable', errors: [] });
+        }
+        return { reference_id: 40 };
+      },
+    },
+  });
+  await controller.startRecording(7);
+
+  await controller.stopRecording();
+
+  let state = controller.getState();
+  assert.equal(state.error.code, 'server_unreachable');
+  assert.equal(state.reference.unsaved, 7);
+  assert.deepEqual(state.reference.saved, []);
+  // Mientras espera el reintento no se graba otra tarea.
+  await controller.startRecording(8);
+  assert.equal(controller.getState().reference.recording, null);
+
+  fail = false;
+  calls.length = 0;
+  await controller.retrySave();
+
+  state = controller.getState();
+  assert.equal(state.error, null);
+  assert.equal(state.reference.unsaved, null);
+  assert.deepEqual(state.reference.saved, [{ task_id: 7, reference_id: 40 }]);
+  // El registro de la tarea ya salió: el reintento solo repite el guardado.
+  assert.equal(calls.some((call) => call.add === 'tasks'), false);
+});
+
+test('retrying does nothing when no recording is waiting to be saved', async () => {
+  const { controller, calls } = await startReference();
+  calls.length = 0;
+
+  await controller.retrySave();
+
+  assert.deepEqual(calls, []);
+});
+
+test('the server refusing the reference is reported with its fields', async () => {
+  const { controller } = await startReference({
+    api: {
+      createReference: async () => {
+        throw new UX.ApiError({
+          status: 422,
+          detail: 'task of another study',
+          errors: [{ record: null, field: 'task_id', message: 'does not belong' }],
+        });
+      },
+    },
+  });
+  await controller.startRecording(7);
+
+  await controller.stopRecording();
+
+  assert.equal(controller.getState().error.code, 'invalid_request');
+  assert.equal(controller.getState().reference.unsaved, 7);
+});
+
+test('stopping or retrying does nothing without a recording or outside reference mode', async () => {
+  const guided = await startGuided();
+  guided.calls.length = 0;
+  await guided.controller.stopRecording();
+  await guided.controller.startRecording(7);
+  await guided.controller.retrySave();
+  assert.deepEqual(guided.calls, []);
+
+  const reference = await startReference();
+  reference.calls.length = 0;
+  await reference.controller.stopRecording();
+  assert.deepEqual(reference.calls, []);
+});
+
+test('the guided buttons and the reference recording do not mix', async () => {
+  const reference = await startReference();
+  reference.calls.length = 0;
+  await reference.controller.startTask();
+  await reference.controller.endTask('done');
+  assert.deepEqual(reference.calls, []);
+
+  const guided = await startGuided();
+  guided.calls.length = 0;
+  await guided.controller.startRecording(7);
+  assert.deepEqual(guided.calls, []);
+});
+
+test('a task list that cannot be loaded in reference mode can be loaded again', async () => {
+  let fail = true;
+  const { controller } = await startReference({
+    api: {
+      listTasks: async () => {
+        if (fail) {
+          throw new UX.ApiError({ status: 0, detail: 'server unreachable', errors: [] });
+        }
+        return TASKS;
+      },
+    },
+  });
+  assert.equal(controller.getState().reference.loaded, false);
+
+  fail = false;
+  await controller.retry();
+
+  assert.equal(controller.getState().reference.loaded, true);
+  assert.equal(controller.getState().error, null);
+});
+
+test('reopening the panel in the middle of a recording resumes it', async () => {
+  const { controller, world, clock } = setup();
+  world.areas.session.set('session', {
+    session_id: 12,
+    mode: 'reference',
+    study_id: 1,
+    tab_id: 42,
+    task_id: 8,
+  });
+  clock.time = 1791380090000;
+
+  await controller.init();
+
+  assert.deepEqual(controller.getState().reference.recording, { task_id: 8, t_start: 1791380090000 });
+});
+
+test('closing the session while recording saves no reference', async () => {
+  const { controller, calls } = await startReference();
+  await controller.startRecording(7);
+  calls.length = 0;
+
+  await controller.closeSession();
+
+  assert.equal(calls.some((call) => call.createReference !== undefined), false);
+  assert.equal(calls.some((call) => call.add === 'tasks'), false);
+  assert.equal(controller.getState().reference, null);
+});
+
+test('two retries at once save the reference only once', async () => {
+  let fail = true;
+  const { controller, calls } = await startReference({
+    api: {
+      createReference: async (body) => {
+        calls.push({ createReference: body });
+        if (fail) {
+          throw new UX.ApiError({ status: 0, detail: 'server unreachable', errors: [] });
+        }
+        return { reference_id: 40 };
+      },
+    },
+  });
+  await controller.startRecording(7);
+  await controller.stopRecording();
+  fail = false;
+  calls.length = 0;
+
+  await Promise.all([controller.retrySave(), controller.retrySave()]);
+
+  assert.equal(calls.filter((call) => call.createReference !== undefined).length, 1);
+  assert.deepEqual(controller.getState().reference.saved, [{ task_id: 7, reference_id: 40 }]);
 });

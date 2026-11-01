@@ -67,6 +67,12 @@
     }
   }
 
+  /** Número de orden de una tarea del estudio, para nombrarla en los avisos. */
+  function positionOf(state, taskId) {
+    const task = ((state.reference || state.guided || {}).tasks || []).find((item) => item.id === taskId);
+    return task ? task.position : taskId;
+  }
+
   /** Muestra el error o el aviso general y marca los campos con problemas. */
   function renderMessage(state) {
     const message = byId('message');
@@ -81,7 +87,10 @@
         message.textContent += ` (${error.detail})`;
       }
     } else if (notice) {
-      message.textContent = text(strings.notices[notice.code], notice.session_id);
+      message.textContent = text(strings.notices[notice.code], notice.session_id, {
+        ...notice,
+        position: positionOf(state, notice.task_id),
+      });
     }
     for (const fieldError of document.querySelectorAll('[data-field]')) {
       const field = fieldError.dataset.field;
@@ -112,6 +121,69 @@
       capture.push(strings.failedModules(state.failedModules));
     }
     byId('active-capture').textContent = capture.join(' ');
+  }
+
+  /** Muestra la grabación de referencia: la tarea a elegir, la que se graba y las ya guardadas. */
+  function renderReference(state) {
+    const reference = state.reference;
+    const visible = reference !== null && ['active', 'closing'].includes(state.phase);
+    byId('reference-section').hidden = !visible;
+    if (!visible) {
+      return;
+    }
+    const positionOfTask = (taskId) => positionOf(state, taskId);
+    const saved = new Set(reference.saved.map((item) => item.task_id));
+    const available = reference.tasks.filter((task) => !saved.has(task.id));
+    const busy = reference.recording !== null || reference.unsaved !== null;
+
+    const status = byId('reference-status');
+    if (!reference.loaded) {
+      status.textContent = state.error ? '' : strings.referenceLoading;
+    } else if (reference.tasks.length === 0) {
+      status.textContent = strings.referenceNoTasks;
+    } else if (available.length === 0 && !busy) {
+      status.textContent = strings.referenceAllRecorded;
+    } else {
+      status.textContent = '';
+    }
+    status.hidden = status.textContent === '';
+
+    // La lista se rehace solo si cambian las tareas disponibles, para conservar la elección.
+    const select = byId('reference-task');
+    const ids = available.map((task) => String(task.id));
+    if ([...select.options].map((option) => option.value).join() !== ids.join()) {
+      const chosen = select.value;
+      select.replaceChildren(
+        ...available.map(
+          (task) => new Option(strings.referenceTaskOption(task.position, task.instruction), String(task.id)),
+        ),
+      );
+      if (ids.includes(chosen)) {
+        select.value = chosen;
+      }
+    }
+    byId('reference-picker').hidden = busy || available.length === 0;
+    byId('reference-start').disabled = state.phase === 'closing';
+
+    const recording = byId('reference-recording');
+    if (reference.recording !== null) {
+      recording.textContent = strings.referenceRecording(positionOfTask(reference.recording.task_id));
+    } else if (reference.unsaved !== null) {
+      recording.textContent = strings.referenceUnsaved(positionOfTask(reference.unsaved));
+    }
+    recording.hidden = !busy;
+    byId('reference-stop').hidden = reference.recording === null;
+    byId('reference-stop').disabled = state.phase === 'closing';
+    byId('reference-retry').hidden = reference.unsaved === null;
+    byId('reference-retry').disabled = state.phase === 'closing';
+
+    byId('reference-saved').replaceChildren(
+      ...reference.saved.map((item) => {
+        const line = document.createElement('li');
+        line.textContent = strings.referenceSavedItem(positionOfTask(item.task_id), item.reference_id);
+        return line;
+      }),
+    );
   }
 
   /** Muestra el tiempo transcurrido de la sesión libre. */
@@ -201,6 +273,7 @@
     renderActive(state);
     renderElapsed(state);
     renderCamera(state);
+    renderReference(state);
     renderGuided(state);
     renderMessage(state);
   }
@@ -242,6 +315,11 @@
     button.addEventListener('click', () => controller.requestCalibration(button.dataset.calibration));
   }
   byId('retry').addEventListener('click', () => controller.retry());
+  byId('reference-start').addEventListener('click', () =>
+    controller.startRecording(Number(byId('reference-task').value)),
+  );
+  byId('reference-stop').addEventListener('click', () => controller.stopRecording());
+  byId('reference-retry').addEventListener('click', () => controller.retrySave());
   byId('task-start').addEventListener('click', () => controller.startTask());
   byId('task-done').addEventListener('click', () => controller.endTask('done'));
   byId('task-gave-up').addEventListener('click', () => controller.endTask('gave_up'));
