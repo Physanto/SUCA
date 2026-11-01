@@ -9,12 +9,14 @@ Contrato de los mensajes que intercambian las partes de la extensión. Los nombr
 | **Panel lateral** | `extension/panel/` | Panel lateral de Chrome; persiste al navegar |
 | **Content scripts** | `extension/content/` (`capture.js`, `camera.js`, `calibration.js`, `task-end.js`) | Pestaña de la aplicación evaluada |
 | **Service worker** | `extension/worker.js` | Segundo plano de la extensión |
+| **Motor de la cámara** | `extension/camera/engine.html` | Documento *offscreen* de la extensión: abre la webcam y persiste al navegar. El worker lo crea al empezar la sesión y lo cierra al terminarla |
 
 **El service worker es el mediador** entre el panel lateral y la pestaña evaluada:
 
 - **Del panel a la pestaña:** `chrome.runtime.sendMessage` no llega a los content scripts, así que el panel envía al worker y el worker reenvía el mensaje **solo a la pestaña evaluada** de la sesión activa (`tab_id` en el estado de la sesión).
 - **De la pestaña al panel:** Chrome entrega el mensaje de un content script a todas las páginas de la extensión, incluido el panel lateral. El worker no lo reenvía: el panel lo recibiría dos veces.
 - **Al worker:** `batch`, `screen_capture.request` y `tab.identify` terminan en el worker, que habla con el servidor.
+- **Del motor de la cámara:** `camera.status` lo envía el motor, que es una página de la extensión: llega directo al panel lateral (y al worker, que solo lo usa para abrir la página del permiso de cámara). La mirada y el rostro no viajan como mensajes: van del motor a `camera.js` por una conexión propia de la cámara, descrita en `extension/camera/README.md`.
 
 Solo participa la pestaña evaluada. Los content scripts se cargan en todas las pestañas, pero cada uno pregunta su id con `tab.identify` y solo arranca sus módulos si coincide con `tab_id`.
 
@@ -71,8 +73,8 @@ Solo el panel lateral lo escribe: `UX.session.start` al iniciar la sesión, `upd
 | `task.started` | Panel lateral | `task-end.js`, `capture.js` (vía worker) | `task_id`, `end_condition` (o `null`) |
 | `task.completed` | `task-end.js` | Panel lateral | `task_id`, `ended_by` |
 | `calibration.request` | Panel lateral | Cámara (`camera.js`, `calibration.js`) (vía worker) | `type` |
-| `calibration.result` | Cámara | Panel lateral | `error_px`, `error_deg`, `accepted` |
-| `camera.status` | Cámara | Panel lateral | `status` |
+| `calibration.result` | `calibration.js` | Panel lateral | `error_px`, `error_deg`, `accepted` |
+| `camera.status` | Motor de la cámara | Panel lateral | `status` |
 | `screen_capture.request` | Panel lateral | Service worker | `study_id`, `screen` |
 | `batch` | Content scripts, panel lateral | Service worker | `session_id`, `type`, `records` |
 | `tab.identify` | Content scripts | Service worker | — |
@@ -166,6 +168,8 @@ El panel lateral pide una calibración de mirada.
 
 Resultado de la calibración pedida. El módulo de cámara también lo envía al servidor en un lote `calibration`.
 
+Se envía uno por cada intento terminado: si la calibración no se acepta y el participante la repite, llegan dos. **No llega ninguno** si la cámara no está activa, si no se detectó el rostro o si se canceló; en ese caso el panel se guía por `camera.status`.
+
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `error_px` | number | Error medio de validación en píxeles CSS |
@@ -181,7 +185,7 @@ Resultado de la calibración pedida. El módulo de cámara también lo envía al
 
 ### `camera.status`
 
-Estado de la cámara. Se envía al iniciar la cámara y cada vez que el estado cambia. La sesión puede seguir sin cámara.
+Estado de la cámara. Lo envía el motor de la cámara al abrir la webcam y cada vez que el estado cambia; no se repite al navegar. La sesión puede seguir sin cámara. Con `no_permission`, el worker abre la página para dar el permiso, una vez por sesión, y el motor reintenta solo.
 
 | Campo | Tipo | Descripción |
 |---|---|---|

@@ -61,7 +61,7 @@
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.0.1",
+    "version": "1.0.2",
     "enums": {
       "batch_type": [
         "events",
