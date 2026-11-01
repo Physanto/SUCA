@@ -19,7 +19,7 @@
       "type": ["string", "null"]
     },
     "text": {
-      "description": "Texto visible del elemento recortado a 50 caracteres, o null. Nunca se toma de campos de entrada (input, textarea, select).",
+      "description": "Texto visible del elemento recortado a 50 caracteres, o null. La captura solo lo toma de elementos interactivos, y nunca de campos de entrada (input, textarea, select), zonas editables o cuadros de texto personalizados.",
       "type": ["string", "null"],
       "maxLength": 50
     },
