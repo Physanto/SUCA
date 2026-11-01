@@ -4,8 +4,19 @@
   "version": "0.1.0",
   "description": "Registra la interacción, la mirada y los movimientos faciales durante pruebas de usabilidad.",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage", "tabs"],
-  "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
     "service_worker": "worker.js"
   },
@@ -17,7 +28,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "all_frames": false,
       "run_at": "document_idle",
       "js": [
@@ -29,17 +42,13 @@
         "common/batcher.js",
         "common/modules.js",
         "content/capture.js",
+        "camera/strings.js",
+        "content/camera/zones.js",
         "content/camera.js",
         "content/calibration.js",
         "content/task-end.js",
         "content/bootstrap.js"
       ]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["lib/*"],
-      "matches": ["<all_urls>"]
     }
   ]
 }

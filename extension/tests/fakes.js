@@ -181,7 +181,15 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
   const runtimeListeners = [];
   const tabs = new Map();
   const requests = [];
-  const calls = { accessLevel: null, panelBehavior: null, captured: [] };
+  const calls = {
+    accessLevel: null,
+    panelBehavior: null,
+    captured: [],
+    offscreen: [],
+    openedTabs: [],
+  };
+  const installedListeners = [];
+  let offscreenUrl = null;
 
   /** Área de `chrome.storage` falsa, con avisos de cambio. */
   const area = (name) => ({
@@ -211,6 +219,28 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
       },
       sendMessage: async () => undefined,
       onStartup: { addListener() {} },
+      onInstalled: { addListener: (listener) => installedListeners.push(listener) },
+      onConnect: { addListener() {} },
+      getContexts: async ({ documentUrls }) =>
+        offscreenUrl !== null && (!documentUrls || documentUrls.includes(offscreenUrl))
+          ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }]
+          : [],
+    },
+    offscreen: {
+      async createDocument(options) {
+        if (offscreenUrl !== null) {
+          throw new Error('Only a single offscreen document may be created.');
+        }
+        offscreenUrl = options.url;
+        calls.offscreen.push({ action: 'create', ...options });
+      },
+      async closeDocument() {
+        if (offscreenUrl === null) {
+          throw new Error('No current offscreen document.');
+        }
+        offscreenUrl = null;
+        calls.offscreen.push({ action: 'close' });
+      },
     },
     storage: {
       session: area('session'),
@@ -231,6 +261,10 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
         return clone(await handler(clone(message)));
       },
       get: async (id) => ({ id, windowId: 100 + id }),
+      create: async (options) => {
+        calls.openedTabs.push(options.url);
+        return { id: 900 + calls.openedTabs.length };
+      },
       captureVisibleTab: async (windowId, options) => {
         calls.captured.push({ windowId, options });
         return 'data:image/png;base64,iVBORw0KGgo=';
@@ -285,6 +319,10 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
     fromTab: (tabId, type, payload = {}) => sendToWorker({ type, payload }, { tab: { id: tabId } }),
     /** Define cómo responde a los mensajes el content script de una pestaña. */
     onTabMessage: (tabId, handler) => tabs.set(tabId, handler),
+    /** Simula que Chrome instala la extensión (`reason` `install` o `update`). */
+    install: (reason = 'install') => installedListeners.forEach((listener) => listener({ reason })),
+    /** Dirección del documento offscreen abierto, o `null`. */
+    offscreenUrl: () => offscreenUrl,
     sendToWorker,
   };
 }

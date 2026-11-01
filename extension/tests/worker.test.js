@@ -209,3 +209,82 @@ test('captures the evaluated tab and sends it to the server', async () => {
     image: 'data:image/png;base64,iVBORw0KGgo=',
   });
 });
+
+test('opens the camera engine before starting the modules of the evaluated tab', async () => {
+  const { fake } = await setup();
+  let engineOpenWhenStarted = null;
+  fake.onTabMessage(42, () => {
+    engineOpenWhenStarted = fake.offscreenUrl();
+    return { ok: true, value: { started: ['camera'], failed: [] } };
+  });
+
+  await fake.fromPanel('session.started', { session_id: 7, mode: 'guided', study_id: 1 });
+
+  assert.equal(engineOpenWhenStarted, 'chrome-extension://fake-extension/camera/engine.html');
+  assert.deepEqual(plain(fake.calls.offscreen[0].reasons), ['USER_MEDIA']);
+});
+
+test('reopens the camera engine when the evaluated tab loads a page, and only for that tab', async () => {
+  const { fake } = await setup();
+
+  await fake.fromTab(43, 'tab.identify');
+  await settle();
+  assert.equal(fake.offscreenUrl(), null);
+
+  await fake.fromTab(42, 'tab.identify');
+  await fake.fromTab(42, 'tab.identify');
+  await settle();
+  assert.equal(fake.offscreenUrl(), 'chrome-extension://fake-extension/camera/engine.html');
+  assert.equal(fake.calls.offscreen.length, 1, 'a second page load must not create a second engine');
+});
+
+test('closes the camera engine after the evaluated tab confirms the close', async () => {
+  const { fake } = await setup();
+  const order = [];
+  fake.onTabMessage(42, (message) => {
+    if (message.type === 'session.closed') {
+      order.push(`tab closed, engine ${fake.offscreenUrl() ? 'open' : 'closed'}`);
+      return { ok: true, value: { flushed: true } };
+    }
+    return { ok: true, value: { started: [], failed: [] } };
+  });
+  await fake.fromPanel('session.started', { session_id: 7, mode: 'guided', study_id: 1 });
+
+  await fake.fromPanel('session.closed', { session_id: 7 });
+
+  // La pestaña pide al motor el último intervalo sin datos antes de que se cierre.
+  assert.deepEqual(order, ['tab closed, engine open']);
+  assert.equal(fake.offscreenUrl(), null);
+});
+
+test('closes the camera engine when the session state is cleared', async () => {
+  const { fake } = await setup();
+  await fake.fromTab(42, 'tab.identify');
+  await settle();
+
+  await fake.chrome.storage.session.remove('session');
+  await settle();
+
+  assert.equal(fake.offscreenUrl(), null);
+});
+
+test('opens the camera permission page once per session when the engine has no permission', async () => {
+  const { fake } = await setup();
+
+  await fake.fromPanel('camera.status', { status: 'no_permission' });
+  await fake.fromPanel('camera.status', { status: 'no_permission' });
+  await fake.fromPanel('camera.status', { status: 'active' });
+  await settle();
+
+  assert.deepEqual(fake.calls.openedTabs, ['chrome-extension://fake-extension/camera/permission.html']);
+});
+
+test('asks for the camera permission on first install but not on updates', async () => {
+  const { fake } = await setup();
+
+  fake.install('update');
+  fake.install('install');
+  await settle();
+
+  assert.deepEqual(fake.calls.openedTabs, ['chrome-extension://fake-extension/camera/permission.html']);
+});
