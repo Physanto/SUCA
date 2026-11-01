@@ -39,6 +39,7 @@ const types = UX.createMessages({ platform: { onMessage() {} }, messageTypes: en
 function setup({ api = {}, tab = TAB, replies = {} } = {}) {
   const world = createFakeWorld();
   const calls = [];
+  const handlers = new Map();
   const clock = { time: 1791380000000, now: () => clock.time };
   const session = UX.createSession({ platform: world.platform(), modes: enums.session_mode });
   const controller = UX.createPanelController({
@@ -57,6 +58,10 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
     session,
     messages: {
       types,
+      on(type, handler) {
+        handlers.set(type, handler);
+        return () => handlers.delete(type);
+      },
       async send(type, payload) {
         calls.push({ send: type, payload });
         const reply = replies[type];
@@ -84,7 +89,7 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
       chromeVersion: async () => '146.0.7680.153',
     },
   });
-  return { world, session, controller, calls, clock };
+  return { world, session, controller, calls, clock, handlers };
 }
 
 test('loads the studies and waits for a new session', async () => {
@@ -469,4 +474,51 @@ test('the end of a task is never before its start', async () => {
   await controller.endTask('done');
 
   assert.equal(calls[0].record.t_end, 1791380005000);
+});
+
+test('task.completed from the tab ends the task by reference and moves on', async () => {
+  const { controller, calls, handlers, clock, world } = await startGuided();
+  clock.time = 1791380005000;
+  await controller.startTask();
+  clock.time = 1791380012000;
+  calls.length = 0;
+
+  await handlers.get(types.TASK_COMPLETED)({ task_id: 7, ended_by: 'reference' });
+
+  assert.deepEqual(calls, [
+    {
+      add: 'tasks',
+      record: { task_id: 7, t_start: 1791380005000, t_end: 1791380012000, ended_by: 'reference' },
+    },
+  ]);
+  assert.equal(world.areas.session.get('session').task_id, null);
+  assert.equal(controller.getState().guided.index, 1);
+});
+
+test('task.completed is ignored for another task, for another end, or when nothing runs', async () => {
+  const { controller, calls, handlers } = await startGuided();
+  const completed = handlers.get(types.TASK_COMPLETED);
+  calls.length = 0;
+
+  await completed({ task_id: 7, ended_by: 'reference' });
+  await controller.startTask();
+  await completed({ task_id: 8, ended_by: 'reference' });
+  await completed({ task_id: 7, ended_by: 'done' });
+
+  assert.equal(calls.some((call) => call.add === 'tasks'), false);
+  assert.equal(controller.getState().guided.current.task_id, 7);
+});
+
+test('a button press and task.completed together record the task once', async () => {
+  const { controller, calls, handlers } = await startGuided();
+  await controller.startTask();
+  calls.length = 0;
+
+  await Promise.all([
+    controller.endTask('done'),
+    handlers.get(types.TASK_COMPLETED)({ task_id: 7, ended_by: 'reference' }),
+  ]);
+
+  assert.equal(calls.filter((call) => call.add === 'tasks').length, 1);
+  assert.equal(controller.getState().guided.index, 1);
 });

@@ -207,6 +207,38 @@
       }
     }
 
+    /**
+     * Cierra la tarea en curso: guarda su registro en el lote `tasks`, deja la
+     * sesión sin tarea activa y pasa a la siguiente.
+     *
+     * @param {string} endedBy - Forma en que terminó (`ended_by` del contrato).
+     * @param {number} [onlyTask] - Si se da, solo cierra la tarea en curso con ese id.
+     * @returns {Promise<void>}
+     */
+    async function finishTask(endedBy, onlyTask) {
+      const { guided } = state;
+      if (state.phase !== PHASES.ACTIVE || guided === null || guided.current === null) {
+        return;
+      }
+      if (onlyTask !== undefined && guided.current.task_id !== onlyTask) {
+        return;
+      }
+      const { task_id, t_start } = guided.current;
+      // El estado cambia antes de esperar, para que un segundo clic no repita el registro.
+      setState({ guided: { ...guided, index: guided.index + 1, current: null }, error: null });
+      batcher.add('tasks', {
+        task_id,
+        t_start,
+        t_end: Math.max(clock.now(), t_start),
+        ended_by: endedBy,
+      });
+      try {
+        await session.update({ task_id: null });
+      } catch (error) {
+        setState({ error: describeError(error) });
+      }
+    }
+
     return Object.freeze({
       /**
        * Prepara el panel: estudios y, si la hay, la sesión en curso.
@@ -215,6 +247,10 @@
        */
       async init() {
         session.subscribe(follow);
+        // La pestaña avisa cuando la página llegó a la condición final de la tarea.
+        messages.on(types.TASK_COMPLETED, ({ task_id, ended_by }) =>
+          ended_by === 'reference' ? finishTask('reference', task_id) : undefined,
+        );
         await loadStudies();
         // Se relee lo guardado: otro contexto pudo escribirlo y su aviso no haber llegado.
         const current = await session.reload();
@@ -339,24 +375,7 @@
         if (!BUTTON_ENDS.includes(endedBy)) {
           throw new Error(`a button cannot end a task with ${endedBy}`);
         }
-        const { guided } = state;
-        if (state.phase !== PHASES.ACTIVE || guided === null || guided.current === null) {
-          return;
-        }
-        const { task_id, t_start } = guided.current;
-        // El estado cambia antes de esperar, para que un segundo clic no repita el registro.
-        setState({ guided: { ...guided, index: guided.index + 1, current: null }, error: null });
-        batcher.add('tasks', {
-          task_id,
-          t_start,
-          t_end: Math.max(clock.now(), t_start),
-          ended_by: endedBy,
-        });
-        try {
-          await session.update({ task_id: null });
-        } catch (error) {
-          setState({ error: describeError(error) });
-        }
+        await finishTask(endedBy);
       },
 
       /**
