@@ -15,7 +15,8 @@
  *   acumulador los entrega al worker.
  * - Recibe: `task.started` llega a esta pestaña, pero la captura no necesita
  *   escucharlo: lee la tarea activa de `ctx.session.get().task_id`, que el panel
- *   actualiza al empezar y terminar cada tarea.
+ *   actualiza al empezar y terminar cada tarea. Cada registro lleva la tarea
+ *   activa en el momento del hecho, también los que se entregan después.
  *
  * Formato de los registros: `contracts/batches/events.schema.json` y
  * `contracts/element.schema.json`.
@@ -215,15 +216,33 @@
     };
   }
 
-  /** Entrega un registro de evento con los campos comunes (momento, pantalla y tarea activa). */
-  function record(t, type, fields) {
+  /** Tarea activa ahora, de la sesión que el panel mantiene al día; `null` si no hay ninguna. */
+  function activeTask() {
     const state = ctx.session.get();
+    return state ? state.task_id : null;
+  }
+
+  /**
+   * Entrega un registro de evento con los campos comunes (momento, pantalla y tarea activa).
+   *
+   * Los registros que se entregan más tarde que el hecho que los causó (la respuesta
+   * a un clic, una selección, un error que el sitio muestra después) reciben la
+   * tarea del momento del hecho: si el clic termina la tarea, su respuesta sigue
+   * perteneciendo a ella aunque la tarea ya se haya cerrado cuando se entrega.
+   *
+   * @param {number} t - Momento del registro.
+   * @param {string} type - Tipo de evento.
+   * @param {object} fields - Campos propios del tipo.
+   * @param {number|null} [taskId] - Tarea del momento del hecho; por omisión, la activa ahora.
+   * @returns {void}
+   */
+  function record(t, type, fields, taskId = activeTask()) {
     ctx.batcher.add('events', {
       t,
       type,
       ...fields,
       screen: { url: root.location.href, title: root.document.title },
-      task_id: state ? state.task_id : null,
+      task_id: taskId,
     });
   }
 
@@ -234,14 +253,15 @@
   function onClick(event) {
     const target = event.target instanceof Element ? event.target : null;
     const t = ctx.clock.now();
-    record(t, event.type, {
-      x: event.clientX,
-      y: event.clientY,
-      element: target ? describe(target) : null,
-      data: {},
-    });
+    const taskId = activeTask();
+    record(
+      t,
+      event.type,
+      { x: event.clientX, y: event.clientY, element: target ? describe(target) : null, data: {} },
+      taskId,
+    );
     if (event.type === 'click') {
-      watchResponse(t);
+      watchResponse(t, taskId);
     }
   }
 
@@ -272,9 +292,10 @@
    * este oyente corre primero (fase de captura).
    *
    * @param {number} clickT - Momento del clic, tal como quedó en su registro.
+   * @param {number|null} taskId - Tarea del clic; la respuesta se registra con ella.
    * @returns {void}
    */
-  function watchResponse(clickT) {
+  function watchResponse(clickT, taskId) {
     const urlAtClick = root.location.href;
     let mutationCount = 0;
     const observer = new root.MutationObserver((records) => {
@@ -298,9 +319,12 @@
         // Una aplicación de una sola página navega sin descargar la página: cambia la URL.
         const navigated = unloading || root.location.href !== urlAtClick;
         if (mutationCount > 0 || navigated) {
-          record(ctx.clock.now(), 'click_response', {
-            data: { click_t: clickT, mutation_count: mutationCount, navigated },
-          });
+          record(
+            ctx.clock.now(),
+            'click_response',
+            { data: { click_t: clickT, mutation_count: mutationCount, navigated } },
+            taskId,
+          );
         }
       },
       /** Abandona la vigilancia sin registrar nada. */
@@ -387,7 +411,7 @@
 
   /** Guarda el movimiento del cursor; el muestreador decide cuándo registrarlo. */
   function onMouseMove(event) {
-    lastMove = { x: event.clientX, y: event.clientY };
+    lastMove = { x: event.clientX, y: event.clientY, taskId: activeTask() };
     mouseSampler.request();
   }
 
@@ -398,6 +422,7 @@
     }
     // Los navegadores con rebote pueden informar posiciones negativas; el contrato las excluye.
     lastScroll = {
+      taskId: activeTask(),
       scroll_x: Math.max(0, root.scrollX),
       scroll_y: Math.max(0, root.scrollY),
     };
@@ -407,6 +432,8 @@
   /** Temporizadores de esta ejecución (se toman en `start`) y espera pendiente de la selección. */
   let timers = null;
   let selectionTimer = null;
+  /** Tarea activa en el último cambio de la selección. */
+  let selectionTask = null;
 
   /** Si el elemento es un campo de formulario o está dentro de una zona editable. */
   function isFieldOrEditable(element) {
@@ -415,6 +442,7 @@
 
   /** Reinicia la espera: solo se registra cuando la selección lleva 300 ms sin cambiar. */
   function onSelectionChange() {
+    selectionTask = activeTask();
     timers.clearTimeout(selectionTimer);
     selectionTimer = timers.setTimeout(recordSelection, SELECTION_WAIT_MS);
   }
@@ -442,7 +470,7 @@
     // El texto solo se usa para contar: no se guarda ni se envía.
     const length = selection.toString().length;
     if (length > 0) {
-      record(ctx.clock.now(), 'selection', { data: { length } });
+      record(ctx.clock.now(), 'selection', { data: { length } }, selectionTask);
     }
   }
 
@@ -508,12 +536,14 @@
     return errorType.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
   }
 
-  /** Entrega un `validation_error` del campo con su tipo. */
-  function recordError(element, errorType) {
-    record(ctx.clock.now(), 'validation_error', {
-      element: describe(element, true),
-      data: { error_type: errorType },
-    });
+  /** Entrega un `validation_error` del campo con su tipo y la tarea en que ocurrió. */
+  function recordError(element, errorType, taskId = activeTask()) {
+    record(
+      ctx.clock.now(),
+      'validation_error',
+      { element: describe(element, true), data: { error_type: errorType } },
+      taskId,
+    );
   }
 
   /** Validación nativa: el navegador avisa con `invalid` de cada campo inválido al intentar enviar. */
@@ -530,10 +560,10 @@
   }
 
   /** Registra el error de un campo salvo que ya se hubiera registrado y siga presente. */
-  function reportError(element, errorType) {
+  function reportError(element, errorType, taskId = activeTask()) {
     if (reportedErrors.get(element) !== errorType) {
       reportedErrors.set(element, errorType);
-      recordError(element, errorType);
+      recordError(element, errorType, taskId);
     }
   }
 
@@ -575,7 +605,7 @@
   }
 
   /** Revisa, algo después de salir de un campo, si el sitio le mostró un error. */
-  function checkFieldError(field) {
+  function checkFieldError(field, taskId) {
     let errorType = null;
     if (field.getAttribute('aria-invalid') === 'true') {
       errorType = ARIA_INVALID;
@@ -583,7 +613,7 @@
       errorType = VISIBLE_MESSAGE;
     }
     if (errorType) {
-      reportError(field, errorType);
+      reportError(field, errorType, taskId);
     } else {
       reportedErrors.delete(field);
     }
@@ -591,9 +621,11 @@
 
   /** Programa la revisión; la espera da tiempo al sitio de mostrar su mensaje tras salir del campo. */
   function scheduleFieldCheck(field) {
+    // La tarea es la del momento de salir del campo, no la de cuando se haga la revisión.
+    const taskId = activeTask();
     const timer = timers.setTimeout(() => {
       pendingChecks.delete(timer);
-      checkFieldError(field);
+      checkFieldError(field, taskId);
     }, ERROR_CHECK_DELAY_MS);
     pendingChecks.add(timer);
   }
@@ -679,16 +711,20 @@
         intervalMs: mouseInterval,
         now,
         timers,
-        emit: () => record(ctx.clock.now(), 'mousemove', { x: lastMove.x, y: lastMove.y, data: {} }),
+        emit: () =>
+          record(ctx.clock.now(), 'mousemove', { x: lastMove.x, y: lastMove.y, data: {} }, lastMove.taskId),
       });
       scrollSampler = createSampler({
         intervalMs: scrollInterval,
         now,
         timers,
         emit: () =>
-          record(ctx.clock.now(), 'scroll', {
-            data: { scroll_x: lastScroll.scroll_x, scroll_y: lastScroll.scroll_y },
-          }),
+          record(
+            ctx.clock.now(),
+            'scroll',
+            { data: { scroll_x: lastScroll.scroll_x, scroll_y: lastScroll.scroll_y } },
+            lastScroll.taskId,
+          ),
       });
       CLICK_TYPES.forEach((type) => root.document.addEventListener(type, onClick, true));
       root.document.addEventListener('mousemove', onMouseMove, PASSIVE);

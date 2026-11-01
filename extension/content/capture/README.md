@@ -35,7 +35,7 @@ Los orígenes 2 y 3 se registran una sola vez mientras el error siga presente, y
 
 **Muestreo.** El primer movimiento o scroll se registra de inmediato. Los que llegan antes de que pase el intervalo mínimo (1000 ÷ frecuencia) no se pierden: se guarda el último y se registra al cumplirse el intervalo, para conservar la posición donde terminó el movimiento. Las frecuencias se leen de `ctx.config.capture` al iniciar; si no son números positivos, el módulo no arranca. Los oyentes son pasivos y `stop()` descarta lo pendiente.
 
-Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null`). El formato es `contracts/batches/events.schema.json`.
+Todos los registros llevan `t` (reloj común), `screen` (URL y título actuales) y `task_id` (la tarea activa de `ctx.session.get()`, o `null` si no hay tarea o sesión). **La tarea es la del momento del hecho, no la de la entrega:** los registros que se entregan después (`click_response`, `selection`, `validation_error` de aria y de mensaje visible, y `mousemove` y `scroll` retrasados) llevan la tarea que estaba activa cuando ocurrió lo que los causó. Así, si un clic termina la tarea, su respuesta sigue siendo de esa tarea aunque ya se haya cerrado cuando se entrega. El formato es `contracts/batches/events.schema.json`.
 
 Todos los tipos de evento de la captura están documentados arriba.
 

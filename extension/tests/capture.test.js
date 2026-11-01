@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createFakeTimers } = require('./fakes.js');
+const { createFakeTimers, createFakeWorld, settle } = require('./fakes.js');
 
 const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
 
@@ -126,6 +126,7 @@ function createFakeDocument() {
 let registered = null;
 globalThis.UX = { modules: { register: (module) => (registered = module) } };
 require('../config.generated.js');
+require('../common/session.js');
 const { UX } = globalThis;
 
 /** MutationObserver falso: guarda su función para que la prueba dispare cambios. */
@@ -178,7 +179,10 @@ const CAPTURE_CONFIG = { mousemove_hz: 50, scroll_hz: 10, click_response_wait_ms
  * @param {object} [options.config] - Sección `capture` de la configuración.
  * @param {boolean} [options.fakeClock] - Si el reloj sigue a los temporizadores falsos.
  */
-function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeClock = false } = {}) {
+function startCapture(
+  session = { task_id: 3 },
+  { config = CAPTURE_CONFIG, fakeClock = false, liveSession = null } = {},
+) {
   const document = createFakeDocument();
   globalThis.document = document;
   globalThis.location = { href: 'https://shop.local/cart' };
@@ -205,7 +209,7 @@ function startCapture(session = { task_id: 3 }, { config = CAPTURE_CONFIG, fakeC
         add: (type, record) => added.push({ type, record, at: timers.now() }),
         flush: async () => flushes.push(timers.now()),
       },
-      session: { get: () => session },
+      session: liveSession || { get: () => session },
       config: { capture: config },
       contracts: UX.contracts,
     });
@@ -1258,4 +1262,129 @@ test('uses the active task and stop cancels the checks and unhooks popstate and 
   globalThis.location.href = 'https://shop.local/b';
   await timers.advance(1000);
   assert.equal(screens(added).length, 1);
+});
+
+/**
+ * Provoca un registro de cada tipo de evento de la captura.
+ *
+ * @param {object|null} state - Estado de la sesión que ve el módulo (se puede mutar en la prueba).
+ * @returns {Promise<object[]>} Todos los registros entregados, incluida la pantalla inicial.
+ */
+async function exerciseEveryEvent(state) {
+  const { document, added, initial, click, timers, pageListeners } = startCapture(state, { fakeClock: true });
+  const field = el('input', { type: 'text', id: 'name' });
+  field.validity = { valueMissing: true };
+
+  click(el('button'), 'click');
+  click(el('button'), 'dblclick');
+  click(el('button'), 'contextmenu');
+  clickObservers().forEach((observer) => observer.emit(1));
+  move(document, 10, 10);
+  scrollTo(document, 0, 120);
+  selectText('texto');
+  selectionChanged(document);
+  document.dispatch({ type: 'focusin', target: field });
+  document.dispatch({ type: 'input', target: field });
+  document.dispatch({ type: 'submit', target: el('form') });
+  document.dispatch({ type: 'invalid', target: field });
+  FakeMutationObserver.instances[0].callback([{ target: el('input', { 'aria-invalid': 'true' }) }]);
+  document.ids.err = el('span', { id: 'err' }, { text: 'Error' });
+  document.dispatch({ type: 'focusout', target: el('input', { type: 'text', 'aria-errormessage': 'err' }) });
+  globalThis.location.href = 'https://shop.local/other';
+  pageListeners.get('popstate')({ type: 'popstate' });
+  await timers.advance(2000);
+  registered.stop();
+  return [...initial, ...added].map((entry) => entry.record);
+}
+
+test('marks a record of every event type with the active task, or null when there is none', async () => {
+  const expected = UX.contracts.enums.event_type.filter((type) => type !== 'camera_gap');
+
+  for (const [state, taskId] of [[{ task_id: 7 }, 7], [{ task_id: null }, null], [null, null]]) {
+    const records = await exerciseEveryEvent(state);
+
+    assert.deepEqual([...new Set(records.map((record) => record.type))].sort(), [...expected].sort());
+    for (const record of records) {
+      assert.equal(record.task_id, taskId, `${record.type} must carry task_id ${taskId}`);
+    }
+    // Los dos tipos de validación diferida se registraron además de la nativa.
+    const kinds = records.filter((record) => record.type === 'validation_error').map((record) => record.data.error_type);
+    assert.deepEqual(kinds.sort(), ['aria_invalid', 'value_missing', 'visible_message']);
+  }
+});
+
+test('the response to a click keeps the task of the click even if the task ends before it is delivered', async () => {
+  const state = { task_id: 3 };
+  const { added, click, timers } = startCapture(state, { fakeClock: true });
+
+  click(el('button', { id: 'confirm' }));
+  clickObservers()[0].emit(2);
+  await timers.advance(300);
+  state.task_id = null;
+  await timers.advance(1200);
+  click(el('button'));
+  registered.stop();
+
+  const click1 = added.find((entry) => entry.record.type === 'click').record;
+  const response = added.find((entry) => entry.record.type === 'click_response').record;
+  assert.equal(click1.task_id, 3);
+  assert.equal(response.task_id, 3);
+  assert.equal(response.data.click_t, click1.t);
+  assert.equal(added.filter((entry) => entry.record.type === 'click').at(-1).record.task_id, null);
+});
+
+test('delayed records keep the task of the moment they were caused by', async () => {
+  const state = { task_id: 3 };
+  const { document, added, timers } = startCapture(state, { fakeClock: true });
+  const typeOf = (type) => added.filter((entry) => entry.record.type === type).map((entry) => entry.record.task_id);
+
+  // Cursor y scroll: el segundo valor espera su turno y la tarea cambia mientras tanto.
+  move(document, 1, 1);
+  scrollTo(document, 0, 10);
+  await timers.advance(5);
+  move(document, 2, 2);
+  scrollTo(document, 0, 20);
+  state.task_id = 4;
+  await timers.advance(100);
+  // Selección: la tarea cambia durante la espera de 300 ms.
+  state.task_id = 5;
+  selectText('abc');
+  selectionChanged(document);
+  state.task_id = 6;
+  await timers.advance(300);
+  // Mensaje de error visible: la tarea cambia durante la espera de 200 ms.
+  document.ids.err = el('span', { id: 'err' }, { text: 'Error' });
+  state.task_id = 8;
+  document.dispatch({ type: 'focusout', target: el('input', { type: 'text', 'aria-errormessage': 'err' }) });
+  state.task_id = 9;
+  await timers.advance(200);
+  registered.stop();
+
+  assert.deepEqual(typeOf('mousemove'), [3, 3]);
+  assert.deepEqual(typeOf('scroll'), [3, 3]);
+  assert.deepEqual(typeOf('selection'), [5]);
+  assert.deepEqual(typeOf('validation_error'), [8]);
+});
+
+test('sees the task the panel sets through the real session state, without restarting the capture', async () => {
+  const modes = UX.contracts.enums.session_mode;
+  const world = createFakeWorld();
+  const panel = UX.createSession({ platform: world.platform(), modes });
+  const tab = UX.createSession({ platform: world.platform({ tabId: 42 }), modes });
+  await panel.start({ session_id: 7, mode: 'guided', study_id: 1, tab_id: 42 });
+  await tab.reload();
+  const { added, click } = startCapture(undefined, { liveSession: { get: tab.get } });
+  const lastTask = () => added.at(-1).record.task_id;
+
+  click(el('button'));
+  assert.equal(lastTask(), null);
+  await panel.update({ task_id: 3 });
+  await settle();
+  click(el('button'));
+  assert.equal(lastTask(), 3);
+  await panel.update({ task_id: null });
+  await settle();
+  click(el('button'));
+  assert.equal(lastTask(), null);
+  registered.stop();
 });
