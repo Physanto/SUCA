@@ -17,6 +17,18 @@ const { UX } = globalThis;
 const { enums } = UX.contracts;
 const STUDIES = [{ id: 1, name: 'Tienda de ejemplo', system_under_test: 'App', description: null }];
 const TAB = { id: 42, url: 'http://127.0.0.1:8766/', title: 'Página de prueba', width: 1200, height: 700 };
+const TASKS = [
+  {
+    id: 7,
+    position: 1,
+    instruction: 'Busca una camiseta y agrégala al carrito.',
+    references: [
+      { id: 9, end_condition: { type: 'url_pattern', pattern: '/cart' } },
+      { id: 4, end_condition: { type: 'visible_text', text: 'Carrito' } },
+    ],
+  },
+  { id: 8, position: 2, instruction: 'Completa la compra.', references: [] },
+];
 const FORM = { study_id: 1, participant_id: 'P07', version: 'V0', mode: 'free' };
 const types = UX.createMessages({ platform: { onMessage() {} }, messageTypes: enums.message_type }).types;
 
@@ -27,6 +39,7 @@ const types = UX.createMessages({ platform: { onMessage() {} }, messageTypes: en
 function setup({ api = {}, tab = TAB, replies = {} } = {}) {
   const world = createFakeWorld();
   const calls = [];
+  const clock = { time: 1791380000000, now: () => clock.time };
   const session = UX.createSession({ platform: world.platform(), modes: enums.session_mode });
   const controller = UX.createPanelController({
     api: {
@@ -34,6 +47,10 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
       createSession: async (body) => {
         calls.push({ createSession: body });
         return { session_id: 12, started_at: 1791380123456 };
+      },
+      listTasks: async (studyId) => {
+        calls.push({ listTasks: studyId });
+        return TASKS;
       },
       ...api,
     },
@@ -54,7 +71,12 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
         calls.push('flush');
         return true;
       },
+      add: (type, record) => {
+        calls.push({ add: type, record });
+        return true;
+      },
     },
+    clock,
     platform: { activeTab: async () => tab },
     environment: {
       screen: { width: 1920, height: 1080 },
@@ -62,7 +84,7 @@ function setup({ api = {}, tab = TAB, replies = {} } = {}) {
       chromeVersion: async () => '146.0.7680.153',
     },
   });
-  return { world, session, controller, calls };
+  return { world, session, controller, calls, clock };
 }
 
 test('loads the studies and waits for a new session', async () => {
@@ -238,4 +260,213 @@ test('follows a session that another panel closes', async () => {
 
   assert.equal(controller.getState().phase, 'idle');
   assert.equal(controller.getState().session, null);
+});
+
+/** Inicia una sesión guiada y deja el panel con la primera tarea lista. */
+async function startGuided(options) {
+  const result = setup(options);
+  await result.controller.init();
+  await result.controller.startSession({ ...FORM, mode: 'guided' });
+  return result;
+}
+
+test('guided mode loads the tasks of the study and waits for the first one', async () => {
+  const { controller, calls } = await startGuided();
+
+  const { guided } = controller.getState();
+  assert.deepEqual(calls.filter((call) => call.listTasks !== undefined), [{ listTasks: 1 }]);
+  assert.equal(guided.loaded, true);
+  assert.deepEqual(guided.tasks, TASKS);
+  assert.equal(guided.index, 0);
+  assert.equal(guided.current, null);
+});
+
+test('free and reference modes do not load tasks', async () => {
+  for (const mode of ['free', 'reference']) {
+    const { controller, calls } = setup();
+    await controller.init();
+    await controller.startSession({ ...FORM, mode });
+
+    assert.equal(controller.getState().guided, null);
+    assert.equal(calls.some((call) => call.listTasks !== undefined), false);
+  }
+});
+
+test('starting a task saves it in the session and tells the tab its end condition', async () => {
+  const { controller, calls, world, clock } = await startGuided();
+  calls.length = 0;
+  clock.time = 1791380005000;
+
+  await controller.startTask();
+
+  assert.equal(world.areas.session.get('session').task_id, 7);
+  // De las dos referencias confirmadas se usa la de menor id.
+  assert.deepEqual(calls, [
+    {
+      send: 'task.started',
+      payload: { task_id: 7, end_condition: { type: 'visible_text', text: 'Carrito' } },
+    },
+  ]);
+  assert.deepEqual(controller.getState().guided.current, { task_id: 7, t_start: 1791380005000 });
+});
+
+test('a task without a confirmed reference starts with a null end condition', async () => {
+  const { controller, calls } = await startGuided();
+  await controller.startTask();
+  await controller.endTask('done');
+  calls.length = 0;
+
+  await controller.startTask();
+
+  assert.deepEqual(calls, [{ send: 'task.started', payload: { task_id: 8, end_condition: null } }]);
+});
+
+test('Terminé records the task with its times and moves to the next one', async () => {
+  const { controller, calls, world, clock } = await startGuided();
+  clock.time = 1791380005000;
+  await controller.startTask();
+  clock.time = 1791380042500;
+  calls.length = 0;
+
+  await controller.endTask('done');
+
+  assert.deepEqual(calls, [
+    {
+      add: 'tasks',
+      record: { task_id: 7, t_start: 1791380005000, t_end: 1791380042500, ended_by: 'done' },
+    },
+  ]);
+  assert.equal(world.areas.session.get('session').task_id, null);
+  const { guided } = controller.getState();
+  assert.equal(guided.index, 1);
+  assert.equal(guided.current, null);
+});
+
+test('No pude records gave_up, and the last task leaves the list finished', async () => {
+  const { controller, calls } = await startGuided();
+  await controller.startTask();
+  await controller.endTask('done');
+  await controller.startTask();
+  calls.length = 0;
+
+  await controller.endTask('gave_up');
+
+  assert.equal(calls[0].record.task_id, 8);
+  assert.equal(calls[0].record.ended_by, 'gave_up');
+  const { guided } = controller.getState();
+  assert.equal(guided.index, guided.tasks.length);
+  // Ya no hay tarea que empezar.
+  calls.length = 0;
+  await controller.startTask();
+  assert.deepEqual(calls, []);
+});
+
+test('a second press does not repeat the start or the end of a task', async () => {
+  const { controller, calls } = await startGuided();
+  calls.length = 0;
+
+  await Promise.all([controller.startTask(), controller.startTask()]);
+  assert.equal(calls.filter((call) => call.send === 'task.started').length, 1);
+
+  await Promise.all([controller.endTask('done'), controller.endTask('done')]);
+  assert.equal(calls.filter((call) => call.add === 'tasks').length, 1);
+});
+
+test('only the buttons can end a task here, not the reference', async () => {
+  const { controller } = await startGuided();
+  await controller.startTask();
+
+  await assert.rejects(() => controller.endTask('reference'), /cannot end a task/);
+  assert.notEqual(controller.getState().guided.current, null);
+});
+
+test('starting or ending does nothing without a task to act on', async () => {
+  const free = setup();
+  await free.controller.init();
+  await free.controller.startSession(FORM);
+  free.calls.length = 0;
+  await free.controller.startTask();
+  await free.controller.endTask('done');
+  assert.deepEqual(free.calls, []);
+
+  const guided = await startGuided();
+  guided.calls.length = 0;
+  await guided.controller.endTask('done');
+  assert.deepEqual(guided.calls, []);
+});
+
+test('a task list that cannot be loaded is reported and can be loaded again', async () => {
+  let fail = true;
+  const { controller } = await startGuided({
+    api: {
+      listTasks: async () => {
+        if (fail) {
+          throw new UX.ApiError({ status: 0, detail: 'server unreachable', errors: [] });
+        }
+        return TASKS;
+      },
+    },
+  });
+  assert.equal(controller.getState().error.code, 'server_unreachable');
+  assert.equal(controller.getState().guided.loaded, false);
+
+  fail = false;
+  await controller.retry();
+
+  assert.equal(controller.getState().error, null);
+  assert.equal(controller.getState().guided.loaded, true);
+});
+
+test('keeps the task going when the tab does not answer task.started', async () => {
+  const { controller, session } = await startGuided({
+    replies: { [types.TASK_STARTED]: new Error('no receiver') },
+  });
+
+  await controller.startTask();
+
+  assert.equal(session.get().task_id, 7);
+  assert.notEqual(controller.getState().guided.current, null);
+  assert.equal(controller.getState().tabStatus, 'pending');
+});
+
+test('reopening the panel in the middle of a task resumes that task', async () => {
+  const { controller, world, clock } = setup();
+  world.areas.session.set('session', {
+    session_id: 12,
+    mode: 'guided',
+    study_id: 1,
+    tab_id: 42,
+    task_id: 8,
+  });
+  clock.time = 1791380090000;
+
+  await controller.init();
+
+  const { guided } = controller.getState();
+  assert.equal(guided.index, 1);
+  assert.deepEqual(guided.current, { task_id: 8, t_start: 1791380090000 });
+});
+
+test('closing the session in the middle of a task does not record that task', async () => {
+  const { controller, calls } = await startGuided();
+  await controller.startTask();
+  calls.length = 0;
+
+  await controller.closeSession();
+
+  assert.equal(calls.some((call) => call.add === 'tasks'), false);
+  assert.equal(controller.getState().guided, null);
+  assert.equal(controller.getState().phase, 'idle');
+});
+
+test('the end of a task is never before its start', async () => {
+  const { controller, calls, clock } = await startGuided();
+  clock.time = 1791380005000;
+  await controller.startTask();
+  clock.time = 1791380004000;
+  calls.length = 0;
+
+  await controller.endTask('done');
+
+  assert.equal(calls[0].record.t_end, 1791380005000);
 });

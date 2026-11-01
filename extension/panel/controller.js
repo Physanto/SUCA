@@ -11,7 +11,11 @@
  * - `tabStatus`: `capturing` (la pestaña inició sus módulos), `pending` (la
  *   pestaña no respondió) o `unknown` (el panel se abrió con la sesión en curso);
  * - `failedModules`: módulos que no arrancaron en la pestaña;
- * - `error`: `{ code, fields, detail }` o `null`; `notice`: `{ code, session_id }` o `null`.
+ * - `error`: `{ code, fields, detail }` o `null`; `notice`: `{ code, session_id }` o `null`;
+ * - `guided`: solo en modo guiado, `null` en los demás. Tiene `loaded` (si ya
+ *   llegaron las tareas), `tasks` (las del estudio, en orden), `index` (posición
+ *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas) y
+ *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`).
  *
  * Los códigos de error y de aviso son claves de `strings.js`.
  */
@@ -32,6 +36,21 @@
 
   /** Chrome no inyecta content scripts en sus propias páginas: solo se evalúan páginas web. */
   const EVALUABLE_URL = /^https?:\/\//;
+
+  /** Formas de terminar una tarea con un botón del panel (`ended_by` del contrato). */
+  const BUTTON_ENDS = Object.freeze(['done', 'gave_up']);
+
+  /**
+   * Condición final de una tarea: la de su primera referencia confirmada (la de
+   * menor `id`), o `null` si no tiene.
+   *
+   * @param {{references: Array<{id: number, end_condition: object}>}} task - Tarea del servidor.
+   * @returns {(object|null)} Condición final para `task.started`.
+   */
+  function endConditionOf(task) {
+    const [first] = [...(task.references || [])].sort((a, b) => a.id - b.id);
+    return first ? first.end_condition : null;
+  }
 
   /**
    * Traduce un error del servidor o de los mensajes a un código para la vista.
@@ -58,14 +77,24 @@
    * @param {object} deps.session - Estado de la sesión (`UX.session`).
    * @param {object} deps.messages - Canal de mensajes (`UX.messages`).
    * @param {object} deps.batcher - Acumulador del panel (`UX.batcher`).
+   * @param {{now: function(): number}} deps.clock - Reloj común (`UX.clock`), el de
+   *   las marcas de tiempo de todos los registros.
    * @param {{activeTab: Function}} deps.platform - Adaptador de plataforma.
    * @param {{screen: {width: number, height: number}, devicePixelRatio: number,
    *   chromeVersion: function(): Promise<string>}} deps.environment - Datos de
    *   la pantalla y del navegador para `screen_info`.
-   * @returns {object} Controlador con `init`, `loadStudies`, `startSession`,
-   *   `closeSession`, `getState` y `subscribe`.
+   * @returns {object} Controlador con `init`, `loadStudies`, `loadTasks`, `retry`,
+   *   `startSession`, `startTask`, `endTask`, `closeSession`, `getState` y `subscribe`.
    */
-  function createPanelController({ api, session, messages, batcher, platform, environment }) {
+  function createPanelController({
+    api,
+    session,
+    messages,
+    batcher,
+    clock,
+    platform,
+    environment,
+  }) {
     const { types } = messages;
     const listeners = new Set();
     let state = Object.freeze({
@@ -77,6 +106,7 @@
       failedModules: [],
       error: null,
       notice: null,
+      guided: null,
     });
 
     /** Publica un estado nuevo, con los cambios dados, a la vista. */
@@ -94,6 +124,7 @@
       tab: null,
       tabStatus: null,
       failedModules: [],
+      guided: null,
       ...changes,
     });
 
@@ -123,6 +154,7 @@
         setState(idle());
       } else if (current !== null && state.phase === PHASES.IDLE) {
         setState({ phase: PHASES.ACTIVE, session: current, tabStatus: 'unknown' });
+        loadTasks();
       } else if (current !== null) {
         setState({ session: current });
       }
@@ -138,6 +170,40 @@
         setState({ studies: await api.listStudies(), error: null });
       } catch (error) {
         setState({ error: describeError(error) });
+      }
+    }
+
+    /**
+     * Carga las tareas del estudio de una sesión guiada. En otros modos no hace nada.
+     *
+     * Si el panel se abrió con una tarea en curso, la retoma: el estado de la
+     * sesión guarda cuál es (`task_id`), pero no cuándo empezó, así que su
+     * `t_start` pasa a ser el momento de reabrir el panel.
+     *
+     * @returns {Promise<void>}
+     */
+    async function loadTasks() {
+      const current = session.get();
+      if (current === null || current.mode !== 'guided') {
+        return;
+      }
+      try {
+        const tasks = await api.listTasks(current.study_id);
+        const running = tasks.findIndex((task) => task.id === current.task_id);
+        setState({
+          guided: {
+            loaded: true,
+            tasks,
+            index: Math.max(running, 0),
+            current: running >= 0 ? { task_id: current.task_id, t_start: clock.now() } : null,
+          },
+          error: null,
+        });
+      } catch (error) {
+        setState({
+          guided: { loaded: false, tasks: [], index: 0, current: null },
+          error: describeError(error),
+        });
       }
     }
 
@@ -157,9 +223,24 @@
             ? idle()
             : { phase: PHASES.ACTIVE, session: current, tabStatus: 'unknown' },
         );
+        await loadTasks();
       },
 
       loadStudies,
+
+      loadTasks,
+
+      /**
+       * Repite lo que falló al cargar: los estudios y, en una sesión guiada, las tareas.
+       *
+       * @returns {Promise<void>}
+       */
+      async retry() {
+        await loadStudies();
+        if (state.guided !== null && !state.guided.loaded) {
+          await loadTasks();
+        }
+      },
 
       /**
        * Crea una sesión en el servidor para la pestaña activa y la inicia.
@@ -205,8 +286,76 @@
             tab: { title: tab.title, url: tab.url },
           });
           await announce(session.get());
+          await loadTasks();
         } catch (error) {
           setState(idle({ error: describeError(error) }));
+        }
+      },
+
+      /**
+       * Empieza la tarea que toca: la anota en el estado de la sesión, para que
+       * la captura marque con ella sus registros, y avisa a la pestaña con su
+       * condición final (o `null` si la tarea no tiene referencia confirmada).
+       *
+       * @returns {Promise<void>}
+       */
+      async startTask() {
+        const { guided } = state;
+        if (state.phase !== PHASES.ACTIVE || guided === null || guided.current !== null) {
+          return;
+        }
+        const task = guided.tasks[guided.index];
+        if (task === undefined) {
+          return;
+        }
+        const t_start = clock.now();
+        // El estado cambia antes de esperar, para que un segundo clic no repita el inicio.
+        setState({ guided: { ...guided, current: { task_id: task.id, t_start } }, error: null });
+        try {
+          await session.update({ task_id: task.id });
+        } catch (error) {
+          setState({ guided, error: describeError(error) });
+          return;
+        }
+        try {
+          await messages.send(types.TASK_STARTED, {
+            task_id: task.id,
+            end_condition: endConditionOf(task),
+          });
+        } catch (error) {
+          // Sin content scripts, la tarea sigue y termina con los botones.
+          setState({ tabStatus: 'pending' });
+        }
+      },
+
+      /**
+       * Termina la tarea en curso con un botón y pasa a la siguiente. Guarda su
+       * registro en el lote `tasks`.
+       *
+       * @param {string} endedBy - `done` (Terminé) o `gave_up` (No pude).
+       * @returns {Promise<void>}
+       */
+      async endTask(endedBy) {
+        if (!BUTTON_ENDS.includes(endedBy)) {
+          throw new Error(`a button cannot end a task with ${endedBy}`);
+        }
+        const { guided } = state;
+        if (state.phase !== PHASES.ACTIVE || guided === null || guided.current === null) {
+          return;
+        }
+        const { task_id, t_start } = guided.current;
+        // El estado cambia antes de esperar, para que un segundo clic no repita el registro.
+        setState({ guided: { ...guided, index: guided.index + 1, current: null }, error: null });
+        batcher.add('tasks', {
+          task_id,
+          t_start,
+          t_end: Math.max(clock.now(), t_start),
+          ended_by: endedBy,
+        });
+        try {
+          await session.update({ task_id: null });
+        } catch (error) {
+          setState({ error: describeError(error) });
         }
       },
 

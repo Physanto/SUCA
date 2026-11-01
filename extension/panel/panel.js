@@ -114,6 +114,40 @@
     byId('active-capture').textContent = capture.join(' ');
   }
 
+  /** Muestra la tarea que toca en el modo guiado, con los botones que corresponden. */
+  function renderGuided(state) {
+    const guided = state.guided;
+    const visible = guided !== null && ['active', 'closing'].includes(state.phase);
+    byId('guided-section').hidden = !visible;
+    if (!visible) {
+      return;
+    }
+    const total = guided.tasks.length;
+    const task = guided.tasks[guided.index];
+    const status = byId('tasks-status');
+    if (!guided.loaded) {
+      // Si la carga falló, el mensaje de error ya lo explica.
+      status.textContent = state.error ? '' : strings.tasksLoading;
+    } else if (total === 0) {
+      status.textContent = strings.noTasks;
+    } else {
+      status.textContent = task === undefined ? strings.tasksFinished : '';
+    }
+    status.hidden = status.textContent === '';
+    byId('task-progress').hidden = task === undefined;
+    byId('task-instruction').hidden = task === undefined;
+    if (task !== undefined) {
+      byId('task-progress').textContent = strings.taskProgress(guided.index + 1, total);
+      byId('task-instruction').textContent = task.instruction;
+    }
+    const running = guided.current !== null;
+    byId('task-actions').hidden = task === undefined;
+    byId('task-start').hidden = running;
+    byId('task-done').hidden = !running;
+    byId('task-gave-up').hidden = !running;
+    byId('task-start').disabled = state.phase === 'closing';
+  }
+
   /**
    * Dibuja el estado completo del panel.
    *
@@ -133,6 +167,7 @@
     byId('start-fields').disabled = phase === 'starting' || state.studies.length === 0;
     byId('close').disabled = phase === 'closing';
     renderActive(state);
+    renderGuided(state);
     renderMessage(state);
   }
 
@@ -151,6 +186,7 @@
     session: UX.session,
     messages: UX.messages,
     batcher: UX.batcher,
+    clock: UX.clock,
     platform: UX.platform,
     environment: {
       screen: { width: root.screen.width, height: root.screen.height },
@@ -168,7 +204,10 @@
     controller.startSession(readForm());
   });
   byId('close').addEventListener('click', () => controller.closeSession());
-  byId('retry').addEventListener('click', () => controller.loadStudies());
+  byId('retry').addEventListener('click', () => controller.retry());
+  byId('task-start').addEventListener('click', () => controller.startTask());
+  byId('task-done').addEventListener('click', () => controller.endTask('done'));
+  byId('task-gave-up').addEventListener('click', () => controller.endTask('gave_up'));
 
   controller.init();
 })(globalThis);

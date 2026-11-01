@@ -64,6 +64,20 @@
           <dt data-string="captureLabel"></dt>
           <dd id="active-capture"></dd>
         </dl>
+
+        <!-- Modo guiado: la tarea que toca, con sus botones. -->
+        <section id="guided-section" hidden>
+          <h2 data-string="tasksTitle"></h2>
+          <p id="tasks-status" class="hint" hidden></p>
+          <p id="task-progress" class="hint"></p>
+          <p id="task-instruction" class="instruction"></p>
+          <div id="task-actions" class="actions">
+            <button id="task-start" type="button" class="primary" data-string="taskStartButton"></button>
+            <button id="task-done" type="button" class="primary" data-string="taskDoneButton"></button>
+            <button id="task-gave-up" type="button" data-string="taskGaveUpButton"></button>
+          </div>
+        </section>
+
         <button id="close" type="button" class="primary" data-string="closeButton"></button>
       </section>
     </main>

@@ -55,6 +55,16 @@
     failedModules: (names) => `No arrancaron: ${names.join(', ')}. Revisa la consola de la pestaña.`,
     closeButton: 'Cerrar sesión',
 
+    // Modo guiado.
+    tasksTitle: 'Tareas',
+    taskProgress: (number, total) => `Tarea ${number} de ${total}`,
+    taskStartButton: 'Empezar',
+    taskDoneButton: 'Terminé',
+    taskGaveUpButton: 'No pude',
+    tasksLoading: 'Cargando las tareas…',
+    noTasks: 'Este estudio no tiene tareas.',
+    tasksFinished: 'Completaste todas las tareas. Cierra la sesión para terminar.',
+
     // Avisos.
     notices: {
       session_closed: (sessionId) => `Sesión ${sessionId} cerrada.`,

@@ -100,6 +100,23 @@ button:disabled {
   background: var(--notice-bg);
 }
 
+/* Modo guiado: la instrucción de la tarea y sus botones. */
+.instruction {
+  font-size: 15px;
+  margin: 4px 0 8px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  margin-top: 0;
+  cursor: pointer;
+}
+
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
