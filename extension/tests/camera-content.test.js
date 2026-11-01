@@ -122,6 +122,7 @@ function startCamera({ gazeHz = 30, faceHz = 15, taskId = 3 } = {}) {
   const timers = createFakeTimers();
   const link = UX.createCameraLink({ platform, timers });
   const records = [];
+  const sent = [];
   const zones = { zoneOf: UX.gazeZones.zoneOf, selectorOf: (e) => UX.gazeZones.selectorOf(e, escape) };
   const module = UX.createCameraModule({ link, zones, page: fakePage() });
   module.start({
@@ -129,9 +130,10 @@ function startCamera({ gazeHz = 30, faceHz = 15, taskId = 3 } = {}) {
     contracts: UX.contracts,
     batcher: { add: (type, record) => records.push({ type, record }) },
     session: { get: () => ({ task_id: taskId }) },
+    messages: { types: { TAB_IDENTIFY: 'tab.identify' }, send: async (type) => sent.push(type) },
   });
   const of = (type) => records.filter((r) => r.type === type).map((r) => r.record);
-  return { platform, timers, link, module, records, of };
+  return { platform, timers, link, module, records, sent, of };
 }
 
 /** Cuadro del motor. */
@@ -214,6 +216,19 @@ test('records the gap left by an engine that Chrome closed and the worker replac
 
   assert.deepEqual(of('events').map((e) => [e.t, e.data]), [[1000, { t_end: 2600, reason: 'error' }]]);
   assert.equal(warnings.length, 1);
+});
+
+test('asks the worker to check the engine when an engine that greeted goes away', async () => {
+  const { platform, timers, sent } = startCamera();
+  // Motor que todavía no existe: la conexión se corta sin saludo y no se pregunta.
+  platform.ports[0].drop();
+  await timers.advance(1000);
+  assert.deepEqual(sent, []);
+
+  platform.ports[1].deliver({ kind: 'hello', status: 'active', calibrated: true, started_at: 100 });
+  platform.ports[1].drop();
+
+  assert.deepEqual(sent, ['tab.identify']);
 });
 
 test('the same engine greeting again after a reconnection is not a restart', async () => {

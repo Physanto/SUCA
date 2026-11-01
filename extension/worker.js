@@ -20,8 +20,9 @@
  *
  * Cámara: el motor (`camera/engine.html`) es un documento offscreen, que no se
  * recarga al navegar. El worker lo crea al empezar la sesión y cada vez que la
- * pestaña evaluada carga una página (por si Chrome lo cerró), y lo cierra al
- * terminar la sesión, lo que apaga la cámara.
+ * pestaña evaluada pregunta su id (al cargar una página, o cuando la cámara
+ * pierde el motor), por si Chrome lo cerró, y lo cierra al terminar la sesión, lo
+ * que apaga la cámara.
  */
 
 importScripts(
@@ -218,8 +219,8 @@ importScripts(
   );
 
   messages.on(types.TAB_IDENTIFY, (payload, sender) => {
-    // Cada página que carga la pestaña evaluada lo pregunta: es el momento de
-    // revisar que el motor de la cámara siga abierto.
+    // Cada página que carga la pestaña evaluada lo pregunta, y la cámara lo repite
+    // cuando pierde el motor: es el momento de revisar que el motor siga abierto.
     session.reload().then((state) => {
       if (state !== null && state.tab_id === sender.tabId) {
         ensureCamera();

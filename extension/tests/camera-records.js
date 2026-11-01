@@ -88,6 +88,7 @@ function cameraRecords() {
     contracts: UX.contracts,
     batcher: { add: (type, record) => records.push({ type, record }) },
     session: { get: () => ({ task_id: 3 }) },
+    messages: { types: { TAB_IDENTIFY: 'tab.identify' }, send: async () => ({ tab_id: 1 }) },
   });
   const frame = (dt, gaze, values) => ({
     kind: 'frame',

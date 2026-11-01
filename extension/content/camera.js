@@ -52,7 +52,7 @@
    * @param {{connect: function(string): object}} deps.platform - Adaptador de plataforma.
    * @param {{setTimeout: Function, clearTimeout: Function}} [deps.timers] - Temporizadores.
    * @returns {object} Conexión con `open`, `close`, `status`, `request`, `onFrame`,
-   *   `onGap`, `onRestart`, `pauseGaze` y `gazePaused`.
+   *   `onGap`, `onRestart`, `onLost`, `pauseGaze` y `gazePaused`.
    */
   function createCameraLink({ platform, timers = root }) {
     let port = null;
@@ -67,6 +67,7 @@
     const frameListeners = new Set();
     const gapListeners = new Set();
     const restartListeners = new Set();
+    const lostListeners = new Set();
 
     /**
      * Anota el motor que saludó. Si es otro que el anterior, Chrome cerró el documento
@@ -133,7 +134,14 @@
       }
       const current = platform.connect(PORT_NAME);
       port = current;
-      current.onMessage(dispatch);
+      // Si saludó, el motor existía: que la conexión se corte significa que se perdió.
+      let greeted = false;
+      current.onMessage((message) => {
+        if (message && message.kind === 'hello') {
+          greeted = true;
+        }
+        dispatch(message);
+      });
       current.onDisconnect(() => {
         if (port !== current) {
           return;
@@ -142,6 +150,9 @@
         status = 'unknown';
         failPending('camera engine disconnected');
         if (wanted) {
+          if (greeted) {
+            lostListeners.forEach((listener) => listener());
+          }
           reconnectTimer = timers.setTimeout(connect, RECONNECT_MS);
         }
       });
@@ -236,6 +247,18 @@
       onRestart(listener) {
         restartListeners.add(listener);
         return () => restartListeners.delete(listener);
+      },
+
+      /**
+       * Escucha cuando se corta la conexión con un motor que existía (no cuando el
+       * motor todavía no estaba, ni al cerrar la conexión con `close`).
+       *
+       * @param {function(): void} listener - Función a llamar.
+       * @returns {function(): void} Función que deja de escuchar.
+       */
+      onLost(listener) {
+        lostListeners.add(listener);
+        return () => lostListeners.delete(listener);
       },
 
       /**
@@ -376,6 +399,18 @@
     }
 
     /**
+     * Se perdió el motor con la página todavía abierta (por ejemplo, en una aplicación
+     * de una sola página). El worker revisa que el motor exista cada vez que la pestaña
+     * evaluada pregunta su id con `tab.identify`, así que se pregunta de nuevo: si el
+     * motor ya no está, el worker lo crea y la conexión se rehace sola.
+     */
+    function askForEngine() {
+      Promise.resolve(ctx.messages.send(ctx.messages.types.TAB_IDENTIFY)).catch(() => {
+        // Sin worker no hay a quién pedirlo: se seguirá reintentando la conexión.
+      });
+    }
+
+    /**
      * El motor fue reemplazado (Chrome cerró el documento de la cámara): el nuevo no
      * conoce el hueco, así que lo registra esta pestaña desde su último cuadro. La
      * mirada queda sin calibrar (`valid: false`) hasta una calibración nueva.
@@ -405,7 +440,12 @@
         lastFaceT = -Infinity;
         lastFrameT = null;
         restartGap = null;
-        unsubscribe = [link.onFrame(onFrame), link.onGap(recordGap), link.onRestart(onRestart)];
+        unsubscribe = [
+          link.onFrame(onFrame),
+          link.onGap(recordGap),
+          link.onRestart(onRestart),
+          link.onLost(askForEngine),
+        ];
         link.open();
       },
 
