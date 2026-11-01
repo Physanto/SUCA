@@ -64,6 +64,9 @@
   const SCREEN_POLL_MS = 250;
   /** Espera tras `popstate` o `hashchange`, para que la página actualice su título antes de registrar. */
   const SCREEN_SETTLE_MS = 50;
+  /** Tras un cambio de dirección, cuánto se espera como máximo a que cambie el título y cada cuánto se mira. */
+  const SCREEN_TITLE_WAIT_MS = 500;
+  const SCREEN_TITLE_STEP_MS = 50;
   /** Eventos de clic que se registran, todos con el mismo formato. */
   const CLICK_TYPES = ['click', 'dblclick', 'contextmenu'];
   /** Campos de formulario: su texto nunca se registra. */
@@ -269,20 +272,31 @@
    * @param {string} type - Tipo de evento.
    * @param {object} fields - Campos propios del tipo.
    * @param {number|null} [taskId] - Tarea del momento del hecho; por omisión, la activa ahora.
+   * @param {{url: string, title: string}} [screen] - Pantalla del registro; por omisión, la actual.
    * @returns {void}
    */
-  function record(t, type, fields, taskId = activeTask()) {
-    const href = root.location.href;
+  function record(t, type, fields, taskId = activeTask(), screen = currentScreen()) {
+    ctx.batcher.add('events', { t, type, ...fields, screen, task_id: taskId });
+  }
+
+  /**
+   * Pantalla de un registro: la URL ya redactada y el título.
+   *
+   * Si hubo que tachar la dirección, el título suele repetir lo mismo ("Resultados de …"):
+   * se deja vacío, que el contrato admite, para no guardar lo que el participante buscó.
+   *
+   * @param {string} href - Dirección de la página.
+   * @param {string} title - Título del documento.
+   * @returns {{url: string, title: string}} Pantalla para el registro.
+   */
+  function screenOf(href, title) {
     const url = redactUrl(href);
-    ctx.batcher.add('events', {
-      t,
-      type,
-      ...fields,
-      // Si hubo que tachar la dirección, el título suele repetir lo mismo ("Resultados de …"):
-      // se deja vacío, que el contrato admite, para no guardar lo que el participante buscó.
-      screen: { url, title: url === href ? root.document.title : '' },
-      task_id: taskId,
-    });
+    return { url, title: url === href ? title : '' };
+  }
+
+  /** Pantalla en la que está la página ahora. */
+  function currentScreen() {
+    return screenOf(root.location.href, root.document.title);
   }
 
   /** Decodifica el nombre de un parámetro; si está mal codificado, lo deja como está. */
@@ -436,7 +450,9 @@
   function onPageHide() {
     const waiting = [...pendingResponses];
     waiting.forEach((watch) => watch.finish(true));
-    if (waiting.length > 0) {
+    const hadScreen = pendingScreen !== null;
+    flushPendingScreen();
+    if (waiting.length > 0 || hadScreen) {
       Promise.resolve(ctx.batcher.flush()).catch(() => {});
     }
   }
@@ -733,19 +749,62 @@
   let lastHref = null;
   let screenTimer = null;
   let settleTimer = null;
+  /** Título del documento en la última pantalla registrada, para saber si la página ya lo actualizó. */
+  let lastTitle = null;
+  /** Cambio de pantalla detectado cuyo título todavía se espera, y su temporizador. */
+  let pendingScreen = null;
+  let titleTimer = null;
 
-  /** Registra la pantalla actual (URL y título van en `screen`, como en todo registro). */
-  function recordScreen() {
-    record(ctx.clock.now(), 'screen_change', { data: {} });
+  /**
+   * Registra un cambio de pantalla.
+   *
+   * @param {number} t - Momento en que se detectó el cambio.
+   * @param {number|null} taskId - Tarea activa en ese momento.
+   * @param {{url: string, title: string}} [screen] - Pantalla; por omisión, la actual.
+   * @returns {void}
+   */
+  function recordScreen(t = ctx.clock.now(), taskId = activeTask(), screen = currentScreen()) {
+    record(t, 'screen_change', { data: {} }, taskId, screen);
   }
 
-  /** Registra un cambio de pantalla si la dirección es distinta de la última registrada. */
+  /** Registra ya el cambio pendiente, con el título que se alcanzó a ver, y con la hora en que se detectó. */
+  function flushPendingScreen() {
+    timers.clearTimeout(titleTimer);
+    titleTimer = null;
+    const pending = pendingScreen;
+    pendingScreen = null;
+    if (pending) {
+      lastTitle = pending.title;
+      recordScreen(pending.t, pending.taskId, screenOf(pending.href, pending.title));
+    }
+  }
+
+  /**
+   * Espera a que la página actualice el título tras cambiar la dirección (muchas lo
+   * hacen un instante después) y entonces registra el cambio, con la hora de la
+   * detección. Si el título ya cambió, o pasa `SCREEN_TITLE_WAIT_MS`, registra sin más espera.
+   */
+  function settleTitle() {
+    pendingScreen.title = root.document.title;
+    if (pendingScreen.title !== lastTitle || pendingScreen.waited >= SCREEN_TITLE_WAIT_MS) {
+      flushPendingScreen();
+      return;
+    }
+    pendingScreen.waited += SCREEN_TITLE_STEP_MS;
+    titleTimer = timers.setTimeout(settleTitle, SCREEN_TITLE_STEP_MS);
+  }
+
+  /** Detecta un cambio de dirección y lo registra, esperando antes el título de la pantalla nueva. */
   function checkScreen() {
     const href = root.location.href;
-    if (href !== lastHref) {
-      lastHref = href;
-      recordScreen();
+    if (href === lastHref) {
+      return;
     }
+    // Si llega otro cambio mientras se esperaba el título del anterior, el anterior se registra ya.
+    flushPendingScreen();
+    lastHref = href;
+    pendingScreen = { t: ctx.clock.now(), taskId: activeTask(), href, title: root.document.title, waited: 0 };
+    settleTitle();
   }
 
   /**
@@ -839,6 +898,7 @@
       // Cada carga de página inicia la captura de nuevo, así que esta es la pantalla de la carga
       // (o la primera de la sesión, si se inició sobre una página ya cargada).
       lastHref = root.location.href;
+      lastTitle = root.document.title;
       recordScreen();
       screenTimer = timers.setTimeout(pollScreen, SCREEN_POLL_MS);
       // Solo se observa un atributo, para que el costo en páginas con muchos cambios sea mínimo.
@@ -856,6 +916,10 @@
      * @returns {void}
      */
     stop() {
+      // Un cambio de pantalla que aún esperaba su título se registra antes de cerrar.
+      if (ctx && timers) {
+        flushPendingScreen();
+      }
       CLICK_TYPES.forEach((type) => root.document.removeEventListener(type, onClick, true));
       root.document.removeEventListener('mousemove', onMouseMove, PASSIVE);
       root.document.removeEventListener('scroll', onScroll, PASSIVE);
@@ -873,7 +937,10 @@
       }
       screenTimer = null;
       settleTimer = null;
+      titleTimer = null;
+      pendingScreen = null;
       lastHref = null;
+      lastTitle = null;
       pendingResponses.forEach((watch) => watch.cancel());
       pendingResponses = new Set();
       if (ariaObserver) {

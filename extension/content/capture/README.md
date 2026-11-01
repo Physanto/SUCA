@@ -38,7 +38,9 @@ El primer movimiento o scroll se registra de inmediato. Los que llegan antes de 
 
 Cada carga de página ejecuta de nuevo el módulo, que al iniciar registra la pantalla actual: la de cada carga completa o la primera de la sesión si se inició sobre una página ya cargada. Para las aplicaciones de una sola página, el módulo (que corre en un contexto aislado y no puede interceptar el `pushState` de la página) compara `location.href` cada 250 ms y, 50 ms después de cada `popstate` o `hashchange`, para dar tiempo a la página de actualizar su título. Solo cuenta la dirección: un cambio de `#` es un cambio de pantalla y un cambio solo del título no lo es.
 
-Límites: un cambio de ida y vuelta (A → B → A) en menos de 250 ms no se ve, y si la página actualiza el título mucho después de la dirección, el registro lleva el título anterior (se observó en GitHub).
+**Espera del título.** Muchas aplicaciones actualizan el título un instante después de la dirección (se observó en react.dev y GitHub), y registrar de inmediato dejaba la misma URL con dos títulos. Por eso, al detectar un cambio de dirección el módulo mira el título cada 50 ms y registra el `screen_change` en cuanto el título es distinto del de la pantalla anterior, o a los 500 ms como máximo si no cambia (hay páginas que no lo cambian). El registro lleva la **hora de la detección** (`t`) y la tarea de ese momento, aunque se entregue después, así que no altera el orden de los eventos. Si llega otro cambio de dirección mientras se espera, el anterior se registra de inmediato con el título que se alcanzó a ver. Un cambio pendiente no se pierde al cerrar la sesión (`stop`) ni al descargarse la página (`pagehide`).
+
+Límites: un cambio de ida y vuelta (A → B → A) en menos de 250 ms no se ve; y una página que tarde más de 500 ms en actualizar el título seguirá dejando el título anterior.
 
 ### Respuesta tras un clic y clics muertos
 

@@ -1263,7 +1263,7 @@ test('uses the active task and stop cancels the checks and unhooks popstate and 
   assert.deepEqual([...pageListeners.keys()].sort(), ['hashchange', 'pagehide', 'popstate']);
 
   globalThis.location.href = 'https://shop.local/a';
-  await timers.advance(250);
+  await timers.advance(750);
   assert.equal(added[0].record.task_id, 8);
   registered.stop();
 
@@ -1585,4 +1585,105 @@ test('does not read the text of an interactive element holding a huge amount of 
   assert.equal(describeByClick(huge).text, null);
   assert.equal(describeByClick(large).text.length, 50);
   assert.ok(describeByClick(large).text.startsWith('Título xxx'));
+});
+
+/** Cambia la dirección de la página y, si se da, su título. */
+function navigateTo(document, href, title) {
+  globalThis.location.href = href;
+  if (title !== undefined) {
+    document.title = title;
+  }
+}
+
+test('waits for the title of a single-page app and records the screen change with the final title and the detection time', async () => {
+  const { document, added, timers } = startCapture({ task_id: 4 }, { fakeClock: true });
+
+  await timers.advance(120);
+  navigateTo(document, 'https://shop.local/instalacion');
+  await timers.advance(130); // la revisión de las 250 ms detecta el cambio
+  assert.deepEqual(screens(added), []);
+  await timers.advance(100);
+  document.title = 'Instalación'; // la página actualiza el título un instante después de la dirección
+  await timers.advance(50);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/instalacion', title: 'Instalación' }]);
+  const record = added[0].record;
+  assert.equal(record.t, 250);
+  assert.equal(record.task_id, 4);
+  assert.equal(added[0].at, 400); // la siguiente revisión del título, cada 50 ms desde la detección
+});
+
+test('records at once when the title already changed together with the address', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  navigateTo(document, 'https://shop.local/carrito', 'Carrito de compras');
+  await timers.advance(250);
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/carrito', title: 'Carrito de compras' }]);
+  assert.equal(added[0].at, 250);
+  registered.stop();
+});
+
+test('records after at most 500 ms when the title never changes, keeping the detection time', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  navigateTo(document, 'https://shop.local/otra');
+  await timers.advance(250);
+  await timers.advance(499);
+  assert.deepEqual(screens(added), []);
+  await timers.advance(1);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/otra', title: 'Carrito' }]);
+  assert.equal(added[0].record.t, 250);
+  assert.equal(added[0].at, 750);
+});
+
+test('records the older pending screen when a new address arrives, in order and with its own address', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+
+  navigateTo(document, 'https://shop.local/a');
+  await timers.advance(250);
+  await timers.advance(100);
+  navigateTo(document, 'https://shop.local/b', 'Pantalla B');
+  await timers.advance(150);
+  registered.stop();
+
+  assert.deepEqual(screens(added).map((screen) => screen.url), ['https://shop.local/a', 'https://shop.local/b']);
+  assert.equal(screens(added)[1].title, 'Pantalla B');
+  assert.deepEqual(added.map((entry) => entry.record.t), [250, 500]);
+});
+
+test('does not lose a screen change that is waiting for its title when the capture stops or the page unloads', async () => {
+  for (const finish of ['stop', 'pagehide']) {
+    const { document, added, timers, pageHide, flushes } = startCapture({ task_id: 6 }, { fakeClock: true });
+
+    navigateTo(document, 'https://shop.local/ultima');
+    await timers.advance(250);
+    assert.deepEqual(screens(added), []);
+    if (finish === 'stop') {
+      registered.stop();
+    } else {
+      pageHide();
+      assert.deepEqual(flushes, [250]);
+      registered.stop();
+    }
+
+    assert.deepEqual(screens(added).map((screen) => screen.url), ['https://shop.local/ultima'], finish);
+    assert.equal(added[0].record.task_id, 6);
+    assert.equal(timers.pending(), 0);
+  }
+});
+
+test('the title wait applies to popstate and redacts the address like any other record', async () => {
+  const { document, added, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+
+  navigateTo(document, 'https://shop.local/buscar?q=CANARIO-5', 'Resultados de CANARIO-5');
+  pageListeners.get('popstate')({ type: 'popstate' });
+  await timers.advance(50);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/buscar?q=redacted', title: '' }]);
+  assert.ok(!JSON.stringify(added).includes('CANARIO'));
 });
