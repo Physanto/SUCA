@@ -9,6 +9,8 @@ Captura lo que hace el participante en la aplicación evaluada, muestra las tare
 | Content scripts | `content/`: los módulos (`capture.js`, `camera.js`, `calibration.js`, `task-end.js`) y `bootstrap.js` | En la pestaña evaluada. Solo arrancan sus módulos si su pestaña es la de la sesión |
 | Panel lateral | `panel/` | Panel lateral de Chrome; persiste al navegar |
 | Service worker | `worker.js` | Segundo plano: mediador entre panel y pestaña, y envío al servidor |
+| Motor de la cámara | `camera/`: `engine.html` (documento *offscreen*), `permission.html` y sus scripts | Documento oculto de la extensión que abre la webcam y persiste al navegar; detalle en `camera/README.md` |
+| Librerías de la cámara | `lib/` | MediaPipe Face Landmarker y su modelo; versiones y licencias en `lib/README.md` |
 | Utilidades comunes | `common/` | En los tres contextos, según lo que cada uno necesite |
 | Configuración | `config.generated.js` | Generada desde `config/shared.json` y `contracts/enums.json`; no se edita |
 | Página de prueba | `test-page/` | No es parte de la extensión: se sirve por HTTP para probarla |
@@ -22,13 +24,15 @@ JSON no admite comentarios, así que el manifiesto se explica aquí.
 | `permissions` | `sidePanel` | Mostrar el panel lateral |
 | | `storage` | `storage.session` guarda el estado de la sesión; `storage.local`, la cola de envío |
 | | `tabs` | Conocer la pestaña activa (URL, título y tamaño) al iniciar la sesión y enviarle mensajes |
+| | `offscreen` | Crear el documento oculto del motor de la cámara (motivo `USER_MEDIA`) |
 | `host_permissions` | `http://127.0.0.1/*` | Hablar con el servidor local sin CORS |
 | | `<all_urls>` | Lo exige `tabs.captureVisibleTab` para las capturas de referencia. No agrega advertencias, porque los content scripts ya corren en todas las URL |
+| `content_security_policy.extension_pages` | `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'` | MediaPipe corre en WebAssembly, que la política por defecto bloquea en las páginas de la extensión. Solo se permite compilar WebAssembly; el resto queda como la política por defecto |
 | `background.service_worker` | `worker.js` | Worker clásico: carga sus utilidades con `importScripts` |
 | `action` + `side_panel` | `panel/panel.html` | El ícono abre el panel lateral |
 | `content_scripts` | En `<all_urls>`, solo el marco principal, al terminar de cargar la página | Los iframes de otros dominios quedan fuera del alcance |
-| | Orden: configuración, utilidades comunes (con `common/modules.js` al final), módulos (`capture`, `camera`, `calibration`, `task-end`) y al final `bootstrap.js` | Cada archivo usa lo que cargaron los anteriores: los módulos se registran en `UX.modules` y `bootstrap.js` los arranca |
-| `web_accessible_resources` | `lib/*` | Las librerías de mirada y rostro cargan sus modelos desde la extensión |
+| | Orden: configuración, utilidades comunes (con `common/modules.js` al final), módulos (`capture`; `camera/strings.js` y `content/camera/zones.js`, que usan los dos siguientes; `camera`, `calibration`, `task-end`) y al final `bootstrap.js` | Cada archivo usa lo que cargaron los anteriores: los módulos se registran en `UX.modules` y `bootstrap.js` los arranca |
+| `web_accessible_resources` | — (no se declara) | Las librerías de `lib/` solo las carga el motor de la cámara, que es una página de la extensión. Ninguna página web necesita leerlas |
 | `minimum_chrome_version` | `116` | Primera versión con `sidePanel.setPanelBehavior` |
 
 ## Utilidades comunes (`UX`)
@@ -37,7 +41,7 @@ Cada archivo de `common/` agrega una pieza al espacio de nombres global `UX`. De
 
 | Pieza | Uso | Contextos |
 |---|---|---|
-| `UX.platform` | Adaptador: **el único** que llama a `chrome.*` | Todos |
+| `UX.platform` | Adaptador: **el único** que llama a `chrome.*`. Además de mensajes y almacenamiento: conexiones (`connect`, `onConnect`), documento offscreen (`ensureOffscreen`, `closeOffscreen`), `openExtensionTab`, `extensionUrl` y `onFirstInstall` | Todos |
 | `UX.clock.now()` | Marca de tiempo común: `performance.timeOrigin + performance.now()`, en ms | Todos |
 | `UX.messages` | `send(type, payload)`, `on(type, handler)`, `sendToTab(tabId, type, payload)` y las constantes `types` del contrato (`types.SESSION_STARTED`…) | Todos |
 | `UX.session` | Estado de la sesión activa: `ready`, `get()` (síncrono), `reload()`, `subscribe(fn)`; el panel lo escribe con `start`, `update` y `clear` | Todos |
@@ -136,8 +140,8 @@ El nombre del módulo usa `snake_case`, porque viaja en la respuesta de `session
 | Archivo | Nombre | Estado |
 |---|---|---|
 | `content/capture.js` | `capture` | Completo: clics, cursor, scroll, selección, formularios, errores de validación, respuesta tras un clic y cambios de pantalla, con filtros de privacidad. Detalle en `content/capture/README.md` |
-| `content/camera.js` | `camera` | Esqueleto, sin lógica |
-| `content/calibration.js` | `calibration` | Esqueleto, sin lógica |
+| `content/camera.js` | `camera` | Completo: registra mirada (con elemento y zona), rostro e intervalos sin datos que llegan del motor de la cámara. Detalle en `camera/README.md` |
+| `content/calibration.js` | `calibration` | Completo: capa de 9 puntos de calibración y 5 de validación, con error en píxeles y grados. Detalle en `camera/README.md` |
 | `content/task-end.js` | `task_end` | Esqueleto, sin lógica |
 
 ## Panel lateral
@@ -204,6 +208,7 @@ Consolas para depurar:
 - **Worker:** `chrome://extensions` → SUCA → **Inspeccionar vistas: service worker**.
 - **Content scripts:** DevTools de la pestaña → Console → en el selector de contexto (arriba, dice `top`), elige **SUCA**.
 - **Panel:** clic derecho sobre el panel → **Inspeccionar**.
+- **Motor de la cámara:** `chrome://extensions` → SUCA → **Inspeccionar vistas: camera/engine.html** (aparece mientras hay una sesión activa).
 
 Los content scripts no corren en páginas de Chrome (`chrome://…`) ni en la Chrome Web Store.
 
@@ -217,4 +222,5 @@ Ejecuta `node --test` sobre `tests/*.test.js`:
 - `fakes.js` simula la plataforma (varios contextos con almacenamiento compartido), los temporizadores y un `chrome` completo;
 - `worker.test.js` carga `worker.js` entero, como lo haría Chrome, en un contexto aislado;
 - `modules.test.js` y `bootstrap.test.js` prueban el registro y el ciclo de vida de los módulos con la sesión;
-- `panel-controller.test.js` prueba la lógica del panel sin DOM.
+- `panel-controller.test.js` prueba la lógica del panel sin DOM;
+- `camera-math.test.js`, `camera-engine.test.js` y `camera-content.test.js` prueban la cámara: modelo de mirada, características de los ojos y del rostro, motor, registro en la pestaña, zonas y calibración.
