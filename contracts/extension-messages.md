@@ -245,6 +245,8 @@ Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batch
 
 Un content script pregunta el id de su pestaña, que no puede conocer por sí mismo. El worker responde con el id de la pestaña que envió el mensaje. `bootstrap.js` lo compara con `tab_id` del estado de la sesión para saber si está en la pestaña evaluada.
 
+Cuando lo pregunta la pestaña evaluada, el worker además revisa que exista el motor de la cámara y, si no, lo crea. Por eso `camera.js` también lo envía cuando pierde la conexión con un motor que existía (sin recargar la página): así el worker repone el motor que Chrome haya cerrado.
+
 Sin datos (`payload` vacío). Respuesta: `{ "tab_id": 412 }`.
 
 ```json
