@@ -97,6 +97,8 @@ Forma de `contracts/element.schema.json`:
 
 - Un sitio que escriba lo buscado en el título sin ponerlo en la URL (por ejemplo, con una petición en segundo plano) lo dejaría en la base.
 - El `text` de un elemento **interactivo** que repita lo escrito (un botón que muestra tu último mensaje) se guarda tal cual, recortado a 50 caracteres.
+- **Búsquedas en la ruta de la URL.** Algunos sitios ponen lo buscado en la ruta y en el título, no en `?q=` (por ejemplo `https://listado.mercadolibre.com.co/zapatos-deportivos`). La captura solo redacta parámetros de búsqueda y del fragmento, y no puede distinguir en general una ruta de búsqueda de una ruta normal, así que esa URL y ese título se guardan tal cual. En la revisión manual de privacidad hay que elegir sitios sin este comportamiento o anotarlo como excepción esperada. Lo mismo vale para la pantalla a la que lleva una sugerencia: su ruta puede repetir el nombre de lo elegido.
+- **Listas de sugerencias sin enlace.** El texto de una sugerencia solo se descarta si la lista se enlaza con un campo de texto por alguno de los tres medios descritos arriba. Una lista de sugerencias que no use ARIA para enlazarse (por ejemplo, `div` sin roles) no se distingue de contenido normal.
 - El `id` y el `selector` se toman de la página tal como están.
 - Un campo que dibuja lo escrito con `div` sin rol de cuadro de texto ni `contenteditable` (algunos editores de código) no se distingue del contenido normal; su texto solo se guardaría si el elemento clicado es interactivo.
 - Los *iframes* no se capturan.
