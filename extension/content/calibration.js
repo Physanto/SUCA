@@ -21,11 +21,13 @@
  *   lateral, vía worker.
  * - Envía: `calibration.result` (`error_px`, `error_deg`, `accepted`) al panel
  *   lateral, y el mismo resultado al servidor en un lote `calibration` con
- *   `ctx.batcher.add`. Si la cámara no está activa o no se detecta el rostro,
- *   no se envía resultado: la capa lo explica y el panel ve el estado de la cámara.
+ *   `ctx.batcher.add`. Si la cámara todavía arranca, se espera hasta 20 s. Si no
+ *   está activa o no se detecta el rostro, no se envía resultado: la capa lo
+ *   explica y el panel ve el estado de la cámara.
  *
- * Durante la calibración la mirada no se registra, y los clics sobre la capa no
- * llegan a la captura de eventos (no son interacción con la aplicación).
+ * Durante la calibración la mirada no se registra, y los clics, el cursor, la
+ * rueda y las teclas de desplazamiento sobre la capa no llegan a la captura de
+ * eventos ni mueven la página (no son interacción con la aplicación).
  */
 
 (function (root) {
@@ -50,6 +52,14 @@
   const MEASURE_MS = 1000;
   /** Muestras de validación que hacen falta para dar un resultado. */
   const MIN_VALIDATION_SAMPLES = 10;
+  /**
+   * Si la cámara todavía arranca (el motor carga MediaPipe y su modelo, unos segundos),
+   * se espera hasta esto antes de darla por no disponible, mirando cada `STATUS_POLL_MS`.
+   */
+  const CAMERA_START_WAIT_MS = 20000;
+  const STATUS_POLL_MS = 250;
+  /** Estados de la conexión que significan "todavía no se sabe": la cámara puede llegar. */
+  const PENDING_STATUSES = ['starting', 'unknown'];
   /** Grados por radián. */
   const DEG = 180 / Math.PI;
 
@@ -87,6 +97,7 @@
    * @param {function(object): void} [deps.onResult] - Recibe cada resultado en cuanto se mide.
    * @param {function(): number} [deps.random] - Azar entre 0 y 1.
    * @returns {{run: function(string, object): Promise<(object|null)>}} Procedimiento.
+   *   `wait` también se usa para esperar a que la cámara termine de arrancar.
    */
   function createCalibrationProcedure({
     link,
@@ -149,14 +160,20 @@
       return errors.reduce((sum, e) => sum + e, 0) / errors.length;
     }
 
-    /** Retraso medido del procesamiento de la cámara, o `null`. */
-    async function cameraDelay() {
-      try {
-        const stats = await link.request('stats');
-        return typeof stats.delay_ms === 'number' ? Math.round(stats.delay_ms) : null;
-      } catch {
-        return null;
+    /**
+     * Espera a que la cámara esté activa si todavía está arrancando. Mientras, la capa
+     * lo avisa. Devuelve si quedó activa.
+     */
+    async function cameraReady() {
+      if (PENDING_STATUSES.includes(link.status())) {
+        await ui.message(strings.cameraStarting, []);
+        let waited = 0;
+        while (waited < CAMERA_START_WAIT_MS && PENDING_STATUSES.includes(link.status())) {
+          await wait(STATUS_POLL_MS);
+          waited += STATUS_POLL_MS;
+        }
       }
+      return link.status() === 'active';
     }
 
     return Object.freeze({
@@ -170,7 +187,7 @@
        *   intento, o `null` si no hubo resultado (cámara inactiva, sin rostro o cancelada).
        */
       async run(type, camera) {
-        if (link.status() !== 'active') {
+        if (!(await cameraReady())) {
           await ui.message(strings.cameraUnavailable, ['continue']);
           return null;
         }
@@ -204,7 +221,10 @@
             error_px: Math.round(errorPx * 10) / 10,
             error_deg: Math.round(errorDeg * 100) / 100,
             accepted: errorDeg <= camera.calibration_max_error_deg,
-            camera_delay_ms: await cameraDelay(),
+            // Retraso del sensor hasta la marca de tiempo de cada muestra: todavía no se
+            // mide. No es el tiempo de análisis (`stats.delay_ms`), porque la marca de
+            // tiempo se toma antes de analizar el cuadro y ya no lo incluye.
+            camera_delay_ms: null,
           };
           onResult(last);
           const text = `${last.accepted ? strings.accepted : strings.rejected} ${strings.result(errorDeg)}`;
@@ -263,9 +283,22 @@
     const hint = shadow.querySelector('.hint');
     let onAction = null;
     let onCancel = null;
+    /** Si la capa ya se quitó: lo que se pida después termina enseguida, como cancelado. */
+    let closed = false;
 
-    /** Eventos que no deben llegar a la página ni a la captura mientras la capa está abierta. */
-    const BLOCKED = ['click', 'dblclick', 'contextmenu', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup'];
+    /**
+     * Eventos que no deben llegar a la página ni a la captura mientras la capa está
+     * abierta. Incluye el movimiento del cursor y la rueda: mover el cursor hacia cada
+     * punto no es interacción con la aplicación, y no debe contarse como tal.
+     */
+    const BLOCKED = [
+      'click', 'dblclick', 'contextmenu', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup',
+      'mousemove', 'pointermove', 'mouseover', 'mouseout', 'wheel',
+    ];
+    /** `wheel` en `window` es pasivo por omisión; sin `passive: false` no se puede impedir el scroll. */
+    const BLOCK_OPTIONS = { capture: true, passive: false };
+    /** Teclas que desplazan la página: bajo la capa no deben moverla. */
+    const SCROLL_KEYS = [' ', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
     /**
      * Los oyentes de la captura están en `document` en fase de captura; este,
@@ -278,6 +311,9 @@
         return;
       }
       event.stopImmediatePropagation();
+      if (event.type === 'wheel') {
+        event.preventDefault();
+      }
       if (event.type !== 'click') {
         return;
       }
@@ -296,6 +332,10 @@
     /** Detiene el teclado mientras la capa está abierta; Escape cancela. */
     function onKey(event) {
       event.stopImmediatePropagation();
+      if (SCROLL_KEYS.includes(event.key)) {
+        // Solo las teclas de desplazamiento: los atajos del navegador siguen funcionando.
+        event.preventDefault();
+      }
       if (event.key === 'Escape') {
         if (onCancel) {
           onCancel();
@@ -307,6 +347,9 @@
 
     /** Espera a que se elija una de las acciones dadas. */
     function waitFor(actions) {
+      if (closed) {
+        return Promise.resolve({ action: 'cancel', at: clock.now() });
+      }
       return new Promise((resolve) => {
         onAction = (action, at) => {
           if (actions.includes(action)) {
@@ -338,6 +381,13 @@
       }
     }
 
+    /** Error con el que termina un punto de calibración cancelado. */
+    function cancelledError() {
+      const error = new Error('calibration cancelled');
+      error.name = 'CalibrationCancelled';
+      return error;
+    }
+
     let title = '';
 
     return Object.freeze({
@@ -345,7 +395,7 @@
       open() {
         page.addEventListener('keydown', onKey, true);
         page.addEventListener('keyup', onKey, true);
-        BLOCKED.forEach((type) => page.addEventListener(type, intercept, true));
+        BLOCKED.forEach((type) => page.addEventListener(type, intercept, BLOCK_OPTIONS));
         document.documentElement.append(host);
       },
 
@@ -375,12 +425,11 @@
         if (mode !== 'click') {
           return { clickedAt: clock.now() };
         }
+        if (closed) {
+          throw cancelledError();
+        }
         const cancelled = new Promise((_, reject) => {
-          onCancel = () => {
-            const error = new Error('calibration cancelled');
-            error.name = 'CalibrationCancelled';
-            reject(error);
-          };
+          onCancel = () => reject(cancelledError());
         });
         try {
           const { at } = await Promise.race([waitFor(['dot']), cancelled]);
@@ -405,13 +454,24 @@
         return (await waitFor([...buttons, 'cancel'])).action;
       },
 
-      /** Quita la capa y los oyentes. */
+      /**
+       * Quita la capa y los oyentes. Lo que esperaba una acción del participante
+       * termina como cancelado, para que el procedimiento no quede colgado.
+       */
       close() {
+        closed = true;
+        const cancelPoint = onCancel;
+        const pendingAction = onAction;
         onAction = null;
         onCancel = null;
+        if (cancelPoint) {
+          cancelPoint();
+        } else if (pendingAction) {
+          pendingAction('cancel', clock.now());
+        }
         page.removeEventListener('keydown', onKey, true);
         page.removeEventListener('keyup', onKey, true);
-        BLOCKED.forEach((type) => page.removeEventListener(type, intercept, true));
+        BLOCKED.forEach((type) => page.removeEventListener(type, intercept, BLOCK_OPTIONS));
         host.remove();
       },
     });
@@ -443,8 +503,15 @@
         return;
       }
       const context = ctx;
-      ui = createUi();
+      const ownUi = createUi();
+      ui = ownUi;
+      // Si la sesión se cerró (`stop`) mientras se medía, el intento sigue un momento
+      // hasta notarlo: lo que mida ya no se registra ni se informa.
+      const stillRunning = () => ui === ownUi;
       const onResult = (record) => {
+        if (!stillRunning()) {
+          return;
+        }
         context.batcher.add('calibration', record);
         const { error_px, error_deg, accepted } = record;
         context.messages
@@ -453,26 +520,28 @@
       };
       const procedure = createCalibrationProcedure({
         link,
-        ui,
+        ui: ownUi,
         clock: context.clock,
         wait,
         strings,
         onResult,
       });
       link.pauseGaze(true);
-      ui.open();
+      ownUi.open();
       try {
         await procedure.run(type, context.config.camera);
       } catch (error) {
-        if (error.name !== 'CalibrationCancelled') {
+        // Tras `stop`, los pedidos al motor fallan porque la conexión se cerró: no es un error.
+        if (error.name !== 'CalibrationCancelled' && stillRunning()) {
           console.error('calibration failed:', error);
         }
       } finally {
-        link.pauseGaze(false);
-        if (ui) {
-          ui.close();
+        // `stop` ya cerró la capa y reanudó la mirada; quizás hay otro intento en curso.
+        if (stillRunning()) {
+          link.pauseGaze(false);
+          ownUi.close();
+          ui = null;
         }
-        ui = null;
       }
     }
 

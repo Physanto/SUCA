@@ -42,6 +42,7 @@
       continueButton: 'Continuar',
       repeatButton: 'Repetir',
       cancelButton: 'Cancelar',
+      cameraStarting: 'Preparando la cámara…',
       cameraUnavailable:
         'La cámara no está disponible. Revisa el estado de la cámara en el panel lateral.',
       noFace:

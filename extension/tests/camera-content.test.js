@@ -330,7 +330,8 @@ function fakeLink({ status = 'active', fitOk = true, gazeError = 20 } = {}) {
   let target = null;
   return {
     requests,
-    status: () => status,
+    // `status` puede ser una función, para simular una cámara que termina de arrancar.
+    status: () => (typeof status === 'function' ? status() : status),
     request: async (action, payload) => {
       requests.push([action, payload]);
       if (action === 'calibration.fit') {
@@ -405,7 +406,8 @@ test('initial calibration trains on 9 clicked points, validates on 5 others and 
     error_px: 20,
     error_deg: Math.round(UX.calibrationMath.pxToDeg(20, CAMERA) * 100) / 100,
     accepted: true,
-    camera_delay_ms: 42,
+    // El retraso del sensor todavía no se mide; el tiempo de análisis no lo es.
+    camera_delay_ms: null,
   });
   assert.deepEqual(results, [record]);
 });
@@ -429,7 +431,54 @@ test('final calibration only validates, without retraining', async () => {
   const record = await procedure(link, ui).run('final', CAMERA);
 
   assert.equal(record.type, 'final');
-  assert.deepEqual(link.requests.map(([action]) => action), ['stats']);
+  assert.deepEqual(link.requests.map(([action]) => action), []);
+});
+
+test('waits for a camera that is still starting before calibrating', async () => {
+  let polls = 0;
+  const link = fakeLink({ status: () => (polls < 3 ? 'starting' : 'active') });
+  const ui = fakeUi({ onPoint: (x, y) => link.lookAt(x, y) });
+  const waits = [];
+  const run = UX.createCalibrationProcedure({
+    link,
+    ui,
+    strings,
+    clock: { now: () => 777 },
+    wait: async (ms) => {
+      waits.push(ms);
+      if (ms === 250) {
+        polls += 1;
+      }
+      if (ms === 1000) {
+        link.emit(5);
+      }
+    },
+    random: () => 0,
+  });
+
+  const record = await run.run('initial', CAMERA);
+
+  assert.equal(record.accepted, true);
+  assert.deepEqual(ui.shown[0], ['message', strings.cameraStarting, []]);
+  assert.deepEqual(waits.slice(0, 3), [250, 250, 250]);
+});
+
+test('gives up on a camera that does not finish starting', async () => {
+  const ui = fakeUi();
+  let waited = 0;
+  const run = UX.createCalibrationProcedure({
+    link: fakeLink({ status: 'starting' }),
+    ui,
+    strings,
+    clock: { now: () => 777 },
+    wait: async (ms) => {
+      waited += ms;
+    },
+  });
+
+  assert.equal(await run.run('initial', CAMERA), null);
+  assert.equal(waited, 20000);
+  assert.deepEqual(ui.shown.map(([, text]) => text), [strings.cameraStarting, strings.cameraUnavailable]);
 });
 
 test('gives no result when the camera is not active, the face is lost or it is cancelled', async () => {
@@ -491,4 +540,51 @@ test('the calibration module runs on request, reports the result and pauses gaze
   assert.deepEqual(sent, [['calibration.result', { error_px: 20, error_deg: batches[0][1].error_deg, accepted: true }]]);
   module.stop();
   assert.equal(handlers['calibration.request'], undefined);
+});
+
+test('a calibration interrupted by the end of the session reports nothing afterwards', async () => {
+  const link = fakeLink();
+  const pauses = [];
+  link.pauseGaze = (value) => pauses.push(value);
+  let closes = 0;
+  const ui = { ...fakeUi({ onPoint: (x, y) => link.lookAt(x, y) }), open() {}, close: () => (closes += 1) };
+  const handlers = {};
+  const sent = [];
+  const batches = [];
+  let module = null;
+  module = UX.createCalibrationModule({
+    link,
+    strings,
+    createUi: () => ui,
+    wait: async (ms) => {
+      if (ms === 1000) {
+        link.emit(5);
+        // La sesión se cierra en medio de la validación.
+        module.stop();
+      }
+    },
+  });
+  module.start({
+    clock: { now: () => 1 },
+    config: { camera: CAMERA },
+    contracts: UX.contracts,
+    batcher: { add: (type, record) => batches.push([type, record]) },
+    messages: {
+      types: { CALIBRATION_REQUEST: 'calibration.request', CALIBRATION_RESULT: 'calibration.result' },
+      on: (type, handler) => {
+        handlers[type] = handler;
+        return () => delete handlers[type];
+      },
+      send: async (type, payload) => sent.push([type, payload]),
+    },
+  });
+
+  handlers['calibration.request']({ type: 'final' });
+  await settle(20);
+
+  assert.deepEqual(batches, []);
+  assert.deepEqual(sent, []);
+  // `stop` cerró la capa y reanudó la mirada una sola vez; el intento no las vuelve a tocar.
+  assert.deepEqual(pauses, [true, false]);
+  assert.equal(closes, 1);
 });

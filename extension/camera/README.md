@@ -58,7 +58,7 @@ El documento offscreen no puede mostrar el aviso de permiso de Chrome. Por eso:
 |---|---|---|
 | `gaze` | A `camera.gaze_hz` (30 Hz), salvo durante la calibración | `x`, `y` en la ventana; `scroll_x`, `scroll_y`; `element_selector` (el elemento en ese punto, con el mismo formato de selector que la captura de eventos); `zone`; `valid` |
 | `face` | A `camera.face_hz` (15 Hz) | Los valores de `face_value` (entre 0 y 1), `head_yaw` y `head_pitch` en grados, `face_detected` |
-| `calibration` | Al terminar cada intento de calibración | `type`, `error_px`, `error_deg`, `accepted`, `camera_delay_ms` |
+| `calibration` | Al terminar cada intento de calibración | `type`, `error_px`, `error_deg`, `accepted`, `camera_delay_ms` (por ahora `null`, ver abajo) |
 | `events` (`camera_gap`) | Cuando vuelven los datos, o al cerrar la sesión | Inicio (`t`), fin (`data.t_end`, `null` si no volvieron) y motivo (`navigation`, `no_permission`, `error`) |
 
 Casos de una muestra `gaze` **no válida** (`valid: false`):
@@ -69,7 +69,7 @@ Casos de una muestra `gaze` **no válida** (`valid: false`):
 
 **Pantalla de `camera_gap`.** Solo origen y ruta, con el título vacío: la búsqueda y el fragmento pueden llevar lo que escribió el participante. El evento lo registra la página que recibe los datos de nuevo, así que tras una navegación lleva la pantalla nueva.
 
-**Hora de cada muestra.** Es el momento en que el cuadro llegó al motor, con el reloj común (`UX.clock`), antes de analizarlo. `camera_delay_ms` es la mediana del tiempo de análisis (llegada → resultado). No incluye la demora del sensor y del controlador de la webcam, que el navegador no informa.
+**Hora de cada muestra.** Es el momento en que el cuadro llegó al motor, con el reloj común (`UX.clock`), antes de analizarlo, así que el tiempo de análisis no atrasa las muestras (su mediana se ve en `stats.delay_ms`). Lo que sí las atrasa es la demora del sensor y del controlador de la webcam hasta que el cuadro llega, que el navegador no informa. Ese es el retraso que corresponde a `camera_delay_ms` en el registro `calibration` y en `analysis/parameters.yaml`; mientras no se mida, el registro lo deja en `null`. **No copies `stats.delay_ms` a `parameters.yaml`:** la limpieza desplazaría la mirada y el rostro un tiempo que ya está descontado.
 
 ## Mirada
 
@@ -93,9 +93,9 @@ Resultado:
 - `error_deg`: ese error en grados de ángulo visual: `atan(error_px / css_px_per_cm / viewing_distance_cm)`.
 - `accepted`: `error_deg ≤ calibration_max_error_deg`.
 
-Se envía `calibration.result` al panel y el registro `calibration` al servidor. Si no se acepta, la capa ofrece **Repetir** o **Continuar**, y cada intento queda registrado. **No hay resultado** si la cámara no está activa, si no se detectó el rostro o si se cancela con **Cancelar** o con Escape; la capa lo explica, y el panel ve el estado de la cámara por `camera.status`.
+Se envía `calibration.result` al panel y el registro `calibration` al servidor. Si no se acepta, la capa ofrece **Repetir** o **Continuar**, y cada intento queda registrado. Si la cámara todavía está arrancando (el motor carga MediaPipe y su modelo), la capa muestra "Preparando la cámara…" y espera hasta 20 s. **No hay resultado** si la cámara no está activa, si no se detectó el rostro o si se cancela con **Cancelar** o con Escape; la capa lo explica, y el panel ve el estado de la cámara por `camera.status`.
 
-Durante la calibración la mirada no se registra, y los clics sobre la capa no llegan a la captura de eventos: la capa los intercepta en `window`, antes que los oyentes de `document`.
+Durante la calibración la mirada no se registra, y los clics, el movimiento del cursor y la rueda sobre la capa no llegan a la captura de eventos: la capa los intercepta en `window`, antes que los oyentes de `document`. La rueda y las teclas de desplazamiento (espacio, flechas, Re Pág, Av Pág, Inicio, Fin) no mueven la página que está debajo. Si la sesión se cierra en medio de una calibración, la capa se quita y ese intento no registra nada.
 
 ## Configuración (`camera` en `config/shared.json`)
 
