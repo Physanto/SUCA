@@ -256,11 +256,15 @@
    * @returns {void}
    */
   function record(t, type, fields, taskId = activeTask()) {
+    const href = root.location.href;
+    const url = redactUrl(href);
     ctx.batcher.add('events', {
       t,
       type,
       ...fields,
-      screen: { url: redactUrl(root.location.href), title: root.document.title },
+      // Si hubo que tachar la dirección, el título suele repetir lo mismo ("Resultados de …"):
+      // se deja vacío, que el contrato admite, para no guardar lo que el participante buscó.
+      screen: { url, title: url === href ? root.document.title : '' },
       task_id: taskId,
     });
   }

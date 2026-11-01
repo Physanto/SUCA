@@ -1556,3 +1556,24 @@ test('does not record a selection that starts or ends inside a field, a custom t
   registered.stop();
   assert.equal(added.length, 1);
 });
+
+test('empties the title when the url had to be redacted, and keeps it otherwise', async () => {
+  const { document, added, click, timers } = startCapture(undefined, { fakeClock: true });
+  document.title = 'Resultados de CANARIO-TITULO-5';
+
+  globalThis.location.href = 'https://shop.local/buscar?q=CANARIO-TITULO-5';
+  click(el('button'));
+  move(document, 1, 1);
+  await timers.advance(250);
+  globalThis.location.href = 'https://shop.local/carrito?view=cart';
+  document.title = 'Carrito';
+  click(el('button'));
+  await timers.advance(250);
+  registered.stop();
+
+  const titles = added.map((entry) => entry.record.screen.title);
+  assert.deepEqual(titles.slice(0, 3), ['', '', '']);
+  assert.ok(titles.slice(3).every((title) => title === 'Carrito'), titles.join('|'));
+  assert.deepEqual(screens(added)[0], { url: 'https://shop.local/buscar?q=redacted', title: '' });
+  assert.ok(!JSON.stringify(added).includes('CANARIO'));
+});

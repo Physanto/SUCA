@@ -66,11 +66,12 @@ Forma de `contracts/element.schema.json`:
 | `text` en campos | `null` en `input`, `textarea` y `select` (incluidas las contraseñas), en zonas `contenteditable`, en cuadros de texto personalizados (rol `textbox`, `searchbox`, `combobox` o `spinbutton`) y en todo elemento que esté dentro de uno, que contenga uno o contenga un `textarea` (su contenido inicial puede ser texto ya escrito) |
 | `selection` | Solo la longitud. No se registra si la selección empieza o termina en un campo, una zona editable o un cuadro de texto personalizado |
 | `screen.url` | Se quitan usuario y clave de la dirección y se reemplaza por `redacted` el valor de los parámetros sensibles, tanto en la búsqueda (`?q=…`) como en el fragmento (`#access_token=…`, `#/buscar?q=…`): `q`, `query`, `search`, `s`, `keyword`, `keywords`, `term`, `email`, `user`, `username`, `token`, `access_token`, `id_token`, `refresh_token`, `key`, `api_key`, `apikey`, `password`, `pass`, `pwd`, `auth`, `session`, `sid`, `code` y `otp`. El resto se conserva (`?view=cart&id=1`, `#/ruta`), porque muchas aplicaciones identifican la pantalla con ellos. Esto aplica a todos los registros, no solo a `screen_change`; un cambio solo en un parámetro redactado sigue registrándose como cambio de pantalla |
+| `screen.title` | Se guarda tal cual, **salvo cuando la URL tuvo que redactarse**: entonces va vacío (el contrato admite un título vacío), porque el título de una página de resultados suele repetir lo buscado ("Resultados de …") |
 | Mirada y rostro | No son de este módulo |
 
 **Límites conocidos (no se pueden resolver desde la captura):**
 
-- El **título** del documento (`screen.title`) no se limpia: un buscador que lo escriba con lo buscado ("Resultados de audífonos") lo dejaría en la base.
+- El **título** del documento solo se vacía si la URL tuvo parámetros redactados. Un sitio que escriba lo buscado en el título sin ponerlo en la URL (por ejemplo, con una petición en segundo plano) lo dejaría en la base.
 - El `text` de un elemento **interactivo** que repita lo escrito (un botón que muestra tu último mensaje) se guarda tal cual, recortado a 50 caracteres.
 - El `id` y el `selector` se toman de la página tal como están.
 - Una página con un campo que dibuja lo escrito con `div` sin rol de cuadro de texto ni `contenteditable` (algunos editores de código) no se puede distinguir de contenido normal; su texto solo se guardaría si el elemento clicado es interactivo.
