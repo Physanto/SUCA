@@ -53,7 +53,8 @@ test('greets each tab with the current state and forwards analysed frames', () =
   frame(1100);
   frame(1133, { face: false });
 
-  assert.deepEqual(tab.received[0], { kind: 'hello', status: 'active', calibrated: false });
+  // `started_at` es el momento en que se creó el motor: identifica a este motor ante la pestaña.
+  assert.deepEqual(tab.received[0], { kind: 'hello', status: 'active', calibrated: false, started_at: 1000 });
   assert.deepEqual(tab.of('frame'), [
     { kind: 'frame', t: 1100, face_detected: true, values: { brow_down_left: 0.1 }, head_yaw: 1, head_pitch: 2, gaze: null },
     { kind: 'frame', t: 1133, face_detected: false, values: null, head_yaw: null, head_pitch: null, gaze: null },

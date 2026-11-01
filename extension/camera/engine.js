@@ -18,7 +18,8 @@
  * conexiones. Así se prueba en Node.
  *
  * Mensajes por la conexión (forma en `camera/README.md`):
- * - Al conectar: `hello` con el estado.
+ * - Al conectar: `hello` con el estado, si hay calibración y el momento en que
+ *   arrancó este motor (`started_at`).
  * - Del motor a la pestaña: `status`, `frame`, `gap` y `reply`.
  * - De la pestaña al motor: `request` con `action` y un `id` que la respuesta repite.
  */
@@ -62,6 +63,9 @@
    */
   function createEngine({ clock, gazeModel, smoother, onStatus = () => {}, info = () => ({}) }) {
     const clients = new Set();
+    // Identifica a este motor: si Chrome cierra el documento y el worker crea otro, la
+    // pestaña ve un valor distinto y sabe que se perdieron la calibración y los huecos.
+    const startedAt = clock.now();
     let status = 'starting';
     let buffer = [];
     let lastDataT = null;
@@ -152,7 +156,7 @@
         if (firstConnectT === null) {
           firstConnectT = clock.now();
         }
-        client.post({ kind: 'hello', status, calibrated: gazeModel.isFitted() });
+        client.post({ kind: 'hello', status, calibrated: gazeModel.isFitted(), started_at: startedAt });
         return {
           receive(message) {
             if (!message || message.kind !== 'request') {

@@ -126,6 +126,7 @@ function startCamera({ gazeHz = 30, faceHz = 15, taskId = 3 } = {}) {
   const module = UX.createCameraModule({ link, zones, page: fakePage() });
   module.start({
     config: { camera: { gaze_hz: gazeHz, face_hz: faceHz } },
+    contracts: UX.contracts,
     batcher: { add: (type, record) => records.push({ type, record }) },
     session: { get: () => ({ task_id: taskId }) },
   });
@@ -191,6 +192,67 @@ test('records camera gaps as events without the query or fragment of the address
       task_id: 3,
       data: { t_end: 2400, reason: 'navigation' },
     },
+  ]);
+});
+
+test('records the gap left by an engine that Chrome closed and the worker replaced', async () => {
+  const { platform, timers, of } = startCamera();
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    platform.ports[0].deliver({ kind: 'hello', status: 'active', calibrated: true, started_at: 100 });
+    platform.ports[0].deliver(frame(1000, { x: 10, y: 10 }));
+    platform.ports[0].drop();
+    await timers.advance(1000);
+    platform.ports[1].deliver({ kind: 'hello', status: 'active', calibrated: false, started_at: 1500 });
+    platform.ports[1].deliver(frame(2600, null));
+    platform.ports[1].deliver(frame(2700, null));
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.deepEqual(of('events').map((e) => [e.t, e.data]), [[1000, { t_end: 2600, reason: 'error' }]]);
+  assert.equal(warnings.length, 1);
+});
+
+test('the same engine greeting again after a reconnection is not a restart', async () => {
+  const { platform, timers, of } = startCamera();
+  platform.ports[0].deliver({ kind: 'hello', status: 'active', calibrated: true, started_at: 100 });
+  platform.ports[0].deliver(frame(1000, { x: 10, y: 10 }));
+  platform.ports[0].drop();
+  await timers.advance(1000);
+  platform.ports[1].deliver({ kind: 'hello', status: 'active', calibrated: true, started_at: 100 });
+  platform.ports[1].deliver(frame(2600, { x: 10, y: 10 }));
+
+  assert.deepEqual(of('events'), []);
+});
+
+test('on stop, a replaced engine that never sent data leaves a gap with no end', async () => {
+  const { platform, timers, module, of } = startCamera();
+  platform.ports[0].deliver({ kind: 'hello', status: 'active', calibrated: true, started_at: 100 });
+  platform.ports[0].deliver(frame(1000, { x: 10, y: 10 }));
+  platform.ports[0].drop();
+  await timers.advance(1000);
+  platform.ports[1].deliver({ kind: 'hello', status: 'starting', calibrated: false, started_at: 1500 });
+
+  const stopping = module.stop();
+  await settle();
+  platform.ports[1].reply('flush', { gap: null });
+  await stopping;
+
+  assert.deepEqual(of('events').map((e) => [e.t, e.data]), [[1000, { t_end: null, reason: 'error' }]]);
+});
+
+test('face samples keep only the contract values, as numbers between 0 and 1', () => {
+  const { platform, of } = startCamera();
+  const values = { brow_down_left: 1.2, jaw_open_typo: 0.5, eye_blink_left: 'x', image: [1, 2, 3] };
+  platform.ports[0].deliver({ ...frame(1000, null), values });
+  platform.ports[0].deliver({ ...frame(1100, null), values: { not_in_contract: 0.3 } });
+
+  assert.deepEqual(of('face'), [
+    { t: 1000, values: { brow_down_left: 1 }, head_yaw: 4.57, head_pitch: -1.23, face_detected: true },
+    { t: 1100, values: null, head_yaw: null, head_pitch: null, face_detected: false },
   ]);
 });
 

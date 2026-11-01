@@ -114,7 +114,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 
 | Del motor a la pestaña | Datos |
 |---|---|
-| `hello` | `status`, `calibrated` (al conectar) |
+| `hello` | `status`, `calibrated` y `started_at`, el momento en que arrancó ese motor (al conectar) |
 | `status` | `status`: `active`, `no_permission` o `error` |
 | `frame` | `t`, `face_detected`, `values`, `head_yaw`, `head_pitch`, `gaze` (`{x, y}` o `null`) |
 | `gap` | `t`, `t_end`, `reason` |
@@ -129,6 +129,8 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 | `flush` | — | `gap`: el intervalo abierto con `t_end: null`, o `null` |
 
 **Intervalos sin datos (motor).** Un intervalo se abre cuando la última pestaña se desconecta (`navigation`) o la cámara pasa a `no_permission` o `error`. Empieza en el último cuadro entregado y se cierra con el primer cuadro que vuelve a llegar a una pestaña. No se registran los de menos de 250 ms.
+
+**Motor reemplazado (pestaña).** Si Chrome cierra el documento offscreen a mitad de sesión, el worker crea otro en la siguiente carga de página de la pestaña evaluada (o la pestaña se reconecta sola). El motor nuevo no conoce el hueco ni tiene la calibración. La pestaña lo nota porque el `started_at` del `hello` cambia: registra un `camera_gap` con `reason: error` desde su último cuadro hasta el primero del motor nuevo (o `t_end: null` si la sesión se cierra antes), y la mirada queda `valid: false` hasta una calibración nueva. Si el reemplazo coincide con una carga completa de página, la página nueva no tiene un cuadro anterior y ese hueco no se registra.
 
 ## Privacidad
 

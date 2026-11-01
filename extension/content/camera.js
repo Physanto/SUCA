@@ -8,7 +8,8 @@
  *   puede estar arrancando);
  * - registrar muestras `gaze` a `camera.gaze_hz` y `face` a `camera.face_hz`,
  *   cada punto de mirada con su scroll, elemento y zona;
- * - registrar los intervalos sin datos (`camera_gap`) que informa el motor.
+ * - registrar los intervalos sin datos (`camera_gap`) que informa el motor, y el
+ *   que deja un motor que Chrome cerró y el worker reemplazó (`reason: error`).
  *
  * La cámara no se abre aquí: el motor la abre una sola vez y persiste entre
  * navegaciones. A esta página solo llegan números, nunca imágenes.
@@ -35,6 +36,8 @@
   const REQUEST_TIMEOUT_MS = 3000;
   /** Margen para no descartar una muestra que llega unos milisegundos antes. */
   const RATE_TOLERANCE = 0.8;
+  /** Un hueco más corto que esto no se registra (el mismo umbral que usa el motor). */
+  const MIN_GAP_MS = 250;
 
   /** Redondea a una cantidad de decimales, para no enviar ruido numérico. */
   const round = (value, digits) => {
@@ -49,7 +52,7 @@
    * @param {{connect: function(string): object}} deps.platform - Adaptador de plataforma.
    * @param {{setTimeout: Function, clearTimeout: Function}} [deps.timers] - Temporizadores.
    * @returns {object} Conexión con `open`, `close`, `status`, `request`, `onFrame`,
-   *   `onGap`, `pauseGaze` y `gazePaused`.
+   *   `onGap`, `onRestart`, `pauseGaze` y `gazePaused`.
    */
   function createCameraLink({ platform, timers = root }) {
     let port = null;
@@ -58,9 +61,26 @@
     let status = 'unknown';
     let nextId = 1;
     let paused = false;
+    /** Momento en que arrancó el motor conocido (de su `hello`), o `null` si todavía no hubo ninguno. */
+    let engineStartedAt = null;
     const pending = new Map();
     const frameListeners = new Set();
     const gapListeners = new Set();
+    const restartListeners = new Set();
+
+    /**
+     * Anota el motor que saludó. Si es otro que el anterior, Chrome cerró el documento
+     * de la cámara y el worker creó uno nuevo: se avisa, porque el motor nuevo no sabe
+     * del hueco ni tiene la calibración.
+     */
+    function noteEngine(hello) {
+      const startedAt = typeof hello.started_at === 'number' ? hello.started_at : null;
+      const previous = engineStartedAt;
+      engineStartedAt = startedAt;
+      if (previous !== null && startedAt !== null && startedAt !== previous) {
+        restartListeners.forEach((listener) => listener({ calibrated: hello.calibrated === true }));
+      }
+    }
 
     /** Rechaza los pedidos sin respuesta: la conexión se cortó. */
     function failPending(reason) {
@@ -75,6 +95,9 @@
     function dispatch(message) {
       switch (message && message.kind) {
         case 'hello':
+          status = message.status;
+          noteEngine(message);
+          break;
         case 'status':
           status = message.status;
           break;
@@ -204,6 +227,18 @@
       },
 
       /**
+       * Escucha cuando el motor fue reemplazado por otro durante la vida de esta página.
+       *
+       * @param {function({calibrated: boolean}): void} listener - Recibe si el motor
+       *   nuevo tiene calibración (normalmente no).
+       * @returns {function(): void} Función que deja de escuchar.
+       */
+      onRestart(listener) {
+        restartListeners.add(listener);
+        return () => restartListeners.delete(listener);
+      },
+
+      /**
        * Pausa o reanuda el registro de la mirada (durante la calibración).
        *
        * @param {boolean} value - `true` para pausar.
@@ -233,6 +268,10 @@
     let unsubscribe = [];
     let lastGazeT = -Infinity;
     let lastFaceT = -Infinity;
+    /** Momento del último cuadro recibido, o `null` si no llegó ninguno en esta página. */
+    let lastFrameT = null;
+    /** Hueco que empezó cuando se perdió el motor anterior: `{ t }`, o `null`. */
+    let restartGap = null;
 
     /** Tarea activa del modo guiado, o `null`. */
     function activeTask() {
@@ -283,9 +322,17 @@
       if (!frame.face_detected) {
         return { t: frame.t, values: null, head_yaw: null, head_pitch: null, face_detected: false };
       }
+      // Solo pasan los nombres del contrato con un número entre 0 y 1: lo que llegue
+      // además desde el motor no se registra.
+      const allowed = ctx.contracts.enums.face_value;
       const values = Object.fromEntries(
-        Object.entries(frame.values).map(([name, value]) => [name, round(value, 4)]),
+        Object.entries(frame.values || {})
+          .filter(([name, value]) => allowed.includes(name) && Number.isFinite(value))
+          .map(([name, value]) => [name, round(Math.min(1, Math.max(0, value)), 4)]),
       );
+      if (Object.keys(values).length === 0) {
+        return { t: frame.t, values: null, head_yaw: null, head_pitch: null, face_detected: false };
+      }
       return {
         t: frame.t,
         values,
@@ -297,6 +344,15 @@
 
     /** Registra un cuadro, respetando la frecuencia de cada tipo. */
     function onFrame(frame) {
+      if (restartGap !== null) {
+        // Primer cuadro del motor nuevo: termina el hueco que dejó el anterior.
+        const { t } = restartGap;
+        restartGap = null;
+        if (frame.t - t >= MIN_GAP_MS) {
+          recordGap({ t, t_end: frame.t, reason: 'error' });
+        }
+      }
+      lastFrameT = frame.t;
       const { camera } = ctx.config;
       if (frame.t - lastFaceT >= (1000 / camera.face_hz) * RATE_TOLERANCE) {
         lastFaceT = frame.t;
@@ -319,6 +375,20 @@
       });
     }
 
+    /**
+     * El motor fue reemplazado (Chrome cerró el documento de la cámara): el nuevo no
+     * conoce el hueco, así que lo registra esta pestaña desde su último cuadro. La
+     * mirada queda sin calibrar (`valid: false`) hasta una calibración nueva.
+     */
+    function onRestart({ calibrated }) {
+      if (lastFrameT !== null && restartGap === null) {
+        restartGap = { t: lastFrameT };
+      }
+      if (!calibrated) {
+        console.warn('camera engine restarted: gaze needs a new calibration');
+      }
+    }
+
     return Object.freeze({
       name: 'camera',
 
@@ -333,7 +403,9 @@
         ctx = context;
         lastGazeT = -Infinity;
         lastFaceT = -Infinity;
-        unsubscribe = [link.onFrame(onFrame), link.onGap(recordGap)];
+        lastFrameT = null;
+        restartGap = null;
+        unsubscribe = [link.onFrame(onFrame), link.onGap(recordGap), link.onRestart(onRestart)];
         link.open();
       },
 
@@ -347,6 +419,11 @@
         unsubscribe.forEach((off) => off());
         unsubscribe = [];
         if (ctx !== null) {
+          if (restartGap !== null) {
+            // El motor nuevo nunca entregó datos: el hueco termina con la sesión.
+            recordGap({ t: restartGap.t, t_end: null, reason: 'error' });
+            restartGap = null;
+          }
           try {
             const { gap } = await link.request('flush');
             if (gap) {
