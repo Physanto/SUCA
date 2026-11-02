@@ -238,12 +238,12 @@ def test_the_test_page_events_follow_the_page(test_page_run: Run) -> None:
     assert all(event["x"] >= 0 and event["y"] >= 0 for event in recorded if event["x"] is not None)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="capture records no screen_change when a page returns from the back-forward cache",
-)
 def test_the_test_page_records_each_screen_including_the_return(test_page_run: Run) -> None:
-    """Productos y carrito sin recargar, otra página, y de vuelta al carrito con Atrás."""
+    """Productos y carrito sin recargar, otra página, y de vuelta al carrito con Atrás.
+
+    Con una sesión activa, Chrome restaura el carrito desde su caché de historial
+    (bfcache): la página no se carga de nuevo, pero el regreso es un cambio de pantalla.
+    """
     recorded = events(test_page_run, "test_page")
     base = recorded[0]["screen"]["url"]
     screens = [
