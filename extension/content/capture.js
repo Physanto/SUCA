@@ -890,6 +890,26 @@
   }
 
   /**
+   * Registra el regreso a una página que Chrome restauró desde su caché de historial
+   * (bfcache), por ejemplo con Atrás. La página no se carga de nuevo y el módulo sigue
+   * con su estado de antes de salir: la dirección es la misma que ya tenía registrada,
+   * así que la revisión periódica no lo notaría. Volver a una página es un cambio de
+   * pantalla aunque sea la misma de antes de salir.
+   *
+   * @param {{persisted: boolean}} event - Evento `pageshow`.
+   * @returns {void}
+   */
+  function onPageShow(event) {
+    if (!event.persisted) {
+      return;
+    }
+    flushPendingScreen();
+    lastHref = root.location.href;
+    lastTitle = root.document.title;
+    recordScreen();
+  }
+
+  /**
    * Revisa la dirección cada `SCREEN_POLL_MS`. El módulo corre en un contexto
    * aislado y no puede interceptar el `pushState` de la página, así que las
    * aplicaciones de una sola página solo se notan comparando la dirección.
@@ -975,6 +995,7 @@
       root.document.addEventListener('submit', onSubmit, true);
       root.document.addEventListener('invalid', onInvalid, true);
       root.addEventListener('pagehide', onPageHide);
+      root.addEventListener('pageshow', onPageShow);
       root.addEventListener('popstate', onHistoryChange);
       root.addEventListener('hashchange', onHistoryChange);
       // Cada carga de página inicia la captura de nuevo, así que esta es la pantalla de la carga
@@ -1011,6 +1032,7 @@
       root.document.removeEventListener('submit', onSubmit, true);
       root.document.removeEventListener('invalid', onInvalid, true);
       root.removeEventListener('pagehide', onPageHide);
+      root.removeEventListener('pageshow', onPageShow);
       root.removeEventListener('popstate', onHistoryChange);
       root.removeEventListener('hashchange', onHistoryChange);
       if (timers) {
