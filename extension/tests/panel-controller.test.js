@@ -1145,3 +1145,242 @@ test('closing the session while a capture is pending leaves a clean idle state',
   assert.equal(controller.getState().reference, null);
   assert.equal(controller.getState().notice.code, 'session_closed');
 });
+
+/** Inicia una sesión guiada y termina todas sus tareas, para que aparezca el SUS. */
+async function startFinishedGuided(options) {
+  const result = await startGuided(options);
+  for (const task of TASKS) {
+    await result.controller.startTask();
+    await result.controller.endTask('done');
+  }
+  return result;
+}
+
+const SUS_ANSWERS = [4, 2, 5, 1, 4, 2, 5, 1, 4, 2];
+
+/** Contesta las 10 preguntas con `answers`. */
+function answerAll(controller, answers = SUS_ANSWERS) {
+  answers.forEach((value, index) => controller.answerSus(index + 1, value));
+}
+
+test('the SUS questions and instructions are the validated Spanish text, word for word', () => {
+  assert.deepEqual(UX.strings.susQuestions, [
+    'Me gustaría usar esta herramienta frecuentemente.',
+    'Considero que esta herramienta es innecesariamente compleja',
+    'Considero que la herramienta es fácil de usar.',
+    'Considero necesario el apoyo de personal experto para poder utilizar esta herramienta',
+    'Considero que las funciones de la herramienta están bien integradas',
+    'Considero que la herramienta presenta muchas contradicciones',
+    'Imagino que la mayoría de las personas aprenderían a usar esta herramienta rápidamente',
+    'Considero que el uso de esta herramienta es tedioso',
+    'Me sentí muy confiado al usar la herramienta',
+    'Necesité saber bastantes cosas antes de poder empezar a usar esta herramienta',
+  ]);
+  assert.equal(
+    UX.strings.susInstructions,
+    'Por favor seleccione de cada uno de los enunciados la opción que mejor describa su experiencia con la herramienta electrónica. Un puntaje de 1 significa que usted se encuentra totalmente en desacuerdo con el enunciado, mientras que un puntaje en 5 significa que está totalmente de acuerdo, un puntaje de 3 significaría que usted se encuentra neutral con el enunciado.',
+  );
+});
+
+test('the SUS starts empty with the guided session and is not answerable before the tasks end', async () => {
+  const { controller } = await startGuided();
+
+  assert.deepEqual(controller.getState().guided.sus, {
+    answers: Array(10).fill(null),
+    saving: false,
+    saved: false,
+  });
+  answerAll(controller);
+  assert.deepEqual(controller.getState().guided.sus.answers, Array(10).fill(null));
+
+  await controller.startTask();
+  await controller.endTask('done');
+  controller.answerSus(1, 5);
+  assert.equal(controller.getState().guided.sus.answers[0], null);
+});
+
+test('a study without tasks has no SUS to answer', async () => {
+  const { controller } = await startGuided({ api: { listTasks: async () => [] } });
+
+  controller.answerSus(1, 5);
+
+  assert.equal(controller.getState().guided.sus.answers[0], null);
+});
+
+test('after the last task the answers are stored one by one and can be changed', async () => {
+  const { controller } = await startFinishedGuided();
+
+  controller.answerSus(3, 5);
+  controller.answerSus(10, 1);
+  controller.answerSus(3, 2);
+
+  const { answers } = controller.getState().guided.sus;
+  assert.equal(answers[2], 2);
+  assert.equal(answers[9], 1);
+  assert.equal(answers.filter((answer) => answer !== null).length, 2);
+});
+
+test('answers outside the contract are ignored', async () => {
+  const { controller } = await startFinishedGuided();
+
+  for (const [item, value] of [[1, 0], [1, 6], [1, 2.5], [1, '3'], [1, NaN], [0, 3], [11, 3], [1.5, 3], ['1', 3]]) {
+    controller.answerSus(item, value);
+  }
+
+  assert.deepEqual(controller.getState().guided.sus.answers, Array(10).fill(null));
+});
+
+test('the SUS is only sent with the ten answers, in order, to the session', async () => {
+  const { controller, calls } = await startFinishedGuided({
+    api: {
+      saveSus: async (sessionId, body) => {
+        calls.push({ saveSus: sessionId, body });
+        return { score: 80 };
+      },
+    },
+  });
+  calls.length = 0;
+  for (let item = 1; item <= 9; item += 1) {
+    controller.answerSus(item, SUS_ANSWERS[item - 1]);
+  }
+
+  await controller.submitSus();
+  assert.deepEqual(calls, []);
+
+  controller.answerSus(10, SUS_ANSWERS[9]);
+  await controller.submitSus();
+
+  assert.deepEqual(calls, [{ saveSus: 12, body: { answers: SUS_ANSWERS } }]);
+  const { sus } = controller.getState().guided;
+  assert.equal(sus.saved, true);
+  assert.equal(sus.saving, false);
+  assert.equal(controller.getState().error, null);
+});
+
+test('a second press does not send the SUS twice', async () => {
+  const { controller, calls } = await startFinishedGuided({
+    api: {
+      saveSus: async (sessionId, body) => {
+        calls.push({ saveSus: sessionId, body });
+        return { score: 80 };
+      },
+    },
+  });
+  answerAll(controller);
+  calls.length = 0;
+
+  await Promise.all([controller.submitSus(), controller.submitSus()]);
+
+  assert.equal(calls.filter((call) => call.saveSus !== undefined).length, 1);
+});
+
+test('answers cannot change while sending or once saved, and nothing is sent again', async () => {
+  const { controller, calls } = await startFinishedGuided({
+    api: {
+      saveSus: async (sessionId, body) => {
+        calls.push({ saveSus: sessionId, body });
+        return { score: 80 };
+      },
+    },
+  });
+  answerAll(controller);
+  const sending = controller.submitSus();
+  controller.answerSus(1, 1);
+  await sending;
+  controller.answerSus(1, 1);
+  await controller.submitSus();
+
+  assert.deepEqual(controller.getState().guided.sus.answers, SUS_ANSWERS);
+  assert.equal(calls.filter((call) => call.saveSus !== undefined).length, 1);
+});
+
+test('a SUS that could not be sent keeps the answers and can be sent again', async () => {
+  let fail = true;
+  const { controller, calls } = await startFinishedGuided({
+    api: {
+      saveSus: async (sessionId, body) => {
+        calls.push({ saveSus: sessionId, body });
+        if (fail) {
+          throw new UX.ApiError({ status: 0, detail: 'server unreachable', errors: [] });
+        }
+        return { score: 80 };
+      },
+    },
+  });
+  answerAll(controller);
+
+  await controller.submitSus();
+
+  let state = controller.getState();
+  assert.equal(state.error.code, 'server_unreachable');
+  assert.deepEqual(state.guided.sus, { answers: SUS_ANSWERS, saving: false, saved: false });
+
+  fail = false;
+  await controller.submitSus();
+
+  state = controller.getState();
+  assert.equal(state.error, null);
+  assert.equal(state.guided.sus.saved, true);
+  assert.equal(calls.filter((call) => call.saveSus !== undefined).length, 2);
+});
+
+test('the server refusing the SUS is reported and the answers are kept', async () => {
+  const { controller } = await startFinishedGuided({
+    api: {
+      saveSus: async () => {
+        throw new UX.ApiError({ status: 409, detail: 'session is closed', errors: [] });
+      },
+    },
+  });
+  answerAll(controller);
+
+  await controller.submitSus();
+
+  assert.equal(controller.getState().error.code, 'unexpected');
+  assert.equal(controller.getState().guided.sus.saved, false);
+  assert.deepEqual(controller.getState().guided.sus.answers, SUS_ANSWERS);
+});
+
+test('the SUS belongs to guided sessions only', async () => {
+  const free = setup();
+  await free.controller.init();
+  await free.controller.startSession(FORM);
+  const reference = await startReference();
+
+  for (const { controller, calls } of [free, reference]) {
+    calls.length = 0;
+    answerAll(controller);
+    await controller.submitSus();
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('closing the session while the SUS is being sent leaves a clean idle state', async () => {
+  let release;
+  const { controller } = await startFinishedGuided({
+    api: {
+      saveSus: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    },
+  });
+  answerAll(controller);
+  const pending = controller.submitSus();
+  await controller.closeSession();
+  release({ score: 80 });
+  await pending;
+
+  assert.equal(controller.getState().guided, null);
+  assert.equal(controller.getState().notice.code, 'session_closed');
+});
+
+test('the session can be closed without answering the SUS', async () => {
+  const { controller, calls } = await startFinishedGuided();
+  calls.length = 0;
+
+  await controller.closeSession();
+
+  assert.equal(controller.getState().phase, 'idle');
+  assert.equal(calls.some((call) => call.saveSus !== undefined), false);
+});

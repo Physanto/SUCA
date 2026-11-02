@@ -82,6 +82,29 @@
       return `Error ${number(result.error_px)} px (${number(result.error_deg)}°) · ${verdict}`;
     },
 
+    // Cuestionario SUS: versión en español validada (Sevilla-Gonzalez et al., 2020,
+    // JMIR Human Factors 7(4):e21161, apéndice 2). El texto se conserva literal.
+    susTitle: 'Cuestionario SUS',
+    susInstructions:
+      'Por favor seleccione de cada uno de los enunciados la opción que mejor describa su experiencia con la herramienta electrónica. Un puntaje de 1 significa que usted se encuentra totalmente en desacuerdo con el enunciado, mientras que un puntaje en 5 significa que está totalmente de acuerdo, un puntaje de 3 significaría que usted se encuentra neutral con el enunciado.',
+    susScale: '1 = Totalmente en desacuerdo · 5 = Totalmente de acuerdo',
+    susQuestions: [
+      'Me gustaría usar esta herramienta frecuentemente.',
+      'Considero que esta herramienta es innecesariamente compleja',
+      'Considero que la herramienta es fácil de usar.',
+      'Considero necesario el apoyo de personal experto para poder utilizar esta herramienta',
+      'Considero que las funciones de la herramienta están bien integradas',
+      'Considero que la herramienta presenta muchas contradicciones',
+      'Imagino que la mayoría de las personas aprenderían a usar esta herramienta rápidamente',
+      'Considero que el uso de esta herramienta es tedioso',
+      'Me sentí muy confiado al usar la herramienta',
+      'Necesité saber bastantes cosas antes de poder empezar a usar esta herramienta',
+    ],
+    susQuestionLabel: (number, text) => `${number}. ${text}`,
+    susSendButton: 'Enviar respuestas',
+    susMissing: (count) => (count === 1 ? 'Falta 1 pregunta por responder.' : `Faltan ${count} preguntas por responder.`),
+    susSaved: 'Respuestas guardadas. Gracias.',
+
     // Modo referencia.
     referenceTitle: 'Grabación de referencia',
     referenceTaskLabel: 'Tarea a grabar',

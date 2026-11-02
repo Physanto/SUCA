@@ -16,8 +16,9 @@
  *   se desconoce (el panel se abrió con la sesión en curso: el estado de la sesión no la guarda);
  * - `guided`: solo en modo guiado, `null` en los demás. Tiene `loaded` (si ya
  *   llegaron las tareas), `tasks` (las del estudio, en orden), `index` (posición
- *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas) y
- *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`);
+ *   de la tarea que toca; igual a `tasks.length` cuando se terminaron todas),
+ *   `current` (`{ task_id, t_start }` de la tarea en curso, o `null`) y `sus` (el
+ *   cuestionario: `answers`, las 10 respuestas de 1 a 5 o `null` si falta, `saving` y `saved`);
  * - `reference`: solo en modo referencia, `null` en los demás. Tiene `loaded`, `tasks` (las
  *   del estudio), `recording` (`{ task_id, t_start }` de la tarea que se graba, o `null`),
  *   `saved` (`{ task_id, reference_id }` de las que ya se guardaron en esta sesión) y
@@ -68,6 +69,12 @@
     'token', 'access_token', 'id_token', 'refresh_token', 'key', 'api_key', 'apikey',
     'password', 'pass', 'pwd', 'auth', 'session', 'sid', 'code', 'otp',
   ]);
+
+  /** Preguntas del SUS. */
+  const SUS_ITEMS = 10;
+
+  /** Cuestionario SUS sin responder. */
+  const noSus = () => ({ answers: Array(SUS_ITEMS).fill(null), saving: false, saved: false });
 
   /** Formas de terminar una tarea con un botón del panel (`ended_by` del contrato). */
   const BUTTON_ENDS = Object.freeze(['done', 'gave_up']);
@@ -147,6 +154,23 @@
   }
 
   /**
+   * Si el cuestionario SUS se puede contestar: ya no quedan tareas, no se está
+   * enviando y todavía no se guardó.
+   *
+   * @param {object} guided - Estado del modo guiado.
+   * @returns {boolean} `true` si el formulario está abierto.
+   */
+  function susOpen(guided) {
+    return (
+      guided.loaded &&
+      guided.tasks.length > 0 &&
+      guided.index >= guided.tasks.length &&
+      !guided.sus.saving &&
+      !guided.sus.saved
+    );
+  }
+
+  /**
    * Traduce un error del servidor o de los mensajes a un código para la vista.
    *
    * @param {Error} error - Error recibido; los del servidor traen `status` y `errors`.
@@ -179,7 +203,7 @@
    *   la pantalla y del navegador para `screen_info`.
    * @returns {object} Controlador con `init`, `loadStudies`, `loadTasks`, `retry`,
    *   `startSession`, `startTask`, `endTask`, `startRecording`, `stopRecording`, `retrySave`,
-   *   `captureScreen`, `requestCalibration`, `closeSession`, `getState` y `subscribe`.
+   *   `captureScreen`, `answerSus`, `submitSus`, `requestCalibration`, `closeSession`, `getState` y `subscribe`.
    */
   function createPanelController({
     api,
@@ -300,7 +324,15 @@
         const resumed = running >= 0 ? { task_id: current.task_id, t_start: clock.now() } : null;
         setState({
           ...(isGuided
-            ? { guided: { loaded: true, tasks, index: Math.max(running, 0), current: resumed } }
+            ? {
+                guided: {
+                  loaded: true,
+                  tasks,
+                  index: Math.max(running, 0),
+                  current: resumed,
+                  sus: noSus(),
+                },
+              }
             : {
                 reference: {
                   loaded: true,
@@ -317,7 +349,7 @@
       } catch (error) {
         setState({
           ...(isGuided
-            ? { guided: { loaded: false, tasks: [], index: 0, current: null } }
+            ? { guided: { loaded: false, tasks: [], index: 0, current: null, sus: noSus() } }
             : {
                 reference: {
                   loaded: false,
@@ -559,6 +591,71 @@
           throw new Error(`a button cannot end a task with ${endedBy}`);
         }
         await finishTask(endedBy);
+      },
+
+      /**
+       * Anota la respuesta a una pregunta del SUS. El formulario aparece al terminar
+       * las tareas del modo guiado; antes, o ya guardado, no cambia nada.
+       *
+       * @param {number} item - Número de la pregunta, de 1 a 10.
+       * @param {number} value - Respuesta, de 1 (totalmente en desacuerdo) a 5.
+       * @returns {void}
+       */
+      answerSus(item, value) {
+        const { guided } = state;
+        if (
+          state.phase !== PHASES.ACTIVE ||
+          guided === null ||
+          !susOpen(guided) ||
+          !Number.isInteger(item) ||
+          item < 1 ||
+          item > SUS_ITEMS ||
+          !Number.isInteger(value) ||
+          value < 1 ||
+          value > 5
+        ) {
+          return;
+        }
+        const answers = [...guided.sus.answers];
+        answers[item - 1] = value;
+        setState({ guided: { ...guided, sus: { ...guided.sus, answers } } });
+      },
+
+      /**
+       * Envía las respuestas del SUS al servidor, que calcula el puntaje. Solo con las
+       * 10 respondidas. Si falla, conserva las respuestas y se puede repetir.
+       *
+       * @returns {Promise<void>}
+       */
+      async submitSus() {
+        const { guided } = state;
+        const current = session.get();
+        if (
+          state.phase !== PHASES.ACTIVE ||
+          guided === null ||
+          current === null ||
+          !susOpen(guided) ||
+          guided.sus.answers.includes(null)
+        ) {
+          return;
+        }
+        // El estado cambia antes de esperar, para que un segundo clic no repita el envío.
+        setState({ guided: { ...guided, sus: { ...guided.sus, saving: true } }, error: null });
+        let error = null;
+        try {
+          await api.saveSus(current.session_id, { answers: guided.sus.answers });
+        } catch (failure) {
+          error = describeError(failure);
+        }
+        // La sesión pudo cerrarse mientras tanto.
+        const latest = state.guided;
+        if (latest === null) {
+          return;
+        }
+        setState({
+          guided: { ...latest, sus: { ...latest.sus, saving: false, saved: error === null } },
+          error,
+        });
       },
 
       /**

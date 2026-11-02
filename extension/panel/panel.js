@@ -261,6 +261,60 @@
     byId('task-start').disabled = state.phase === 'closing';
   }
 
+  /** Arma las 10 preguntas del SUS, cada una con sus cinco opciones, una sola vez. */
+  function buildSus() {
+    byId('sus-scale').textContent = strings.susScale;
+    byId('sus-questions').replaceChildren(
+      ...strings.susQuestions.map((question, index) => {
+        const item = index + 1;
+        const group = document.createElement('fieldset');
+        const legend = document.createElement('legend');
+        legend.textContent = strings.susQuestionLabel(item, question);
+        const options = document.createElement('div');
+        options.className = 'sus-options';
+        for (let value = 1; value <= 5; value += 1) {
+          const label = document.createElement('label');
+          const input = document.createElement('input');
+          input.type = 'radio';
+          input.name = `sus-${item}`;
+          input.value = String(value);
+          input.dataset.item = String(item);
+          label.append(input, String(value));
+          options.append(label);
+        }
+        group.append(legend, options);
+        return group;
+      }),
+    );
+  }
+
+  /** Muestra el cuestionario SUS cuando terminaron las tareas del modo guiado. */
+  function renderSus(state) {
+    const { guided } = state;
+    const finished =
+      guided !== null &&
+      guided.loaded &&
+      guided.tasks.length > 0 &&
+      guided.index >= guided.tasks.length;
+    const visible = finished && ['active', 'closing'].includes(state.phase);
+    byId('sus-section').hidden = !visible;
+    if (!visible) {
+      return;
+    }
+    const { answers, saving, saved } = guided.sus;
+    byId('sus-form').hidden = saved;
+    byId('sus-saved').hidden = !saved;
+    const locked = saving || state.phase === 'closing';
+    for (const input of byId('sus-questions').querySelectorAll('input')) {
+      input.checked = answers[Number(input.dataset.item) - 1] === Number(input.value);
+      input.disabled = locked;
+    }
+    const missing = answers.filter((answer) => answer === null).length;
+    byId('sus-missing').textContent = missing > 0 ? strings.susMissing(missing) : '';
+    byId('sus-missing').hidden = missing === 0;
+    byId('sus-send').disabled = missing > 0 || locked;
+  }
+
   /**
    * Dibuja el estado completo del panel.
    *
@@ -284,6 +338,7 @@
     renderCamera(state);
     renderReference(state);
     renderGuided(state);
+    renderSus(state);
     renderMessage(state);
   }
 
@@ -312,6 +367,7 @@
   });
 
   fillStrings();
+  buildSus();
   controller.subscribe(render);
   render(controller.getState());
 
@@ -329,6 +385,10 @@
   );
   byId('reference-stop').addEventListener('click', () => controller.stopRecording());
   byId('capture-screen').addEventListener('click', () => controller.captureScreen());
+  byId('sus-questions').addEventListener('change', (event) =>
+    controller.answerSus(Number(event.target.dataset.item), Number(event.target.value)),
+  );
+  byId('sus-send').addEventListener('click', () => controller.submitSus());
   byId('reference-retry').addEventListener('click', () => controller.retrySave());
   byId('task-start').addEventListener('click', () => controller.startTask());
   byId('task-done').addEventListener('click', () => controller.endTask('done'));

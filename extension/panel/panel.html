@@ -109,6 +109,19 @@
           </div>
         </section>
 
+        <!-- Cuestionario SUS: aparece al terminar las tareas del modo guiado. -->
+        <section id="sus-section" hidden>
+          <h2 data-string="susTitle"></h2>
+          <div id="sus-form">
+            <p data-string="susInstructions"></p>
+            <p id="sus-scale" class="hint"></p>
+            <div id="sus-questions"></div>
+            <p id="sus-missing" class="hint"></p>
+            <button id="sus-send" type="button" class="primary" data-string="susSendButton"></button>
+          </div>
+          <p id="sus-saved" data-string="susSaved" hidden></p>
+        </section>
+
         <button id="close" type="button" class="primary" data-string="closeButton"></button>
       </section>
     </main>
