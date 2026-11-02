@@ -59,11 +59,69 @@
           <dd id="active-study"></dd>
           <dt data-string="modeLabel"></dt>
           <dd id="active-mode"></dd>
+          <dt id="elapsed-label" data-string="elapsedLabel" hidden></dt>
+          <dd id="active-elapsed" hidden></dd>
           <dt data-string="tabLabel"></dt>
           <dd id="active-tab"></dd>
           <dt data-string="captureLabel"></dt>
           <dd id="active-capture"></dd>
         </dl>
+
+        <!-- Cámara y calibración: disponibles en cualquier modo. -->
+        <section id="camera-section">
+          <h2 data-string="cameraTitle"></h2>
+          <p><strong data-string="cameraLabel"></strong> <span id="camera-status"></span></p>
+          <div class="calibration">
+            <button id="calibrate-initial" type="button" data-calibration="initial"></button>
+            <p id="calibration-initial" class="hint"></p>
+            <button id="calibrate-final" type="button" data-calibration="final"></button>
+            <p id="calibration-final" class="hint"></p>
+          </div>
+        </section>
+
+        <!-- Modo referencia: el evaluador elige una tarea, la graba y guarda su referencia. -->
+        <section id="reference-section" hidden>
+          <h2 data-string="referenceTitle"></h2>
+          <p id="reference-status" class="hint" hidden></p>
+          <div id="reference-picker">
+            <label for="reference-task" data-string="referenceTaskLabel"></label>
+            <select id="reference-task"></select>
+            <button id="reference-start" type="button" class="primary" data-string="referenceStartButton"></button>
+          </div>
+          <p id="reference-recording" class="instruction" hidden></p>
+          <button id="reference-stop" type="button" class="primary" data-string="referenceStopButton" hidden></button>
+          <button id="reference-retry" type="button" data-string="referenceRetryButton" hidden></button>
+          <ul id="reference-saved" class="saved"></ul>
+          <button id="capture-screen" type="button" data-string="captureButton"></button>
+          <ul id="capture-list" class="saved"></ul>
+        </section>
+
+        <!-- Modo guiado: la tarea que toca, con sus botones. -->
+        <section id="guided-section" hidden>
+          <h2 data-string="tasksTitle"></h2>
+          <p id="tasks-status" class="hint" hidden></p>
+          <p id="task-progress" class="hint"></p>
+          <p id="task-instruction" class="instruction"></p>
+          <div id="task-actions" class="actions">
+            <button id="task-start" type="button" class="primary" data-string="taskStartButton"></button>
+            <button id="task-done" type="button" class="primary" data-string="taskDoneButton"></button>
+            <button id="task-gave-up" type="button" data-string="taskGaveUpButton"></button>
+          </div>
+        </section>
+
+        <!-- Cuestionario SUS: aparece al terminar las tareas del modo guiado. -->
+        <section id="sus-section" hidden>
+          <h2 data-string="susTitle"></h2>
+          <div id="sus-form">
+            <p data-string="susInstructions"></p>
+            <p id="sus-scale" class="hint"></p>
+            <div id="sus-questions"></div>
+            <p id="sus-missing" class="hint"></p>
+            <button id="sus-send" type="button" class="primary" data-string="susSendButton"></button>
+          </div>
+          <p id="sus-saved" data-string="susSaved" hidden></p>
+        </section>
+
         <button id="close" type="button" class="primary" data-string="closeButton"></button>
       </section>
     </main>
