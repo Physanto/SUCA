@@ -1304,9 +1304,32 @@ test('records one screen change per different address and none for a repeated on
   ]);
 });
 
+test('returning to a page restored from the back-forward cache is a screen change', async () => {
+  const { document, added, initial, timers, pageHide, pageListeners } = startCapture({ task_id: 4 }, {
+    fakeClock: true,
+  });
+  // Llegar a la página por una carga normal: `pageshow` sin `persisted` no repite la pantalla.
+  pageListeners.get('pageshow')({ type: 'pageshow', persisted: false });
+  await timers.advance(300);
+  assert.deepEqual(screens(added), []);
+
+  // Salir con una navegación completa y volver con Atrás a la misma dirección y el mismo título.
+  pageHide();
+  await timers.advance(5000);
+  document.title = 'Carrito';
+  pageListeners.get('pageshow')({ type: 'pageshow', persisted: true });
+  await timers.advance(300);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/cart', title: 'Carrito' }]);
+  assert.equal(added[0].record.task_id, 4);
+  assert.equal(added[0].record.t, 5300);
+  assert.equal(screens(initial)[0].url, 'https://shop.local/cart');
+});
+
 test('uses the active task and stop cancels the checks and unhooks popstate and hashchange', async () => {
   const { added, timers, pageListeners } = startCapture({ task_id: 8 }, { fakeClock: true });
-  assert.deepEqual([...pageListeners.keys()].sort(), ['hashchange', 'pagehide', 'popstate']);
+  assert.deepEqual([...pageListeners.keys()].sort(), ['hashchange', 'pagehide', 'pageshow', 'popstate']);
 
   globalThis.location.href = 'https://shop.local/a';
   await timers.advance(750);

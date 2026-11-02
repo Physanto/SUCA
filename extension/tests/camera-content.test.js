@@ -310,6 +310,24 @@ test('on stop, records the gap still open with no end and closes the connection'
   assert.equal(port.open, false);
 });
 
+test('on stop, gives up on a busy engine before the module stop limit', async () => {
+  const { platform, timers, module, records } = startCamera();
+  const [port] = platform.ports;
+  let stopped = false;
+
+  const stopping = module.stop().then(() => (stopped = true));
+  await settle();
+  // `modules.js` espera 2 s cada `stop()`: la cámara tiene que terminar antes.
+  await timers.advance(1499);
+  assert.equal(stopped, false);
+  await timers.advance(1);
+  await stopping;
+
+  assert.equal(stopped, true);
+  assert.deepEqual(records, []);
+  assert.equal(port.open, false);
+});
+
 /** Capa falsa: hace clic en cada punto y elige el botón que la prueba indique. */
 function fakeUi({ answers = [], onPoint = () => {} } = {}) {
   const shown = [];

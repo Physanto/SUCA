@@ -34,6 +34,12 @@
   const RECONNECT_MS = 1000;
   /** Espera máxima de una respuesta del motor, en milisegundos. */
   const REQUEST_TIMEOUT_MS = 3000;
+  /**
+   * Espera máxima de `flush` al detenerse. Debe ser menor que la que `modules.js` da a
+   * cada `stop()` (2 s): si se pasa, la sesión se cierra sin esperar a la cámara y el
+   * último hueco llegaría tarde o se perdería.
+   */
+  const STOP_FLUSH_TIMEOUT_MS = 1500;
   /** Margen para no descartar una muestra que llega unos milisegundos antes. */
   const RATE_TOLERANCE = 0.8;
   /** Un hueco más corto que esto no se registra (el mismo umbral que usa el motor). */
@@ -197,9 +203,10 @@
        * @param {string} action - Pedido (`calibration.reset`, `calibration.point`,
        *   `calibration.fit`, `stats`, `flush`).
        * @param {object} [payload] - Datos del pedido.
+       * @param {{timeoutMs?: number}} [options] - Espera máxima de la respuesta.
        * @returns {Promise<object>} Respuesta del motor.
        */
-      request(action, payload = {}) {
+      request(action, payload = {}, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
         if (port === null) {
           return Promise.reject(new Error('camera engine not connected'));
         }
@@ -209,7 +216,7 @@
           const timer = timers.setTimeout(() => {
             pending.delete(id);
             reject(new Error(`camera request timed out: ${action}`));
-          }, REQUEST_TIMEOUT_MS);
+          }, timeoutMs);
           pending.set(id, { resolve, reject, timer });
           port.post({ ...payload, kind: 'request', action, id });
         });
@@ -465,7 +472,7 @@
             restartGap = null;
           }
           try {
-            const { gap } = await link.request('flush');
+            const { gap } = await link.request('flush', {}, { timeoutMs: STOP_FLUSH_TIMEOUT_MS });
             if (gap) {
               recordGap(gap);
             }

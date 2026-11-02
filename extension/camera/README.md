@@ -128,6 +128,8 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 | `stats` | — | `delegate` (`GPU` o `CPU`), `benchmark_ms` (tiempo medio por cuadro de cada procesador probado), `status`, `calibrated`, `frames`, `hz`, `delay_ms`, `face_ratio` |
 | `flush` | — | `gap`: el intervalo abierto con `t_end: null`, o `null` |
 
+Cada pedido espera la respuesta hasta 3 s. El `flush` del cierre espera solo 1,5 s, menos que los 2 s que `modules.js` da a cada `stop()`: si el motor está ocupado (por ejemplo, cargando el modelo), la cámara se detiene sin su último hueco en vez de quedar fuera del cierre de la sesión.
+
 **Intervalos sin datos (motor).** Un intervalo se abre cuando la última pestaña se desconecta (`navigation`) o la cámara pasa a `no_permission` o `error`. Empieza en el último cuadro entregado y se cierra con el primer cuadro que vuelve a llegar a una pestaña. No se registran los de menos de 250 ms.
 
 **Motor reemplazado (pestaña).** Si Chrome cierra el documento offscreen a mitad de sesión, la pestaña pierde la conexión con un motor que sí existía y se lo dice al worker preguntando su id (`tab.identify`, lo mismo que pregunta al cargar cada página); el worker crea otro motor y la pestaña se reconecta sola en un segundo. El motor nuevo no conoce el hueco ni tiene la calibración. La pestaña lo nota porque el `started_at` del `hello` cambia: registra un `camera_gap` con `reason: error` desde su último cuadro hasta el primero del motor nuevo (o `t_end: null` si la sesión se cierra antes), y la mirada queda `valid: false` hasta una calibración nueva. Si el reemplazo coincide con una carga completa de página, la página nueva no tiene un cuadro anterior y ese hueco no se registra.
