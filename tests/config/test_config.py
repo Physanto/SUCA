@@ -50,6 +50,16 @@ def test_default_configuration_loads(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.capture.click_response_wait_ms == 1500
 
 
+def test_camera_numbers_accept_integers_and_decimals(tmp_path: Path) -> None:
+    """Las medidas de la cámara admiten 60 o 37.8 y siempre quedan como float."""
+    config = load_config(write_config(tmp_path, camera__viewing_distance_cm=60))
+
+    assert config.camera.viewing_distance_cm == 60.0
+    assert isinstance(config.camera.viewing_distance_cm, float)
+    assert config.camera.css_px_per_cm == 37.8
+    assert config.camera.calibration_max_error_deg == 5.0
+
+
 def test_relative_paths_resolve_from_repository_root() -> None:
     config = load_config(DEFAULT_CONFIG_PATH)
 
@@ -118,6 +128,9 @@ def test_invalid_json_is_reported(tmp_path: Path) -> None:
         ({"server__host": "0.0.0.0"}, "server.host: must be a loopback IP address"),
         ({"server__host": "localhost"}, "server.host: must be a loopback IP address"),
         ({"sending__retry_initial_ms": 60000}, "must not exceed sending.retry_max_ms"),
+        ({"camera__css_px_per_cm": "37.8"}, "camera.css_px_per_cm: expected a number"),
+        ({"camera__viewing_distance_cm": True}, "camera.viewing_distance_cm: expected a number"),
+        ({"camera__calibration_max_error_deg": 0}, "must be positive"),
     ],
 )
 def test_invalid_values_are_reported_by_key(

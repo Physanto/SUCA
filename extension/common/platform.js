@@ -146,6 +146,131 @@
        * @returns {void}
        */
       onBrowserStartup: (listener) => chrome.runtime.onStartup.addListener(listener),
+
+      /**
+       * Registra una función para cuando la extensión se instala por primera vez.
+       *
+       * @param {function(): void} listener - Función a llamar.
+       * @returns {void}
+       */
+      onFirstInstall(listener) {
+        chrome.runtime.onInstalled.addListener(({ reason }) => {
+          if (reason === 'install') {
+            listener();
+          }
+        });
+      },
+
+      /**
+       * Dirección completa de un archivo de la extensión.
+       *
+       * @param {string} path - Ruta dentro de `extension/`, por ejemplo `lib/x.wasm`.
+       * @returns {string} URL `chrome-extension://…`.
+       */
+      extensionUrl: (path) => chrome.runtime.getURL(path),
+
+      /**
+       * Abre una página de la extensión en una pestaña nueva.
+       *
+       * @param {string} path - Ruta dentro de `extension/`.
+       * @returns {Promise<void>}
+       */
+      async openExtensionTab(path) {
+        await chrome.tabs.create({ url: chrome.runtime.getURL(path) });
+      },
+
+      /**
+       * Crea el documento offscreen si no existe. Lo usa el worker.
+       *
+       * @param {{path: string, reasons: string[], justification: string}} options -
+       *   Página, motivos de `chrome.offscreen.Reason` y explicación.
+       * @returns {Promise<boolean>} `true` si lo creó, `false` si ya existía.
+       */
+      async ensureOffscreen({ path, reasons, justification }) {
+        const url = chrome.runtime.getURL(path);
+        const existing = await chrome.runtime.getContexts({
+          contextTypes: ['OFFSCREEN_DOCUMENT'],
+          documentUrls: [url],
+        });
+        if (existing.length > 0) {
+          return false;
+        }
+        await chrome.offscreen.createDocument({ url, reasons, justification });
+        return true;
+      },
+
+      /**
+       * Cierra el documento offscreen si existe.
+       *
+       * @returns {Promise<boolean>} `true` si había uno y se cerró.
+       */
+      async closeOffscreen() {
+        const existing = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+        if (existing.length === 0) {
+          return false;
+        }
+        await chrome.offscreen.closeDocument();
+        return true;
+      },
+
+      /**
+       * Abre una conexión con las páginas de la extensión. Desde un content
+       * script, llega al documento offscreen que la escucha.
+       *
+       * @param {string} name - Nombre de la conexión.
+       * @returns {{post: function(object): void, onMessage: function(function(object): void): void,
+       *   onDisconnect: function(function(): void): void, disconnect: function(): void}} Conexión.
+       */
+      connect: (name) => wrapPort(chrome.runtime.connect({ name })),
+
+      /**
+       * Escucha las conexiones con un nombre.
+       *
+       * @param {string} name - Nombre de la conexión.
+       * @param {function(object): void} listener - Recibe la conexión, con la misma forma que `connect`.
+       * @returns {void}
+       */
+      onConnect(name, listener) {
+        chrome.runtime.onConnect.addListener((port) => {
+          if (port.name === name) {
+            listener(wrapPort(port));
+          }
+        });
+      },
+    });
+  }
+
+  /**
+   * Adapta un `chrome.runtime.Port`. Enviar por una conexión cerrada no falla:
+   * se ignora, porque el otro lado ya no está.
+   *
+   * @param {object} port - Conexión de Chrome.
+   * @returns {object} Conexión con `post`, `onMessage`, `onDisconnect` y `disconnect`.
+   */
+  function wrapPort(port) {
+    let open = true;
+    port.onDisconnect.addListener(() => {
+      open = false;
+      // Leer el error evita el aviso "Unchecked runtime.lastError" de Chrome.
+      void (root.chrome && root.chrome.runtime && root.chrome.runtime.lastError);
+    });
+    return Object.freeze({
+      post(message) {
+        if (!open) {
+          return;
+        }
+        try {
+          port.postMessage(message);
+        } catch {
+          open = false;
+        }
+      },
+      onMessage: (listener) => port.onMessage.addListener((message) => listener(message)),
+      onDisconnect: (listener) => port.onDisconnect.addListener(() => listener()),
+      disconnect() {
+        open = false;
+        port.disconnect();
+      },
     });
   }
 

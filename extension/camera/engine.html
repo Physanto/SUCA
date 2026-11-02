@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  Documento offscreen del motor de la cámara. No se ve: el service worker lo
+  crea al empezar la sesión y lo cierra al terminarla. Abre la webcam una sola
+  vez, analiza cada cuadro y entrega solo números a la pestaña evaluada.
+  Ningún cuadro de video sale de este documento.
+-->
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>SUCA · Cámara</title>
+  </head>
+  <body>
+    <script src="../config.generated.js"></script>
+    <script src="../common/platform.js"></script>
+    <script src="../common/clock.js"></script>
+    <script src="../common/messages.js"></script>
+    <script src="gaze-model.js"></script>
+    <script src="eye-features.js"></script>
+    <script src="face-features.js"></script>
+    <script src="engine.js"></script>
+    <!-- Módulo: importa MediaPipe; corre después de los scripts clásicos. -->
+    <script type="module" src="engine-main.mjs"></script>
+  </body>
+</html>

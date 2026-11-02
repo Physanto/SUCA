@@ -219,7 +219,7 @@ Cada integrante modifica solo sus carpetas. `.github/CODEOWNERS` hace que GitHub
 | `contracts/`, `config/`, `shared/`, `server/`, `scripts/`, `studies/`, `.github/` | Líder |
 | `extension/manifest.json`, `extension/common/`, `extension/worker.js`, `extension/content/bootstrap.js`, `extension/test-page/` | Líder |
 | `analysis/run.py`, `analysis/loader.py`, `analysis/columns.py`, `analysis/registry.py`, `analysis/parameters.py`, `analysis/parameters.yaml` | Líder |
-| `extension/content/camera.js`, `extension/content/calibration.js`, `extension/lib/` | Líder (cámara) |
+| `extension/content/camera.js`, `extension/content/camera/`, `extension/content/calibration.js`, `extension/camera/`, `extension/lib/` | Líder (cámara) |
 | `test-app/` | Líder (app de prueba) |
 | `dashboard/` | Líder (panel de resultados) |
 | `extension/content/capture.js` | Integrante B (captura) |

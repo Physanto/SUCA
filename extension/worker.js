@@ -15,6 +15,14 @@
  *   pone el cierre de la sesión en la cola, detrás de sus lotes.
  * - `screen_capture.request`: captura la pestaña evaluada y la envía al servidor.
  * - `tab.identify`: responde a un content script el id de su pestaña.
+ * - `camera.status`: si el motor de la cámara no tiene permiso, abre la página
+ *   para darlo (una vez por sesión).
+ *
+ * Cámara: el motor (`camera/engine.html`) es un documento offscreen, que no se
+ * recarga al navegar. El worker lo crea al empezar la sesión y cada vez que la
+ * pestaña evaluada pregunta su id (al cargar una página, o cuando la cámara
+ * pierde el motor), por si Chrome lo cerró, y lo cierra al terminar la sesión, lo
+ * que apaga la cámara.
  */
 
 importScripts(
@@ -40,6 +48,14 @@ importScripts(
   const CLOSE_JOB = 'close';
   /** Mensajes que el panel envía a la pestaña evaluada a través del worker. */
   const FORWARDED_TO_TAB = [types.SESSION_STARTED, types.TASK_STARTED, types.CALIBRATION_REQUEST];
+  /** Documento offscreen del motor de la cámara. */
+  const CAMERA_ENGINE = {
+    path: 'camera/engine.html',
+    reasons: ['USER_MEDIA'],
+    justification: 'Estimar la mirada y los movimientos faciales con la webcam durante la sesión.',
+  };
+  /** Página para dar el permiso de cámara. */
+  const CAMERA_PERMISSION_PAGE = 'camera/permission.html';
 
   const queueStorage = platform.storage('local');
   const queue = UX.createSendQueue({
@@ -61,6 +77,51 @@ importScripts(
   platform.openPanelOnActionClick();
   platform.onBrowserStartup(() => {
     queueReady.then(() => queue.drain());
+  });
+  // Al instalar se pide el permiso de cámara, para que la primera sesión no lo necesite.
+  platform.onFirstInstall(() => platform.openExtensionTab(CAMERA_PERMISSION_PAGE));
+
+  /** Sesión para la que ya se abrió la página del permiso de cámara. */
+  let permissionAskedFor = null;
+  /** Creación del motor en curso: Chrome no admite dos documentos offscreen. */
+  let cameraStarting = null;
+
+  /**
+   * Crea el motor de la cámara si no existe. Un fallo se registra y no detiene
+   * la sesión, que puede seguir sin cámara.
+   *
+   * @returns {Promise<void>}
+   */
+  function ensureCamera() {
+    if (cameraStarting === null) {
+      cameraStarting = platform
+        .ensureOffscreen(CAMERA_ENGINE)
+        .catch((error) => console.error('camera engine could not start:', error))
+        .finally(() => {
+          cameraStarting = null;
+        });
+    }
+    return cameraStarting;
+  }
+
+  /**
+   * Cierra el motor de la cámara, si existe; eso apaga la cámara.
+   *
+   * @returns {Promise<void>}
+   */
+  async function stopCamera() {
+    await cameraStarting;
+    try {
+      await platform.closeOffscreen();
+    } catch (error) {
+      console.warn(`camera engine could not be closed: ${error.message}`);
+    }
+  }
+
+  session.subscribe((state) => {
+    if (state === null) {
+      stopCamera();
+    }
   });
 
   /** Indica si el mensaje viene de una página de la extensión (el panel) y no de una pestaña. */
@@ -116,6 +177,7 @@ importScripts(
         console.warn(`evaluated tab did not confirm the close: ${error.message}`);
       }
     }
+    await stopCamera();
     await queueReady;
     await queue.enqueue({ kind: CLOSE_JOB, session_id });
     return { closing: true };
@@ -136,11 +198,16 @@ importScripts(
   messages.on(types.BATCH, (payload) => enqueueBatch(payload));
 
   for (const type of FORWARDED_TO_TAB) {
-    messages.on(type, (payload, sender) =>
-      fromPanel(sender)
-        ? evaluatedTab().then((tabId) => messages.sendToTab(tabId, type, payload))
-        : undefined,
-    );
+    messages.on(type, (payload, sender) => {
+      if (!fromPanel(sender)) {
+        return undefined;
+      }
+      // El motor se crea antes de iniciar los módulos, para que la cámara se conecte enseguida.
+      const ready = type === types.SESSION_STARTED ? ensureCamera() : Promise.resolve();
+      return ready
+        .then(evaluatedTab)
+        .then((tabId) => messages.sendToTab(tabId, type, payload));
+    });
   }
 
   messages.on(types.SESSION_CLOSED, (payload, sender) =>
@@ -151,5 +218,27 @@ importScripts(
     fromPanel(sender) ? captureScreen(payload) : undefined,
   );
 
-  messages.on(types.TAB_IDENTIFY, (payload, sender) => ({ tab_id: sender.tabId }));
+  messages.on(types.TAB_IDENTIFY, (payload, sender) => {
+    // Cada página que carga la pestaña evaluada lo pregunta, y la cámara lo repite
+    // cuando pierde el motor: es el momento de revisar que el motor siga abierto.
+    session.reload().then((state) => {
+      if (state !== null && state.tab_id === sender.tabId) {
+        ensureCamera();
+      }
+    });
+    return { tab_id: sender.tabId };
+  });
+
+  messages.on(types.CAMERA_STATUS, ({ status }, sender) => {
+    if (fromPanel(sender) && status === 'no_permission') {
+      session.reload().then((state) => {
+        if (state !== null && permissionAskedFor !== state.session_id) {
+          permissionAskedFor = state.session_id;
+          platform.openExtensionTab(CAMERA_PERMISSION_PAGE);
+        }
+      });
+    }
+    // No responde: el mensaje es para el panel lateral.
+    return undefined;
+  });
 })(globalThis.UX);

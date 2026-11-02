@@ -113,10 +113,23 @@ class CameraConfig:
     Attributes:
         gaze_hz: Frecuencia de muestreo de la mirada.
         face_hz: Frecuencia de muestreo de los movimientos faciales.
+        video_width: Ancho de video que se pide a la webcam, en píxeles.
+        video_height: Alto de video que se pide a la webcam, en píxeles.
+        viewing_distance_cm: Distancia del participante a la pantalla, para
+            pasar el error de calibración de píxeles a grados.
+        css_px_per_cm: Píxeles CSS por centímetro de la pantalla del
+            laboratorio (37.8 corresponde a 96 píxeles por pulgada).
+        calibration_max_error_deg: Error medio máximo, en grados, para aceptar
+            una calibración. Provisional hasta el piloto.
     """
 
     gaze_hz: int
     face_hz: int
+    video_width: int
+    video_height: int
+    viewing_distance_cm: float
+    css_px_per_cm: float
+    calibration_max_error_deg: float
 
 
 @dataclass(frozen=True)
@@ -263,6 +276,13 @@ def _convert(key: str, value: Any, field_type: Any) -> Any:
         if value <= 0:
             raise ConfigError(f"{key}: must be positive, got {value}")
         return value
+    if field_type is float:
+        # Se aceptan enteros (60) y decimales (37.8); bool no es un número aquí.
+        if not isinstance(value, int | float) or isinstance(value, bool):
+            raise ConfigError(f"{key}: expected a number, got {value!r}")
+        if not value > 0:
+            raise ConfigError(f"{key}: must be positive, got {value}")
+        return float(value)
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"{key}: expected a non-empty string, got {value!r}")
     if field_type is Path:
