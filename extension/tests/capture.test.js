@@ -13,6 +13,8 @@ const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
 const TEXT_INPUT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
 const TEXT_INPUT = TEXT_INPUT_ROLES.map((role) => `[role="${role}"]`).join(',');
 const LISTBOX = '[role="listbox"]';
+const TEXT_ENTRY_TYPES = ['text', 'search', 'email', 'url', 'tel', 'number', 'password'];
+const TYPING_INPUT = ['input:not([type])', ...TEXT_ENTRY_TYPES.map((type) => `input[type="${type}"]`), 'textarea'].join(',');
 
 /** Elemento falso con lo justo que usa la captura: árbol, atributos, texto y caja. */
 class FakeElement {
@@ -67,6 +69,9 @@ class FakeElement {
       [TEXT_INPUT]: (node) => TEXT_INPUT_ROLES.includes(node.getAttribute('role')),
       textarea: (node) => node.tagName === 'TEXTAREA',
       [LISTBOX]: (node) => node.getAttribute('role') === 'listbox',
+      [TYPING_INPUT]: (node) =>
+        node.tagName === 'TEXTAREA' ||
+        (node.tagName === 'INPUT' && TEXT_ENTRY_TYPES.includes(node.getAttribute('type') || 'text')),
     };
     assert.ok(selector in matchers, `unexpected selector ${selector}`);
     return matchers[selector](this);
@@ -1826,4 +1831,46 @@ test('keeps the text of an option when the list has no id and nothing points to 
   registered.stop();
 
   assert.equal(added[0].record.element.text, 'Rojo');
+});
+
+test('keeps the option text of select lists linked from a button, a select-only combobox or the list itself', () => {
+  const cases = {
+    // Patrón de ARIA para listas: la propia lista lleva `aria-activedescendant`.
+    'own active descendant': (option) => [
+      el('ul', { role: 'listbox', id: 'paises', tabindex: '0', 'aria-activedescendant': 'co' }, { children: [option] }),
+    ],
+    // Botón que abre la lista para elegir.
+    'button controls': (option) => [
+      el('button', { id: 'abrir', 'aria-haspopup': 'listbox', 'aria-controls': 'paises' }, { text: 'País' }),
+      el('ul', { role: 'listbox', id: 'paises' }, { children: [option] }),
+    ],
+    // `combobox` de solo selección (sin campo de texto), con la misma etiqueta que la lista.
+    'select-only combobox': (option) => [
+      el('span', { id: 'pais-etiqueta' }),
+      el('div', { role: 'combobox', id: 'selector', 'aria-controls': 'paises', 'aria-labelledby': 'pais-etiqueta', 'aria-activedescendant': 'co' }),
+      el('ul', { role: 'listbox', id: 'paises', 'aria-labelledby': 'pais-etiqueta' }, { children: [option] }),
+    ],
+  };
+  for (const [name, build] of Object.entries(cases)) {
+    const { document, added, click } = startCapture();
+    const option = el('li', { role: 'option', id: 'co' }, { text: 'Colombia' });
+    document.add(...build(option));
+
+    click(option);
+    registered.stop();
+
+    assert.equal(added[0].record.element.text, 'Colombia', name);
+  }
+});
+
+test('records no text for suggestions of a combobox that wraps a text field (ARIA 1.1)', () => {
+  const { document, added, click } = startCapture();
+  const option = el('li', { role: 'option', id: 'op-1' }, { text: 'zapatos deportivos' });
+  const wrapper = el('div', { role: 'combobox', 'aria-owns': 'sugerencias' }, { children: [el('input', { type: 'text', id: 'q' })] });
+  document.add(wrapper, el('ul', { role: 'listbox', id: 'sugerencias' }, { children: [option] }));
+
+  click(option);
+  registered.stop();
+
+  assert.equal(added[0].record.element.text, null);
 });
