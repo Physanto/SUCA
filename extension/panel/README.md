@@ -71,7 +71,7 @@ Se inicia con la sesión activa en la pestaña evaluada y se detiene al cerrarla
 | Tipo de condición | Se cumple cuando |
 |---|---|
 | `visible_text` | El texto aparece en el texto visible de la página, sin distinguir mayúsculas y con los espacios colapsados. |
-| `url_pattern` | La ruta de la URL completa coincide con el patrón: `{id}` equivale a un solo segmento, los caracteres especiales se toman literalmente y la barra final no cuenta. |
+| `url_pattern` | La ruta de la URL completa coincide con el patrón: `{id}` equivale a un solo segmento, los caracteres especiales se toman literalmente y la barra final no cuenta. La consulta no cuenta; el fragmento solo si es una ruta (`#/carrito`), igual que al agrupar pantallas en el análisis: con la ruta `/` el patrón es la ruta del fragmento (`/carrito`) y si no, `ruta#fragmento` (`/app#/carrito`). |
 | `element_present` | Hay un elemento visible con ese rol (explícito o implícito) y ese texto, leído con `innerText` y recortado a 50 caracteres como lo hace la captura. |
 
 Revisa al recibir la condición y después con un `MutationObserver`, con `popstate` y con `hashchange`, como máximo 4 veces por segundo y con una revisión final para no perder el último cambio. Como la página puede recargarse al navegar, guarda la condición en `chrome.storage.session` con su propia clave (`task_end`) y la retoma si la tarea activa de la sesión es la misma. `stop()` quita el observador, el temporizador, los oyentes y la condición guardada.

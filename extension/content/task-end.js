@@ -11,8 +11,11 @@
  * Cómo se compara:
  * - `visible_text`: el texto está en el texto visible de la página. No distingue
  *   mayúsculas y colapsa los espacios.
- * - `url_pattern`: coincide con la ruta completa de la URL (sin consulta ni
- *   fragmento). `{id}` vale por cualquier segmento; se ignora una barra final.
+ * - `url_pattern`: coincide con la ruta completa de la URL, sin consulta. El
+ *   fragmento solo cuenta si es una ruta (`#/carrito` o `#!/carrito`), como al
+ *   agrupar pantallas en el análisis: con la ruta `/` queda solo la del fragmento
+ *   y si no, `ruta#fragmento`. `{id}` vale por cualquier segmento; se ignora una
+ *   barra final.
  * - `element_present`: hay un elemento visible con ese rol (explícito o el
  *   implícito de su etiqueta) y ese texto. El texto se lee con `innerText` y se
  *   compara recortado a 50 caracteres, como lo guarda la captura.
@@ -84,10 +87,30 @@
     return body !== null && normalize(body.innerText || '').includes(normalize(condition.text));
   }
 
+  /** Ruta sin barras finales; vacía queda como `/`. */
+  const trimSlashes = (route) => route.replace(/\/+$/, '') || '/';
+  /** Ruta y fragmento sin barras finales, cada uno por su lado. */
+  const trimRoute = (route) => route.split('#').map(trimSlashes).join('#');
+
+  /**
+   * Ruta de la página como la agrupa el análisis en pantallas: la ruta de la URL y,
+   * si el fragmento es una ruta de una SPA (`#/…` o `#!/…`), también esa ruta.
+   */
+  function currentRoute() {
+    const url = new URL(root.location.href);
+    const path = url.pathname || '/';
+    const fragment = url.hash.slice(1).replace(/^!/, '');
+    if (!fragment.startsWith('/')) {
+      return path;
+    }
+    const route = fragment.split(/[?#]/)[0];
+    return path === '/' ? route : `${path}#${route}`;
+  }
+
   /** Si la ruta de la URL actual coincide con el patrón. */
   function matchesUrlPattern(condition) {
-    const path = new URL(root.location.href).pathname.replace(/\/+$/, '') || '/';
-    const pattern = condition.pattern.replace(/\/+$/, '') || '/';
+    const path = trimRoute(currentRoute());
+    const pattern = trimRoute(condition.pattern);
     const source = pattern
       .split(/(\{id\})/)
       .map((part) => (part === '{id}' ? '[^/]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))

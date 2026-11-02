@@ -258,6 +258,34 @@ withPage('element_present needs the role and the text of the element', async (en
   assert.equal(env.sent.length, 1);
 });
 
+withPage('url_pattern also matches the route of a fragment, as screens group it', async (env) => {
+  await env.startTask(3, { type: 'url_pattern', pattern: '/cart/{id}' });
+
+  env.page.path = '/#/products';
+  await env.mutate();
+  env.page.path = '/#top';
+  await env.mutate();
+  assert.deepEqual(env.sent, []);
+
+  env.page.path = '/?lang=es#!/cart/7/?step=2';
+  await env.mutate();
+  assert.equal(env.sent.length, 1);
+});
+
+withPage('url_pattern keeps the path before a fragment route that is not the root', async (env) => {
+  await env.startTask(3, { type: 'url_pattern', pattern: '/app#/cart' });
+
+  env.page.path = '/#/cart';
+  await env.mutate();
+  env.page.path = '/app';
+  await env.mutate();
+  assert.deepEqual(env.sent, []);
+
+  env.page.path = '/app/#/cart/';
+  await env.mutate();
+  assert.equal(env.sent.length, 1);
+});
+
 withPage('element_present reads the text as the capture does, with innerText', async (env) => {
   await env.startTask(3, { type: 'element_present', text: 'Pagar ahora', role: 'link' });
 
