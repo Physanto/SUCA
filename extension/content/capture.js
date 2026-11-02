@@ -53,6 +53,12 @@
   const LISTBOX_SELECTOR = '[role="listbox"]';
   /** Tipos de `input` donde se escribe texto (los demás son casillas, botones, fechas…). */
   const TEXT_ENTRY_INPUT_TYPES = ['text', 'search', 'email', 'url', 'tel', 'number', 'password'];
+  /** Campo donde se escribe texto, para buscarlo dentro de un `combobox` contenedor (ARIA 1.1). */
+  const TYPING_INPUT_SELECTOR = [
+    'input:not([type])',
+    ...TEXT_ENTRY_INPUT_TYPES.map((type) => `input[type="${type}"]`),
+    'textarea',
+  ].join(',');
   /** Valor que reemplaza a los parámetros sensibles de una URL. */
   const REDACTED = 'redacted';
   /**
@@ -174,28 +180,45 @@
     return element;
   }
 
-  /** Si el elemento es un campo donde se escribe texto: `input` de texto, `textarea`, zona editable o rol de cuadro de texto. */
-  function isTextEntry(element) {
+  /**
+   * Si en el elemento se escribe texto libre: `input` de texto, `textarea`, zona
+   * editable, rol `textbox` o `searchbox`, o un `combobox` que contiene uno de esos
+   * campos (patrón de ARIA 1.1). Un `combobox` sin campo adentro (por ejemplo, un
+   * `div` que abre una lista para elegir país) y los botones no cuentan: en ellos
+   * no se escribe, se elige.
+   */
+  function isTypingField(element) {
     const tag = element.tagName.toLowerCase();
     if (tag === 'input') {
       return TEXT_ENTRY_INPUT_TYPES.includes((element.getAttribute('type') || 'text').toLowerCase());
     }
-    return tag === 'textarea' || Boolean(element.closest(EDITABLE_SELECTOR)) || Boolean(element.closest(TEXT_INPUT_SELECTOR));
+    if (tag === 'textarea' || element.closest(EDITABLE_SELECTOR)) {
+      return true;
+    }
+    const role = element.getAttribute('role');
+    if (role === 'textbox' || role === 'searchbox') {
+      return true;
+    }
+    return role === 'combobox' && Boolean(element.querySelector(TYPING_INPUT_SELECTOR));
   }
 
   /**
    * Si el elemento es una opción de una lista de sugerencias de un campo de texto
    * (autocompletado). Su texto suele repetir lo que el participante escribió
    * ("zapat" → "zapatos deportivos"), y las sugerencias no están dentro del campo.
-   * La lista se reconoce por tres enlaces con un campo, porque los sitios no usan el mismo:
+   * La lista se reconoce por tres enlaces con un campo donde se escribe
+   * (`isTypingField`), porque los sitios no usan el mismo:
    *
-   * 1. `aria-controls` o `aria-owns` de otro elemento nombran el `id` de la lista (ARIA 1.2).
-   * 2. `aria-activedescendant` de otro elemento apunta a algo dentro de la lista.
-   * 3. Un campo de texto comparte con la lista su `aria-labelledby` (react.dev enlaza así
+   * 1. `aria-controls` o `aria-owns` del campo nombran el `id` de la lista (ARIA 1.2).
+   * 2. `aria-activedescendant` del campo apunta a algo dentro de la lista.
+   * 3. El campo comparte con la lista su `aria-labelledby` (react.dev enlaza así
    *    sus listas, que además repiten el mismo `id`).
    *
-   * Una lista de selección normal, sin campo que la acompañe (elegir país), no cumple
-   * ninguno y conserva el texto de sus opciones.
+   * Solo cuentan los enlaces desde un campo donde se escribe, fuera de la lista: una
+   * lista de selección normal (elegir país) también se enlaza así, pero desde un botón,
+   * un `combobox` sin campo de texto o desde la propia lista (`aria-activedescendant`
+   * de la lista), y conserva el texto de sus opciones, que sirve para comparar los
+   * pasos con la ruta de referencia.
    *
    * @param {Element} element - Elemento sobre el que se hizo clic.
    * @returns {boolean} `true` si está dentro de una lista de sugerencias.
@@ -206,15 +229,17 @@
       return false;
     }
     const doc = root.document;
+    /** Si el elemento es un campo donde se escribe, fuera de la lista. */
+    const typingOutside = (owner) => owner !== list && !list.contains(owner) && isTypingField(owner);
     if (list.id) {
       const id = CSS.escape(list.id);
-      if (doc.querySelector(`[aria-controls~="${id}"], [aria-owns~="${id}"]`)) {
+      if ([...doc.querySelectorAll(`[aria-controls~="${id}"], [aria-owns~="${id}"]`)].some(typingOutside)) {
         return true;
       }
     }
     const activeOwner = [...doc.querySelectorAll('[aria-activedescendant]')].some((owner) => {
       const target = doc.getElementById(owner.getAttribute('aria-activedescendant'));
-      return Boolean(target) && list.contains(target);
+      return Boolean(target) && list.contains(target) && typingOutside(owner);
     });
     if (activeOwner) {
       return true;
@@ -222,11 +247,7 @@
     return (list.getAttribute('aria-labelledby') || '')
       .split(/\s+/)
       .filter(Boolean)
-      .some((label) =>
-        [...doc.querySelectorAll(`[aria-labelledby~="${CSS.escape(label)}"]`)].some(
-          (field) => field !== list && !list.contains(field) && isTextEntry(field),
-        ),
-      );
+      .some((label) => [...doc.querySelectorAll(`[aria-labelledby~="${CSS.escape(label)}"]`)].some(typingOutside));
   }
 
   /**
