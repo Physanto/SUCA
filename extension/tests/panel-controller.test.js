@@ -993,3 +993,155 @@ test('two retries at once save the reference only once', async () => {
   assert.equal(calls.filter((call) => call.createReference !== undefined).length, 1);
   assert.deepEqual(controller.getState().reference.saved, [{ task_id: 7, reference_id: 40 }]);
 });
+
+const CAPTURED = { capture_id: 5, file_path: 'captures/1/a.png' };
+
+test('capturing sends the screen of the evaluated tab and remembers the capture', async () => {
+  const { controller, calls } = await startReference({ replies: { 'screen_capture.request': CAPTURED } });
+  calls.length = 0;
+
+  await controller.captureScreen();
+
+  assert.deepEqual(calls, [
+    {
+      send: 'screen_capture.request',
+      payload: { study_id: 1, screen: { url: TAB.url, title: TAB.title } },
+    },
+  ]);
+  const { reference, notice, error } = controller.getState();
+  assert.deepEqual(reference.captures, [{ capture_id: 5, url: TAB.url }]);
+  assert.equal(reference.capturing, false);
+  assert.deepEqual(notice, { code: 'capture_saved', capture_id: 5 });
+  assert.equal(error, null);
+});
+
+test('the url of a capture loses credentials and sensitive values, and its title', async () => {
+  const cases = [
+    ['https://user:CANARIO@shop.local/x?token=CANARIO&view=cart', 'https://shop.local/x?token=redacted&view=cart'],
+    ['https://shop.local/buscar?q=CANARIO&page=2', 'https://shop.local/buscar?q=redacted&page=2'],
+    ['https://shop.local/cb#access_token=CANARIO&state=ok', 'https://shop.local/cb#access_token=redacted&state=ok'],
+    ['https://shop.local/#/buscar?q=CANARIO&page=2', 'https://shop.local/#/buscar?q=redacted&page=2'],
+    ['https://shop.local/?%71=CANARIO', 'https://shop.local/?%71=redacted'],
+  ];
+  for (const [url, expected] of cases) {
+    const { controller, calls } = await startReference({
+      tab: { ...TAB, url, title: 'Resultados de CANARIO' },
+      replies: { 'screen_capture.request': CAPTURED },
+    });
+    calls.length = 0;
+
+    await controller.captureScreen();
+
+    assert.deepEqual(calls[0].payload.screen, { url: expected, title: '' }, url);
+  }
+  // Sin nada que tachar, el título se conserva.
+  const { controller, calls } = await startReference({
+    tab: { ...TAB, url: 'https://shop.local/cart', title: 'Carrito' },
+    replies: { 'screen_capture.request': CAPTURED },
+  });
+  calls.length = 0;
+  await controller.captureScreen();
+  assert.deepEqual(calls[0].payload.screen, { url: 'https://shop.local/cart', title: 'Carrito' });
+});
+
+test('a tab without title sends an empty one', async () => {
+  const { controller, calls } = await startReference({
+    tab: { ...TAB, title: undefined },
+    replies: { 'screen_capture.request': CAPTURED },
+  });
+  calls.length = 0;
+
+  await controller.captureScreen();
+
+  assert.equal(calls[0].payload.screen.title, '');
+});
+
+test('nothing is captured when the active tab is not the evaluated web page', async () => {
+  for (const change of [{ id: 99 }, { url: 'chrome://extensions/' }, { url: undefined }]) {
+    // La sesión empieza en la pestaña evaluada y después el evaluador cambia de pestaña.
+    const tab = { ...TAB };
+    const { controller, calls } = await startReference({ tab });
+    Object.assign(tab, change);
+    calls.length = 0;
+
+    await controller.captureScreen();
+
+    assert.deepEqual(calls, []);
+    const state = controller.getState();
+    assert.equal(state.error.code, 'capture_wrong_tab');
+    assert.equal(state.reference.capturing, false);
+    assert.deepEqual(state.reference.captures, []);
+  }
+});
+
+test('a capture the worker could not save is reported and can be repeated', async () => {
+  const replies = { 'screen_capture.request': new Error('server unreachable') };
+  const { controller } = await startReference({ replies });
+  await controller.captureScreen();
+
+  let state = controller.getState();
+  assert.deepEqual(state.error, { code: 'capture_failed', fields: [], detail: 'server unreachable' });
+  assert.equal(state.reference.capturing, false);
+  assert.deepEqual(state.reference.captures, []);
+  assert.equal(state.notice, null);
+
+  replies['screen_capture.request'] = CAPTURED;
+  await controller.captureScreen();
+  state = controller.getState();
+  assert.equal(state.error, null);
+  assert.equal(state.reference.captures.length, 1);
+});
+
+test('a second press while capturing does not send another capture', async () => {
+  const { controller, calls } = await startReference({ replies: { 'screen_capture.request': CAPTURED } });
+  calls.length = 0;
+
+  await Promise.all([controller.captureScreen(), controller.captureScreen()]);
+
+  assert.equal(calls.filter((call) => call.send === 'screen_capture.request').length, 1);
+  assert.equal(controller.getState().reference.captures.length, 1);
+});
+
+test('capturing is only for reference sessions', async () => {
+  const free = setup({ replies: { 'screen_capture.request': CAPTURED } });
+  await free.controller.init();
+  await free.controller.startSession(FORM);
+  const guided = await startGuided({ replies: { 'screen_capture.request': CAPTURED } });
+  const idle = setup();
+  await idle.controller.init();
+
+  for (const { controller, calls } of [free, guided, idle]) {
+    calls.length = 0;
+    await controller.captureScreen();
+    assert.equal(calls.some((call) => call.send === 'screen_capture.request'), false);
+  }
+});
+
+test('capturing does not disturb a recording in progress', async () => {
+  const { controller } = await startReference({ replies: { 'screen_capture.request': CAPTURED } });
+  await controller.startRecording(7);
+
+  await controller.captureScreen();
+
+  const { reference } = controller.getState();
+  assert.equal(reference.recording.task_id, 7);
+  assert.equal(reference.captures.length, 1);
+});
+
+test('closing the session while a capture is pending leaves a clean idle state', async () => {
+  let release;
+  const { controller } = await startReference({
+    replies: {
+      'screen_capture.request': new Promise((resolve) => {
+        release = resolve;
+      }),
+    },
+  });
+  const pending = controller.captureScreen();
+  await controller.closeSession();
+  release(CAPTURED);
+  await pending;
+
+  assert.equal(controller.getState().reference, null);
+  assert.equal(controller.getState().notice.code, 'session_closed');
+});

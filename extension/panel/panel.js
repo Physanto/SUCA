@@ -177,6 +177,15 @@
     byId('reference-retry').hidden = reference.unsaved === null;
     byId('reference-retry').disabled = state.phase === 'closing';
 
+    byId('capture-screen').disabled = reference.capturing || state.phase === 'closing';
+    byId('capture-list').replaceChildren(
+      ...reference.captures.map((item) => {
+        const line = document.createElement('li');
+        line.textContent = strings.captureItem(item.capture_id, item.url);
+        return line;
+      }),
+    );
+
     byId('reference-saved').replaceChildren(
       ...reference.saved.map((item) => {
         const line = document.createElement('li');
@@ -319,6 +328,7 @@
     controller.startRecording(Number(byId('reference-task').value)),
   );
   byId('reference-stop').addEventListener('click', () => controller.stopRecording());
+  byId('capture-screen').addEventListener('click', () => controller.captureScreen());
   byId('reference-retry').addEventListener('click', () => controller.retrySave());
   byId('task-start').addEventListener('click', () => controller.startTask());
   byId('task-done').addEventListener('click', () => controller.endTask('done'));

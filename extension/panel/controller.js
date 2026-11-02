@@ -21,7 +21,9 @@
  * - `reference`: solo en modo referencia, `null` en los demás. Tiene `loaded`, `tasks` (las
  *   del estudio), `recording` (`{ task_id, t_start }` de la tarea que se graba, o `null`),
  *   `saved` (`{ task_id, reference_id }` de las que ya se guardaron en esta sesión) y
- *   `unsaved` (tarea grabada cuyo guardado falló y espera un reintento, o `null`);
+ *   `unsaved` (tarea grabada cuyo guardado falló y espera un reintento, o `null`),
+ *   `captures` (`{ capture_id, url }` de las capturas de pantalla guardadas en esta sesión) y
+ *   `capturing` (hay una captura en curso);
  * - `camera`: estado que informa la cámara (`active`, `no_permission` o `error`), o
  *   `null` si no ha informado (el aviso llega al abrirla y al cambiar, no al abrir el panel);
  * - `calibration`: `pending` (tipo pedido, `initial` o `final`, o `null`) y el último
@@ -53,6 +55,20 @@
   /** Tipos de calibración del contrato. */
   const CALIBRATION_TYPES = Object.freeze(['initial', 'final']);
 
+  /** Valor que reemplaza a los parámetros sensibles de una URL. */
+  const REDACTED = 'redacted';
+
+  /**
+   * Parámetros de URL cuyo valor suele ser lo que se escribió en un buscador o un
+   * secreto. Son los mismos de `content/capture.js`, que no se carga en el panel:
+   * la URL de una captura de pantalla se limpia igual que la de un evento.
+   */
+  const SENSITIVE_PARAMS = Object.freeze([
+    'q', 'query', 'search', 's', 'keyword', 'keywords', 'term', 'email', 'user', 'username',
+    'token', 'access_token', 'id_token', 'refresh_token', 'key', 'api_key', 'apikey',
+    'password', 'pass', 'pwd', 'auth', 'session', 'sid', 'code', 'otp',
+  ]);
+
   /** Formas de terminar una tarea con un botón del panel (`ended_by` del contrato). */
   const BUTTON_ENDS = Object.freeze(['done', 'gave_up']);
 
@@ -66,6 +82,68 @@
   function endConditionOf(task) {
     const [first] = [...(task.references || [])].sort((a, b) => a.id - b.id);
     return first ? first.end_condition : null;
+  }
+
+  /** Decodifica el nombre de un parámetro; si está mal codificado, lo deja como está. */
+  function decodeName(name) {
+    try {
+      return decodeURIComponent(name);
+    } catch {
+      return name;
+    }
+  }
+
+  /** Reemplaza el valor de los parámetros sensibles de una lista `a=1&b=2`; el resto queda igual. */
+  function redactParams(list) {
+    return list
+      .split('&')
+      .map((part) => {
+        const equals = part.indexOf('=');
+        if (equals < 0 || !SENSITIVE_PARAMS.includes(decodeName(part.slice(0, equals)).toLowerCase())) {
+          return part;
+        }
+        return `${part.slice(0, equals)}=${REDACTED}`;
+      })
+      .join('&');
+  }
+
+  /**
+   * URL sin usuario ni clave y con `redacted` en el valor de los parámetros sensibles de
+   * la búsqueda y del fragmento. Misma regla que `redactUrl` de `content/capture.js`.
+   *
+   * @param {string} href - Dirección de la página.
+   * @returns {string} Dirección sin valores sensibles.
+   */
+  function redactUrl(href) {
+    const hashAt = href.indexOf('#');
+    const fragment = hashAt < 0 ? '' : href.slice(hashAt + 1);
+    const base = (hashAt < 0 ? href : href.slice(0, hashAt)).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, '$1');
+    const queryAt = base.indexOf('?');
+    const path = queryAt < 0 ? base : base.slice(0, queryAt);
+    const query = queryAt < 0 ? '' : `?${redactParams(base.slice(queryAt + 1))}`;
+    if (hashAt < 0) {
+      return path + query;
+    }
+    // Un fragmento puede ser una lista de parámetros o una ruta con su propia búsqueda.
+    const routeQueryAt = fragment.indexOf('?');
+    const redactedFragment =
+      routeQueryAt < 0
+        ? redactParams(fragment)
+        : `${fragment.slice(0, routeQueryAt)}?${redactParams(fragment.slice(routeQueryAt + 1))}`;
+    return `${path}${query}#${redactedFragment}`;
+  }
+
+  /**
+   * Pantalla de una captura: la URL redactada y el título. Si hubo que tachar la
+   * dirección, el título se deja vacío porque suele repetir lo buscado.
+   *
+   * @param {string} href - Dirección de la pestaña.
+   * @param {string} title - Título de la pestaña.
+   * @returns {{url: string, title: string}} Pantalla para `screen_capture.request`.
+   */
+  function screenOf(href, title) {
+    const url = redactUrl(href);
+    return { url, title: url === href ? title || '' : '' };
   }
 
   /**
@@ -101,7 +179,7 @@
    *   la pantalla y del navegador para `screen_info`.
    * @returns {object} Controlador con `init`, `loadStudies`, `loadTasks`, `retry`,
    *   `startSession`, `startTask`, `endTask`, `startRecording`, `stopRecording`, `retrySave`,
-   *   `requestCalibration`, `closeSession`, `getState` y `subscribe`.
+   *   `captureScreen`, `requestCalibration`, `closeSession`, `getState` y `subscribe`.
    */
   function createPanelController({
     api,
@@ -223,7 +301,17 @@
         setState({
           ...(isGuided
             ? { guided: { loaded: true, tasks, index: Math.max(running, 0), current: resumed } }
-            : { reference: { loaded: true, tasks, recording: resumed, saved: [], unsaved: null } }),
+            : {
+                reference: {
+                  loaded: true,
+                  tasks,
+                  recording: resumed,
+                  saved: [],
+                  unsaved: null,
+                  captures: [],
+                  capturing: false,
+                },
+              }),
           error: null,
         });
       } catch (error) {
@@ -231,7 +319,15 @@
           ...(isGuided
             ? { guided: { loaded: false, tasks: [], index: 0, current: null } }
             : {
-                reference: { loaded: false, tasks: [], recording: null, saved: [], unsaved: null },
+                reference: {
+                  loaded: false,
+                  tasks: [],
+                  recording: null,
+                  saved: [],
+                  unsaved: null,
+                  captures: [],
+                  capturing: false,
+                },
               }),
           error: describeError(error),
         });
@@ -547,6 +643,62 @@
         if (state.phase === PHASES.ACTIVE && reference !== null && reference.unsaved !== null) {
           await saveReference(reference.unsaved);
         }
+      },
+
+      /**
+       * Pide una captura de pantalla de referencia de la pestaña evaluada (solo
+       * modo referencia). El worker la toma y la envía al servidor; si falla, se
+       * puede repetir.
+       *
+       * @returns {Promise<void>}
+       */
+      async captureScreen() {
+        const { reference } = state;
+        const current = session.get();
+        if (
+          state.phase !== PHASES.ACTIVE ||
+          reference === null ||
+          reference.capturing ||
+          current === null
+        ) {
+          return;
+        }
+        // El estado cambia antes de esperar, para que un segundo clic no repita la captura.
+        setState({ reference: { ...reference, capturing: true }, error: null, notice: null });
+        let error = null;
+        let saved = null;
+        let screen = null;
+        try {
+          const tab = await platform.activeTab();
+          if (tab === null || tab.id !== current.tab_id || !EVALUABLE_URL.test(tab.url || '')) {
+            error = { code: 'capture_wrong_tab', fields: [], detail: '' };
+          } else {
+            screen = screenOf(tab.url, tab.title);
+            saved = await messages.send(types.SCREEN_CAPTURE_REQUEST, {
+              study_id: current.study_id,
+              screen,
+            });
+          }
+        } catch (failure) {
+          error = { code: 'capture_failed', fields: [], detail: failure.message };
+        }
+        // La sesión pudo cerrarse mientras tanto.
+        const latest = state.reference;
+        if (latest === null) {
+          return;
+        }
+        if (error !== null) {
+          setState({ reference: { ...latest, capturing: false }, error });
+          return;
+        }
+        setState({
+          reference: {
+            ...latest,
+            capturing: false,
+            captures: [...latest.captures, { capture_id: saved.capture_id, url: screen.url }],
+          },
+          notice: { code: 'capture_saved', capture_id: saved.capture_id },
+        });
       },
 
       /**

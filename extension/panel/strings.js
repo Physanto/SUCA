@@ -96,6 +96,8 @@
     referenceSavedItem: (position, referenceId) =>
       `Tarea ${position} grabada (referencia ${referenceId}, en borrador).`,
     referenceAllRecorded: 'Ya grabaste todas las tareas de este estudio.',
+    captureButton: 'Capturar pantalla',
+    captureItem: (captureId, url) => `Captura ${captureId}: ${url}`,
 
     // Modo guiado.
     tasksTitle: 'Tareas',
@@ -110,6 +112,7 @@
     // Avisos.
     notices: {
       session_closed: (sessionId) => `Sesión ${sessionId} cerrada.`,
+      capture_saved: (sessionId, notice) => `Captura ${notice.capture_id} guardada.`,
       reference_saved: (sessionId, notice) =>
         `Referencia ${notice.reference_id} guardada en borrador para la tarea ${notice.position}.`,
     },
@@ -120,6 +123,9 @@
         'No se pudo conectar con el servidor local. Comprueba que esté en marcha (python -m server).',
       tab_not_evaluable:
         'La pestaña activa no se puede evaluar. Abre en ella la página del estudio (http o https) y vuelve a intentarlo.',
+      capture_wrong_tab:
+        'La pestaña activa no es la que se evalúa. Vuelve a ella y repite la captura.',
+      capture_failed: (detail) => `No se pudo guardar la captura: ${detail}`,
       calibration_unavailable:
         'La pestaña evaluada no respondió a la calibración. Si es una página web, recárgala e inténtalo de nuevo.',
       invalid_request: 'Revisa los datos marcados.',
