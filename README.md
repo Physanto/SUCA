@@ -279,6 +279,15 @@ npm test                   # pruebas de la extensión y de la app de prueba, con
 
 Las mismas comprobaciones se ejecutan automáticamente en cada *pull request* y en cada cambio en `main`.
 
+**Captura real en Chrome.** `tests/integration/test_i1_real_capture.py` abre Chrome sin interfaz con la extensión cargada, hace sesiones en modo libre como una persona (ratón, teclado, formularios, búsqueda, navegación) y revisa la base que llenó el servidor: que lleguen todos los tipos de evento, que el worker no descarte lotes y que nada de lo escrito en los campos quede guardado. Es lenta y necesita Chrome y Node, así que solo corre si se pide:
+
+```bash
+SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i1_real_capture.py        # página de prueba
+SUCA_BROWSER_TESTS=1 SUCA_EXTERNAL_SITES=1 python -m pytest tests/integration/test_i1_real_capture.py  # y dos sitios reales
+```
+
+El servidor de la prueba usa una base temporal, pero escucha en la dirección de `config/shared.json` (la extensión la tiene fija): detén el servidor local antes de correrla. Si Chrome no está en una ubicación habitual, indica su ruta en `CHROME_PATH`. El guion que maneja Chrome (`tests/integration/browser/real-capture.mjs`) también se puede correr solo, con `--headed` para ver la ventana.
+
 ### 11. Verificar la base
 
 ```bash
