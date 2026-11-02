@@ -14,8 +14,8 @@
  * - `url_pattern`: coincide con la ruta completa de la URL (sin consulta ni
  *   fragmento). `{id}` vale por cualquier segmento; se ignora una barra final.
  * - `element_present`: hay un elemento visible con ese rol (explícito o el
- *   implícito de su etiqueta) y ese texto. El texto se compara recortado a 50
- *   caracteres, como lo guarda la captura.
+ *   implícito de su etiqueta) y ese texto. El texto se lee con `innerText` y se
+ *   compara recortado a 50 caracteres, como lo guarda la captura.
  *
  * Deja de revisar cuando la tarea activa de la sesión cambia (Terminé, No pude o
  * una tarea nueva) o la sesión se cierra. El aviso de `task.started` puede llegar
@@ -104,7 +104,8 @@
       (element) =>
         roleOf(element) === condition.role &&
         (!element.checkVisibility || element.checkVisibility()) &&
-        cut(element.textContent || '') === wanted,
+        // `innerText`, como la captura: separa los bloques internos y omite lo oculto.
+        cut(element.innerText ?? element.textContent ?? '') === wanted,
     );
   }
 

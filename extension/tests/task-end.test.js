@@ -22,12 +22,13 @@ require('../content/task-end.js');
 const taskEnd = registered;
 
 /** Elemento falso con lo que usa el módulo: etiqueta, atributos, texto y visibilidad. */
-function el(tag, attributes = {}, text = '', { hidden = false } = {}) {
+function el(tag, attributes = {}, text = '', { hidden = false, textContent = text } = {}) {
   return {
     tagName: tag.toUpperCase(),
     getAttribute: (name) => (name in attributes ? attributes[name] : null),
     hasAttribute: (name) => name in attributes,
-    textContent: text,
+    innerText: text,
+    textContent,
     checkVisibility: () => !hidden,
   };
 }
@@ -254,6 +255,18 @@ withPage('element_present needs the role and the text of the element', async (en
 
   env.page.elements.push(el('button', {}, '  seguir   COMPRANDO '));
   await env.mutate();
+  assert.equal(env.sent.length, 1);
+});
+
+withPage('element_present reads the text as the capture does, with innerText', async (env) => {
+  await env.startTask(3, { type: 'element_present', text: 'Pagar ahora', role: 'link' });
+
+  // Dos bloques dentro del enlace y una etiqueta oculta: `textContent` daría otro texto.
+  env.page.elements = [
+    el('a', { href: '/pay' }, 'Pagar\nahora', { textContent: 'PagarahoraNuevo' }),
+  ];
+  await env.mutate();
+
   assert.equal(env.sent.length, 1);
 });
 
