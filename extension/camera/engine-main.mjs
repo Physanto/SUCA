@@ -13,7 +13,8 @@
  *
  * Estados (`camera.status`, al panel lateral): `active` cuando llegan cuadros,
  * `no_permission` si Chrome niega la cámara, `error` ante cualquier otro fallo.
- * Sin permiso o con error, se reintenta solo.
+ * Sin permiso o con error, se reintenta solo. Sin WebGL queda en `error` sin
+ * abrir la webcam ni reintentar (ver `webgl.js`).
  */
 
 import { FaceLandmarker } from '../lib/vision_bundle.mjs';
@@ -95,6 +96,10 @@ const benchmark = {};
  * CPU (por ejemplo, sin aceleración gráfica): si sus primeros cuadros tardan
  * más de `FAST_ENOUGH_MS`, carga también la CPU, la mide con los cuadros
  * siguientes y se queda con la más rápida. Si la GPU no carga, usa la CPU.
+ *
+ * Las dos opciones necesitan WebGL: MediaPipe recibe cada cuadro como una
+ * textura WebGL aunque analice con la CPU. Por eso `main` comprueba WebGL antes
+ * de llegar aquí; la CPU no es una alternativa a la falta de WebGL.
  *
  * @returns {Promise<{detect: function(VideoFrame, number): object}>} Analizador.
  */
@@ -276,8 +281,23 @@ function waitForRetry(permission) {
   });
 }
 
+/** Crea un lienzo para la comprobación de WebGL. */
+const createCanvas = () =>
+  typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1) : document.createElement('canvas');
+
 /** Mantiene la cámara funcionando mientras exista este documento. */
 async function main() {
+  // Sin WebGL, MediaPipe falla en cada cuadro y la cámara se encendería y apagaría en
+  // cada reintento. Activar la aceleración exige reiniciar Chrome, así que no se reintenta:
+  // la cámara no se abre y la próxima sesión vuelve a comprobarlo.
+  if (!UX.webglAvailable(createCanvas)) {
+    console.error(
+      'camera disabled: WebGL is not available; enable hardware acceleration in chrome://settings/system, ' +
+        'relaunch Chrome and check chrome://gpu',
+    );
+    engine.setStatus('error');
+    return;
+  }
   let permission = null;
   try {
     permission = await navigator.permissions.query({ name: 'camera' });
