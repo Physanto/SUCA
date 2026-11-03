@@ -23,11 +23,9 @@ import dataclasses
 import json
 import os
 import shutil
-import socket
 import sqlite3
 import subprocess
 import threading
-import time
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -36,10 +34,8 @@ from typing import Any
 import pytest
 
 from scripts.serve_test_page import create_server
-from scripts.simulation import store
-from server.app import create_app
 from shared import contracts
-from shared.config import ROOT_DIR, load_config
+from shared.config import ROOT_DIR
 
 #: Guion que maneja Chrome.
 DRIVER = ROOT_DIR / "tests" / "integration" / "browser" / "real-capture.mjs"
@@ -82,41 +78,6 @@ class Run:
     database: Path
 
 
-def _port_is_free(host: str, port: int) -> bool:
-    """Indica si nadie escucha en el puerto."""
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as probe:
-        return probe.connect_ex((host, port)) != 0
-
-
-@pytest.fixture(scope="module")
-def database(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Servidor real con una base nueva, en la dirección que usa la extensión."""
-    import uvicorn
-
-    if shutil.which("node") is None:
-        pytest.skip("node is not installed")
-    config = load_config()
-    host, port = config.server.host, config.server.port
-    if not _port_is_free(host, port):
-        pytest.fail(f"something is already listening on {host}:{port}; stop the local server")
-    path = tmp_path_factory.mktemp("i1") / "suca.db"
-    store.create_database(path).close()
-    config = dataclasses.replace(config, database=dataclasses.replace(config.database, path=path))
-    server = uvicorn.Server(
-        uvicorn.Config(create_app(config), host=host, port=port, log_level="warning")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        if time.monotonic() > deadline:
-            pytest.fail("the local server did not start")
-        time.sleep(0.05)
-    yield path
-    server.should_exit = True
-    thread.join(timeout=10)
-
-
 @pytest.fixture(scope="module")
 def test_page_url() -> Iterator[str]:
     """Página de prueba de la extensión, servida en un puerto libre."""
@@ -148,17 +109,17 @@ def run_chrome(database: Path, *args: str) -> Run:
 
 
 @pytest.fixture(scope="module")
-def test_page_run(database: Path, test_page_url: str) -> Run:
+def test_page_run(live_database: Path, test_page_url: str) -> Run:
     """Una sesión en la página de prueba."""
-    return run_chrome(database, "--site", "test_page", "--test-page-url", test_page_url)
+    return run_chrome(live_database, "--site", "test_page", "--test-page-url", test_page_url)
 
 
 @pytest.fixture(scope="module")
-def external_run(database: Path) -> Run:
+def external_run(live_database: Path) -> Run:
     """Una sesión en cada sitio real."""
     if os.environ.get(EXTERNAL_ENV) != "1":
         pytest.skip(f"set {EXTERNAL_ENV}=1 to run the external sites")
-    return run_chrome(database, "--site", "python_docs", "--site", "react")
+    return run_chrome(live_database, "--site", "python_docs", "--site", "react")
 
 
 def events(run: Run, site: str) -> list[dict[str, Any]]:
