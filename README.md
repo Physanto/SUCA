@@ -286,7 +286,13 @@ SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i1_real_capture.py 
 SUCA_BROWSER_TESTS=1 SUCA_EXTERNAL_SITES=1 python -m pytest tests/integration/test_i1_real_capture.py  # y dos sitios reales
 ```
 
-El servidor de la prueba usa una base temporal, pero escucha en la dirección de `config/shared.json` (la extensión la tiene fija): detén el servidor local antes de correrla. Si Chrome no está en una ubicación habitual, indica su ruta en `CHROME_PATH`. El guion que maneja Chrome (`tests/integration/browser/real-capture.mjs`) también se puede correr solo, con `--headed` para ver la ventana.
+**Sesión guiada en Chrome.** `tests/integration/test_i2_guided_session.py` hace una sesión guiada completa en la app de prueba (V1) con el panel real del evaluador: inicio de sesión en la tienda, las 4 tareas del estudio de ejemplo (tres con **Terminé** y una con **No pude**), un recorrido entre tareas (ordenar, filtrar, el ancla de opiniones y la página de términos), el SUS y el cierre. Revisa que la base tenga la sesión, cada tarea con su forma de terminar, el SUS con su puntaje, la tarea activa en cada evento, un cambio de pantalla por ruta y nada de lo escrito, y que el análisis corra sobre la sesión. Sin interfaz el panel lateral no se puede abrir, así que el panel se abre como una pestaña de la misma ventana y la tienda queda como la pestaña activa, que es la que el panel toma como evaluada.
+
+```bash
+SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i2_guided_session.py
+```
+
+El servidor de estas pruebas usa una base temporal, pero escucha en la dirección de `config/shared.json` (la extensión la tiene fija): detén el servidor local antes de correrlas. Si Chrome no está en una ubicación habitual, indica su ruta en `CHROME_PATH`. Los guiones que manejan Chrome (`tests/integration/browser/real-capture.mjs` y `guided-session.mjs`) también se pueden correr solos, con `--headed` para ver la ventana.
 
 ### 11. Verificar la base
 
