@@ -24,7 +24,7 @@ Estima hacia dónde mira el participante y registra sus movimientos faciales con
   - el modelo de mirada entrenado en la calibración sigue sirviendo después de cada navegación;
   - MediaPipe carga sus archivos de WebAssembly desde la extensión, sin depender de la política de seguridad de cada sitio.
 - **Un solo modelo para todo.** MediaPipe Face Landmarker da, por cada cuadro, los 478 puntos del rostro (incluidos los iris), los valores de los movimientos faciales y la orientación de la cabeza. La mirada se calcula con esos mismos puntos (ver "Mirada"), así que no hay un segundo modelo de rostro corriendo en paralelo.
-- **GPU o CPU, según la computadora.** El motor empieza con la GPU y mide sus primeros 20 cuadros. Si tarda más de 25 ms por cuadro, carga también la CPU, la mide y se queda con la más rápida (en Chrome sin aceleración gráfica, la GPU simulada puede ser cinco veces más lenta). La elección se ve en `stats` (`delegate`, `benchmark_ms`).
+- **GPU o CPU, según la computadora.** El motor empieza con la GPU y mide sus primeros 20 cuadros. Si tarda más de 25 ms por cuadro, carga también la CPU, la mide y se queda con la más rápida (en Chrome sin aceleración gráfica, la GPU simulada puede ser cinco veces más lenta). La elección se ve en `stats` (`delegate`, `benchmark_ms`). **Las dos necesitan WebGL**: MediaPipe recibe cada cuadro como una textura WebGL aunque analice con la CPU (ver "Preparación de la computadora").
 - **Adaptadores.** `createFaceProvider` (en `engine-main.mjs`) es el único lugar que conoce a MediaPipe; `gaze-model.js` y `eye-features.js` forman el estimador de mirada. Cambiar de librería no toca ni la pestaña ni el motor.
 
 ## Archivos
@@ -36,6 +36,7 @@ Estima hacia dónde mira el participante y registra sus movimientos faciales con
 | `camera/engine.js` | Offscreen | Motor sin dependencias del navegador: conexiones con la pestaña, pedidos de la calibración, intervalos sin datos y estadísticas |
 | `camera/gaze-model.js` | Offscreen | Regresión ridge de las características de los ojos al punto de la ventana, y suavizado |
 | `camera/eye-features.js` | Offscreen | Parches de 10 × 6 de cada ojo, posición de los iris y vector de 130 características |
+| `camera/webgl.js` | Offscreen | Comprueba que se puede crear un contexto WebGL antes de abrir la webcam |
 | `camera/face-features.js` | Offscreen | Valores faciales del contrato desde los de MediaPipe, y orientación de la cabeza desde la matriz de transformación |
 | `camera/strings.js` | Pestaña y página del permiso | Textos visibles de la calibración y del permiso, en español |
 | `camera/permission.html`, `permission.js` | Pestaña de la extensión | Pide el permiso de cámara una vez por computadora |
@@ -51,6 +52,7 @@ El documento offscreen no puede mostrar el aviso de permiso de Chrome. Por eso:
 1. Al **instalar** la extensión se abre la página **"Permiso de cámara para SUCA"**: pulsa **Permitir la cámara** y elige **Permitir** en el aviso de Chrome. El permiso queda guardado para la extensión.
 2. Si en una sesión la cámara informa `no_permission`, el worker vuelve a abrir esa página (una vez por sesión). Al dar el permiso, el motor lo detecta y arranca solo, sin reiniciar la sesión.
 3. Si alguna vez se negó: en esa página, haz clic en el ícono de la cámara de la barra de direcciones (o en Configuración del sitio) y elige **Permitir**.
+4. **WebGL activo.** Abre `chrome://gpu`: en **WebGL** y **WebGL2** debe decir *Hardware accelerated*. Si dice *Disabled* o *Unavailable*, activa **Usar la aceleración de gráficos cuando esté disponible** en `chrome://settings/system` y reinicia Chrome. Sin WebGL, MediaPipe carga pero falla en el primer cuadro, con la GPU y también con la CPU. Por eso el motor lo comprueba al arrancar: si no hay WebGL, no abre la webcam, informa `error` al panel y escribe en su consola `camera disabled: WebGL is not available…`. No reintenta, porque el cambio exige reiniciar Chrome; la sesión siguiente lo vuelve a comprobar.
 
 ## Qué se registra
 
@@ -142,11 +144,11 @@ Cada pedido espera la respuesta hasta 3 s. El `flush` del cierre espera solo 1,5
 
 ## Pruebas
 
-`npm test` incluye `camera-math.test.js` (modelo de mirada, ojos, rostro), `camera-engine.test.js` (motor con cuadros sintéticos) y `camera-content.test.js` (registro en la pestaña, zonas y calibración con una capa falsa). Además, `pytest` ejecuta `tests/contracts/test_camera_records.py`, que corre `extension/tests/camera-records.js` con Node y valida contra los contratos cada registro que produce la pestaña (`gaze`, `face`, `calibration` y `camera_gap`), incluso cuando el motor envía datos de más. La capa visual real (`createOverlay`) necesita un DOM: se revisa en la prueba manual.
+`npm test` incluye `camera-math.test.js` (modelo de mirada, ojos, rostro), `camera-engine.test.js` (motor con cuadros sintéticos) y `camera-content.test.js` (registro en la pestaña, zonas y calibración con una capa falsa) y `camera-webgl.test.js` (comprobación de WebGL). Además, `pytest` ejecuta `tests/contracts/test_camera_records.py`, que corre `extension/tests/camera-records.js` con Node y valida contra los contratos cada registro que produce la pestaña (`gaze`, `face`, `calibration` y `camera_gap`), incluso cuando el motor envía datos de más. La capa visual real (`createOverlay`) necesita un DOM: se revisa en la prueba manual.
 
 ### Prueba manual (con la cámara real)
 
-1. Carga la extensión (si ya estaba cargada, **recárgala** en `chrome://extensions`) y da el permiso de cámara en la página que se abre al instalar.
+1. Comprueba WebGL en `chrome://gpu` (paso 4 de "Preparación de la computadora"). Carga la extensión (si ya estaba cargada, **recárgala** en `chrome://extensions`) y da el permiso de cámara en la página que se abre al instalar.
 2. Inicia el servidor y la app de prueba, y empieza una sesión desde el panel.
 3. En `chrome://extensions` → SUCA → **Inspeccionar vistas: camera/engine.html**, en la consola del motor no debe haber errores. Mientras hay sesión, Chrome muestra el indicador de cámara en uso.
 4. Pide una calibración inicial desde el panel y complétala. Anota `error_px`, `error_deg` y si se aceptó.
