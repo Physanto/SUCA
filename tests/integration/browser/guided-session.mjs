@@ -525,7 +525,16 @@ async function main() {
     if (options.mode === 'reference') {
       // Cada pantalla a la que se llega queda capturada; las repetidas se reemplazan.
       await captureScreen(panel);
-      onScreen = () => captureScreen(panel);
+      onScreen = async () => {
+        // La tienda cambia la dirección antes de dibujar la pantalla nueva: se espera a que
+        // termine de cargar, como lo haría el evaluador antes de pulsar el botón.
+        await page.waitFor(
+          "document.readyState === 'complete' && !!document.querySelector('main h1') && !document.querySelector('main[aria-busy]')",
+          15000,
+        );
+        await sleep(700);
+        await captureScreen(panel);
+      };
     }
     log('logging in, before the first task');
     await logIn(page);

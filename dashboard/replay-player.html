@@ -86,7 +86,9 @@
         images[screen] = image;
       }
 
-      let now = 0;
+      /** Se empieza en la primera pantalla: antes no hay nada que ver. */
+      const FIRST = DATA.screens.length ? DATA.screens[0].t : 0;
+      let now = FIRST;
       let playing = false;
       let lastFrame = null;
 
@@ -277,7 +279,7 @@
       }
 
       document.getElementById('play').addEventListener('click', () => {
-        if (!playing && now >= DATA.duration) now = 0;
+        if (!playing && now >= DATA.duration) now = FIRST;
         setPlaying(!playing);
       });
       strip.addEventListener('click', (event) => {
