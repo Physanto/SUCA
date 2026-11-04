@@ -335,8 +335,8 @@ function fakeUi({ answers = [], onPoint = () => {} } = {}) {
   return {
     shown,
     viewport: () => ({ width: 1000, height: 600 }),
-    intro: async (type) => {
-      shown.push(['intro', type]);
+    intro: async (type, framing = null) => {
+      shown.push(['intro', type, framing === null ? 'no framing' : 'framing']);
       return answers.length ? answers.shift() : 'start';
     },
     point: async (x, y, mode) => {
@@ -357,7 +357,7 @@ function fakeUi({ answers = [], onPoint = () => {} } = {}) {
 }
 
 /** Conexión falsa con el motor para la calibración. */
-function fakeLink({ status = 'active', fitOk = true, gazeError = 20 } = {}) {
+function fakeLink({ status = 'active', fitOk = true, gazeError = 20, distance = null } = {}) {
   const requests = [];
   const listeners = new Set();
   let target = null;
@@ -385,7 +385,10 @@ function fakeLink({ status = 'active', fitOk = true, gazeError = 20 } = {}) {
     // Durante la medición llegan cuadros con un error fijo respecto del punto.
     emit(n) {
       for (let i = 0; i < n; i += 1) {
-        listeners.forEach((l) => l({ gaze: gazeError === null ? null : { x: target.x + gazeError, y: target.y } }));
+        const framing = distance === null ? null : { x: 0.5, y: 0.5, width: 0.3, distance_cm: distance };
+        listeners.forEach((l) =>
+          l({ gaze: gazeError === null ? null : { x: target.x + gazeError, y: target.y }, framing }),
+        );
       }
     },
   };
@@ -439,10 +442,102 @@ test('initial calibration trains on 9 clicked points, validates on 5 others and 
     error_px: 20,
     error_deg: Math.round(UX.calibrationMath.pxToDeg(20, CAMERA) * 100) / 100,
     accepted: true,
+    // Sin encuadre en los cuadros no hay distancia medida: el error usa la de la configuración.
+    viewing_distance_cm: null,
     // El retraso del sensor todavía no se mide; el tiempo de análisis no lo es.
     camera_delay_ms: null,
   });
   assert.deepEqual(results, [record]);
+});
+
+test('the error in degrees uses the distance measured during the validation, and records it', async () => {
+  const link = fakeLink({ distance: 50 });
+  const ui = fakeUi({ onPoint: (x, y) => link.lookAt(x, y) });
+
+  const record = await procedure(link, ui).run('initial', CAMERA);
+
+  assert.equal(record.viewing_distance_cm, 50);
+  assert.equal(record.error_deg, Math.round(UX.calibrationMath.pxToDeg(20, CAMERA, 50) * 100) / 100);
+  assert.ok(record.error_deg > UX.calibrationMath.pxToDeg(20, CAMERA), 'closer means a wider angle');
+});
+
+test('the framing is checked before the initial calibration but not before the final one', async () => {
+  const link = fakeLink();
+  const ui = fakeUi({ onPoint: (x, y) => link.lookAt(x, y) });
+
+  await procedure(link, ui).run('initial', CAMERA);
+  await procedure(link, ui).run('final', CAMERA);
+
+  assert.deepEqual(
+    ui.shown.filter(([kind]) => kind === 'intro'),
+    [['intro', 'initial', 'framing'], ['intro', 'final', 'no framing']],
+  );
+});
+
+test('starting anyway calibrates as usual, and cancelling the introduction records nothing', async () => {
+  const anyway = fakeLink();
+  const record = await procedure(
+    anyway,
+    fakeUi({ answers: ['startAnyway'], onPoint: (x, y) => anyway.lookAt(x, y) }),
+  ).run('initial', CAMERA);
+  const cancelled = await procedure(fakeLink(), fakeUi({ answers: ['cancel'] })).run('initial', CAMERA);
+
+  assert.equal(record.type, 'initial');
+  assert.equal(cancelled, null);
+});
+
+/** Cuadros de un segundo con el mismo rostro, como los envía el motor. */
+function framingFrames({ x = 0.5, y = 0.5, distance = 60, yaw = 0, faceEvery = 1, count = 30 } = {}) {
+  return Array.from({ length: count }, (_, i) => {
+    const face = i % faceEvery === 0;
+    return {
+      t: 1000 + i * 33,
+      face_detected: face,
+      head_yaw: face ? yaw : null,
+      framing: face ? { x, y, width: 0.25, distance_cm: distance } : null,
+    };
+  });
+}
+
+test('the framing is right with the face seen, at the configured distance, centered and facing the screen', () => {
+  const { assessFraming } = UX.calibrationMath;
+
+  const result = assessFraming(framingFrames({ distance: 63, x: 0.55, y: 0.62, yaw: -8 }), CAMERA);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    [result.face, result.distance, result.horizontal, result.vertical, result.frontal, result.distance_cm],
+    [true, 'ok', 'ok', 'ok', true, 63],
+  );
+  // La figura se dibuja como en un espejo.
+  assert.equal(result.x, 0.45);
+});
+
+test('the framing says how to move: closer or farther, left or right, and where to tilt the camera', () => {
+  const { assessFraming } = UX.calibrationMath;
+  const judge = (options) => assessFraming(framingFrames(options), CAMERA);
+
+  assert.equal(judge({ distance: 45 }).distance, 'near');
+  assert.equal(judge({ distance: 75 }).distance, 'far');
+  // Imagen sin espejar: una cara a la izquierda de la imagen está corrida hacia la derecha de la persona.
+  assert.equal(judge({ x: 0.2 }).horizontal, 'left');
+  assert.equal(judge({ x: 0.8 }).horizontal, 'right');
+  assert.equal(judge({ y: 0.2 }).vertical, 'up');
+  assert.equal(judge({ y: 0.85 }).vertical, 'down');
+  assert.equal(judge({ yaw: 25 }).frontal, false);
+  for (const options of [{ distance: 45 }, { x: 0.2 }, { y: 0.85 }, { yaw: 25 }]) {
+    assert.equal(judge(options).ok, false, JSON.stringify(options));
+  }
+});
+
+test('the framing needs the face in most recent frames, and ignores the vertical tilt of the head', () => {
+  const { assessFraming } = UX.calibrationMath;
+
+  assert.equal(assessFraming(framingFrames({ faceEvery: 2 }), CAMERA).face, false);
+  assert.equal(assessFraming([], CAMERA).face, false);
+  // El cabeceo no entra: en un portátil la persona mira un poco hacia abajo.
+  const lookingDown = framingFrames().map((frame) => ({ ...frame, head_pitch: -20 }));
+  assert.equal(assessFraming(lookingDown, CAMERA).ok, true);
 });
 
 test('a rejected calibration can be repeated and each attempt is reported', async () => {
