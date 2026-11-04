@@ -268,9 +268,35 @@
         ctx.restore();
       }
 
+      /**
+       * Dónde miraba la persona al hacer clic: anillo azul en la mirada, línea
+       * punteada hasta el clic y la distancia. Si la mirada funciona, suelen estar cerca.
+       */
+      function drawClickGaze(x, y, gazeX, gazeY, opacity) {
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = alpha(COLOR.gaze, opacity);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(gazeX, gazeY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(gazeX, gazeY, 11, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        if (opacity > 0.4) {
+          const distance = Math.round(Math.hypot(gazeX - x, gazeY - y));
+          tag(`mirada a ${distance} px del clic`, (x + gazeX) / 2 + 8, (y + gazeY) / 2 - 10, alpha(COLOR.gaze, 0.95));
+        }
+      }
+
       function drawClicks() {
-        for (const [t, x, y] of between(DATA.clicks, Math.max(now - CLICK_DOT_MS, screenStart - 1), now)) {
+        for (const [t, x, y, gazeX, gazeY] of between(DATA.clicks, Math.max(now - CLICK_DOT_MS, screenStart - 1), now)) {
           const age = now - t;
+          if (shown.gaze && gazeX !== null && gazeX !== undefined) {
+            drawClickGaze(x, y, gazeX, gazeY, 1 - age / CLICK_DOT_MS);
+          }
           // Punto que queda un rato, para ver dónde se pulsó.
           ctx.beginPath();
           ctx.arc(x, y, 6, 0, Math.PI * 2);

@@ -217,7 +217,8 @@ def test_a_window_keeps_what_was_on_screen_when_it_starts(tmp_path: Path) -> Non
     assert [screen["t"] for screen in payload["screens"]] == [0]
     assert payload["scrolls"] == [[0, 0.0, 300.0]]
     assert payload["moves"] == [[0, 5, 6], [1000, 50, 60]]
-    assert payload["clicks"] == [[1000, 50, 60]]
+    # La mirada de 4900 ms cae en la ventana del clic de 5000 ms: el clic la lleva.
+    assert payload["clicks"] == [[1000, 50, 60, 1.0, 2.0]]
     assert payload["gaze"] == [[900, 1.0, 2.0]]
     assert payload["frames"] == [[0, 0], [500, 1]]
     assert len(payload["frame_images"]) == 2

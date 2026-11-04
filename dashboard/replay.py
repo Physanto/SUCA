@@ -147,7 +147,8 @@ def build_payload(
     Returns:
         Diccionario serializable en JSON, con tiempos en ms desde el inicio del
         tramo: ``duration``, ``viewport``, ``screens`` (cambios de pantalla),
-        ``scrolls``, ``moves`` (posiciones del cursor), ``clicks``, ``gaze``,
+        ``scrolls``, ``moves`` (posiciones del cursor), ``clicks`` (``[t, x, y,
+        mirada_x, mirada_y]``; la mirada es ``None`` si no hubo cerca), ``gaze``,
         ``fields`` (foco, cambios y errores de campos, con su caja y su texto),
         ``tasks``, ``incidents``, ``frames`` (``[t, índice]`` en ``frame_images``),
         ``frame_images`` e ``images`` (captura de referencia de cada pantalla).
@@ -191,8 +192,13 @@ def build_payload(
         else events
     )
     move_rows = [[float(row.t), round(row.x, 1), round(row.y, 1)] for row in pointer.itertuples()]
+    # Dónde miraba la persona en cada clic (mediana de la mirada alrededor del clic).
+    looked = {
+        float(row.t): (round(row.gaze_x, 1), round(row.gaze_y, 1))
+        for row in gaze_at_clicks(events, gaze).itertuples()
+    }
     clicks = [
-        [_ms(row.t, low), round(row.x, 1), round(row.y, 1)]
+        [_ms(row.t, low), round(row.x, 1), round(row.y, 1), *looked.get(float(row.t), (None, None))]
         for row in rows("click").itertuples()
         if not pd.isna(row.x) and inside(row.t)
     ]
