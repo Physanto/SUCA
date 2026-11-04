@@ -122,6 +122,8 @@ class CameraConfig:
         distance_scale: Corrección de la distancia a la cámara que estima
             MediaPipe, propia de cada webcam: distancia medida con un metro
             dividida por la distancia que muestra la calibración (1.0 sin ajustar).
+        min_distance_cm: Distancia mínima aceptable a la cámara antes de calibrar.
+        max_distance_cm: Distancia máxima aceptable a la cámara antes de calibrar.
         calibration_max_error_deg: Error medio máximo, en grados, para aceptar
             una calibración. Provisional hasta el piloto.
     """
@@ -133,7 +135,17 @@ class CameraConfig:
     viewing_distance_cm: float
     css_px_per_cm: float
     distance_scale: float
+    min_distance_cm: float
+    max_distance_cm: float
     calibration_max_error_deg: float
+
+    def __post_init__(self) -> None:
+        """Valida que el rango de distancias no esté vacío."""
+        if self.min_distance_cm >= self.max_distance_cm:
+            raise ConfigError(
+                "camera.min_distance_cm must be less than camera.max_distance_cm, got "
+                f"{self.min_distance_cm} and {self.max_distance_cm}"
+            )
 
 
 @dataclass(frozen=True)

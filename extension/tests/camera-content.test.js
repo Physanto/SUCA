@@ -394,7 +394,13 @@ function fakeLink({ status = 'active', fitOk = true, gazeError = 20, distance = 
   };
 }
 
-const CAMERA = { viewing_distance_cm: 60, css_px_per_cm: 37.8, calibration_max_error_deg: 5 };
+const CAMERA = {
+  viewing_distance_cm: 60,
+  css_px_per_cm: 37.8,
+  min_distance_cm: 35,
+  max_distance_cm: 75,
+  calibration_max_error_deg: 5,
+};
 const strings = UX.cameraStrings.calibration;
 
 /** Procedimiento con espera falsa: cada espera de medición emite cuadros. */
@@ -499,7 +505,7 @@ function framingFrames({ x = 0.5, y = 0.5, distance = 60, yaw = 0, faceEvery = 1
   });
 }
 
-test('the framing is right with the face seen, at the configured distance, centered and facing the screen', () => {
+test('the framing is right with the face seen, within the accepted distances, centered and facing the screen', () => {
   const { assessFraming } = UX.calibrationMath;
 
   const result = assessFraming(framingFrames({ distance: 63, x: 0.55, y: 0.62, yaw: -8 }), CAMERA);
@@ -517,15 +523,19 @@ test('the framing says how to move: closer or farther, left or right, and where 
   const { assessFraming } = UX.calibrationMath;
   const judge = (options) => assessFraming(framingFrames(options), CAMERA);
 
-  assert.equal(judge({ distance: 45 }).distance, 'near');
-  assert.equal(judge({ distance: 75 }).distance, 'far');
+  // Cada persona puede sentarse donde le sea cómodo dentro del rango.
+  for (const distance of [35, 48, 60, 75]) {
+    assert.equal(judge({ distance }).distance, 'ok', `${distance} cm`);
+  }
+  assert.equal(judge({ distance: 30 }).distance, 'near');
+  assert.equal(judge({ distance: 82 }).distance, 'far');
   // Imagen sin espejar: una cara a la izquierda de la imagen está corrida hacia la derecha de la persona.
   assert.equal(judge({ x: 0.2 }).horizontal, 'left');
   assert.equal(judge({ x: 0.8 }).horizontal, 'right');
   assert.equal(judge({ y: 0.2 }).vertical, 'up');
   assert.equal(judge({ y: 0.85 }).vertical, 'down');
   assert.equal(judge({ yaw: 25 }).frontal, false);
-  for (const options of [{ distance: 45 }, { x: 0.2 }, { y: 0.85 }, { yaw: 25 }]) {
+  for (const options of [{ distance: 30 }, { x: 0.2 }, { y: 0.85 }, { yaw: 25 }]) {
     assert.equal(judge(options).ok, false, JSON.stringify(options));
   }
 });

@@ -71,12 +71,14 @@
   /** Grados por radián. */
   const DEG = 180 / Math.PI;
   /**
-   * Límites del encuadre. La distancia puede alejarse hasta esto de
-   * `camera.viewing_distance_cm`; el centro de la cara, hasta estas fracciones
-   * del centro de la imagen (más margen en vertical: la cámara de un portátil
-   * mira la cara un poco desde abajo); y la cabeza puede girar hasta estos grados.
+   * Límites del encuadre. El centro de la cara puede alejarse hasta estas
+   * fracciones del centro de la imagen (más margen en vertical: la cámara de un
+   * portátil mira la cara un poco desde abajo) y la cabeza puede girar hasta estos
+   * grados. La distancia aceptable está en la configuración (`camera.min_distance_cm`
+   * y `camera.max_distance_cm`): cada persona se sienta a la distancia que le es
+   * cómoda dentro de ese rango, porque la calibración mide la suya.
    */
-  const FRAMING_LIMITS = Object.freeze({ distanceCm: 10, horizontal: 0.15, vertical: 0.2, yawDeg: 15 });
+  const FRAMING_LIMITS = Object.freeze({ horizontal: 0.15, vertical: 0.2, yawDeg: 15 });
   /** El encuadre se juzga con los cuadros de este último tramo, para que no parpadee. */
   const FRAMING_WINDOW_MS = 1000;
   /** Fracción mínima de cuadros del tramo con rostro para decir que la cara se ve. */
@@ -103,7 +105,7 @@
    *
    * @param {Array<{face_detected: boolean, head_yaw: (number|null), framing: (object|null)}>} frames -
    *   Cuadros recientes (mensajes `frame` del motor).
-   * @param {{viewing_distance_cm: number}} camera - Configuración de la cámara.
+   * @param {{min_distance_cm: number, max_distance_cm: number}} camera - Configuración de la cámara.
    * @returns {{ok: boolean, face: boolean, distance_cm: (number|null),
    *   distance: (string|null), horizontal: (string|null), vertical: (string|null),
    *   frontal: (boolean|null), x: (number|null), y: (number|null), width: (number|null)}}
@@ -133,8 +135,8 @@
     const x = median(seen.map((frame) => frame.framing.x));
     const y = median(seen.map((frame) => frame.framing.y));
     const yaw = median(seen.map((frame) => frame.head_yaw).filter((value) => value !== null));
-    const offset = distanceCm - camera.viewing_distance_cm;
-    const distance = Math.abs(offset) <= FRAMING_LIMITS.distanceCm ? 'ok' : offset < 0 ? 'near' : 'far';
+    const distance =
+      distanceCm < camera.min_distance_cm ? 'near' : distanceCm > camera.max_distance_cm ? 'far' : 'ok';
     // Cara a la izquierda de la imagen = persona corrida a su derecha: debe ir a su izquierda.
     const dx = x - 0.5;
     const horizontal = Math.abs(dx) <= FRAMING_LIMITS.horizontal ? 'ok' : dx < 0 ? 'left' : 'right';
@@ -160,7 +162,7 @@
    * Sigue el encuadre con los cuadros del motor y avisa cada cambio.
    *
    * @param {object} link - Conexión con el motor (`onFrame`).
-   * @param {{viewing_distance_cm: number}} camera - Configuración de la cámara.
+   * @param {{min_distance_cm: number, max_distance_cm: number}} camera - Configuración de la cámara.
    * @param {function(object): void} listener - Recibe el resultado de `assessFraming`.
    * @returns {function(): void} Deja de seguirlo.
    */
@@ -612,7 +614,10 @@
         // Cabeza un poco más alta que ancha y, debajo, los hombros.
         setShape('.head', { cx, cy, rx, ry: rx * 1.25 });
         setShape('.body', { cx, cy: cy + rx * 2.6, rx: rx * 1.8, ry: rx * 1.1 });
-        const targetRx = (rx * assessment.distance_cm) / camera.viewing_distance_cm;
+        // El óvalo es el tamaño que tendría la cara en el borde más cercano del rango
+        // aceptable; dentro del rango, el de la cara: basta con que quede centrada.
+        const allowed = Math.min(Math.max(assessment.distance_cm, camera.min_distance_cm), camera.max_distance_cm);
+        const targetRx = (rx * assessment.distance_cm) / allowed;
         setShape('.target', { rx: targetRx, ry: targetRx * 1.25 });
         figure.setAttribute('visibility', 'visible');
       } else {
@@ -654,7 +659,7 @@
        * @param {string} type - `initial` o `final`.
        * @param {(function(function(object): void): function(): void)|null} [framing] -
        *   Se suscribe a los cambios del encuadre (`watchFraming`) y devuelve cómo dejar de oírlos.
-       * @param {{viewing_distance_cm: number}} [camera] - Configuración de la cámara.
+       * @param {{min_distance_cm: number, max_distance_cm: number}} [camera] - Configuración de la cámara.
        * @returns {Promise<string>} Acción elegida.
        */
       async intro(type, framing = null, camera = null) {

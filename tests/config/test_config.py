@@ -62,6 +62,11 @@ def test_camera_numbers_accept_integers_and_decimals(tmp_path: Path) -> None:
     assert config.camera.calibration_max_error_deg == 5.0
 
 
+def test_the_accepted_distance_range_cannot_be_empty(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="min_distance_cm must be less than"):
+        load_config(write_config(tmp_path, camera__min_distance_cm=80, camera__max_distance_cm=75))
+
+
 def test_distance_scale_must_be_a_positive_number(tmp_path: Path) -> None:
     """La corrección de distancia de la webcam: 1 sin ajustar; nunca 0 ni negativa."""
     config = load_config(write_config(tmp_path, camera__distance_scale=1))

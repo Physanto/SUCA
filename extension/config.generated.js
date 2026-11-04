@@ -55,7 +55,9 @@
       "video_height": 480,
       "viewing_distance_cm": 60.0,
       "css_px_per_cm": 55.7,
-      "distance_scale": 1.0,
+      "distance_scale": 1.24,
+      "min_distance_cm": 35.0,
+      "max_distance_cm": 75.0,
       "calibration_max_error_deg": 5.0
     }
   });

@@ -98,12 +98,12 @@ Resultado:
 
 ## Encuadre
 
-Antes de la calibración **inicial**, la pantalla de instrucciones comprueba que la persona esté bien ubicada, sin mostrar el video: una figura (cabeza y hombros) se mueve con ella como en un espejo, sobre un óvalo que marca dónde y de qué tamaño debería verse la cara. La figura es verde cuando todo está bien y naranja si no, y una lista dice qué corregir:
+Antes de la calibración **inicial**, la pantalla de instrucciones comprueba que la persona esté bien ubicada, sin mostrar el video: una figura (cabeza y hombros) se mueve con ella como en un espejo, sobre un óvalo que marca dónde debería verse la cara (si está fuera del rango de distancias, el óvalo tiene el tamaño que tendría en el borde más cercano del rango). La figura es verde cuando todo está bien y naranja si no, y una lista dice qué corregir:
 
 | Comprobación | Criterio | Indicación si falla |
 |---|---|---|
 | Rostro | Visible en al menos el 80 % de los cuadros del último segundo | "No se ve tu cara…" |
-| Distancia | A ±10 cm de `viewing_distance_cm` (de 50 a 70 cm con 60) | "Estás muy cerca / muy lejos (unos N cm)" |
+| Distancia | Entre `min_distance_cm` y `max_distance_cm` (de 35 a 75 cm): cada persona se sienta donde le es cómodo, porque la calibración mide su distancia | "Estás muy cerca / muy lejos (unos N cm)" |
 | Centrado horizontal | El centro de la cara a menos del 15 % del ancho de la imagen del centro | "Muévete un poco hacia tu izquierda / derecha" |
 | Centrado vertical | A menos del 20 % del alto | "Inclina la cámara un poco hacia arriba / abajo (en un portátil, la pantalla hacia atrás / adelante)" |
 | De frente | Cabeza girada menos de 15° a un lado | "Gira la cabeza hacia la pantalla" |
@@ -127,9 +127,10 @@ Durante la calibración la mirada no se registra, y los clics, el movimiento del
 | `gaze_hz` | 30 | Frecuencia máxima de análisis y de muestras de mirada |
 | `face_hz` | 15 | Frecuencia de muestras faciales |
 | `video_width`, `video_height` | 640, 480 | Resolución que se pide a la webcam |
-| `viewing_distance_cm` | 60 | Distancia del participante a la pantalla |
+| `viewing_distance_cm` | 60 | Distancia de referencia: la que usa `error_deg` si la calibración no pudo medir la del participante |
 | `css_px_per_cm` | 55.7 | Píxeles CSS por centímetro de la pantalla. Se mide una vez por pantalla: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm. 55.7 es el portátil del laboratorio (1920 px en 34,5 cm); 37.8 sería una pantalla de 96 píxeles por pulgada |
-| `distance_scale` | 1.0 | Corrección de la distancia a la cámara, propia de cada webcam (ver "Encuadre"). 1.0 sin ajustar |
+| `distance_scale` | 1.24 | Corrección de la distancia a la cámara, propia de cada webcam (ver "Encuadre"). 1.24 es la webcam del portátil del laboratorio (52 cm medidos, 42 estimados); 1.0 sin ajustar |
+| `min_distance_cm`, `max_distance_cm` | 35, 75 | Distancias aceptables a la cámara antes de calibrar. Provisionales: se ajustan en el piloto |
 | `calibration_max_error_deg` | 5.0 | Umbral para aceptar una calibración. **Provisional:** se ajusta en el piloto |
 
 ## Conexión entre la pestaña y el motor
