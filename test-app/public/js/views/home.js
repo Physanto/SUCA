@@ -2,14 +2,11 @@
  * @file Página de inicio (`/`): portada, categorías y productos destacados.
  */
 
-import { CATEGORIES, FREE_SHIPPING_FROM, PRODUCTS } from '../data.js';
+import { CATEGORIES, FEATURED_PRODUCTS, FREE_SHIPPING_FROM, PRODUCTS } from '../data.js';
 import { h, wait } from '../dom.js';
 import { money } from '../format.js';
 import { LATENCY } from '../timing.js';
 import { productGrid } from '../ui.js';
-
-/** Productos destacados de la portada, en orden. */
-const FEATURED = [101, 201, 301, 402, 104, 305, 204, 401];
 
 /**
  * Dibuja la pantalla.
@@ -18,7 +15,7 @@ const FEATURED = [101, 201, 301, 402, 104, 305, 204, 401];
  */
 export async function render() {
   await wait(LATENCY.page);
-  const featured = FEATURED.map((id) => PRODUCTS.find((product) => product.id === id));
+  const featured = FEATURED_PRODUCTS.map((id) => PRODUCTS.find((product) => product.id === id));
   return {
     title: 'Inicio',
     node: h(
