@@ -294,6 +294,8 @@ SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i2_guided_session.p
 
 El servidor de estas pruebas usa una base temporal, pero escucha en la dirección de `config/shared.json` (la extensión la tiene fija): detén el servidor local antes de correrlas. Si Chrome no está en una ubicación habitual, indica su ruta en `CHROME_PATH`. Los guiones que manejan Chrome (`tests/integration/browser/real-capture.mjs` y `guided-session.mjs`) también se pueden correr solos, con `--headed` para ver la ventana.
 
+**Sesiones de demostración.** `python -m scripts.demo_sessions` recorre todo el sistema sin personas, con Chrome automático y la extensión real: graba la referencia de las 4 tareas con una captura de cada pantalla, confirma sus condiciones finales, hace una sesión guiada en V0, V1 y V2 (en V1 y V2 insiste en lo que no responde) y las analiza. Quedan en el estudio aparte «Tienda · demostración automática», que se elige en el panel de resultados; volver a correrlo reemplaza esas sesiones y no toca las de otros estudios. No tienen mirada ni rostro (Chrome sin interfaz no tiene cámara). Mientras el piloto no fije `friction_i_max`, el análisis de la demostración usa el valor provisional de los datos simulados y lo marca en la versión de los parámetros (`…+demo-i_max`).
+
 ### 11. Verificar la base
 
 ```bash

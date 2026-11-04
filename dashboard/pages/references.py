@@ -1,17 +1,151 @@
-"""Página Referencias: rutas grabadas de cada tarea y su condición final."""
+"""Página Referencias: revisar la ruta grabada de cada tarea y confirmar su condición final.
 
-from dashboard import ui
+Es la única página que escribe en la base (``DashboardData.confirm_reference``):
+el evaluador elige, entre las candidatas que propuso el análisis, la condición
+que indica que la tarea se completó, y marca los pasos que no pueden faltar.
+Una referencia confirmada sirve para terminar las tareas solas en el modo
+guiado y para comparar las rutas de los participantes.
+"""
+
+from typing import Any
+
+import pandas as pd
+import streamlit as st
+
+from dashboard import heatmap, ui
+from dashboard.data import InvalidReferenceError
 
 ui.page_header(
     "Referencias",
-    "revisar los pasos grabados de cada tarea, elegir la condición final entre las candidatas "
-    "y marcar los pasos obligatorios (con `DashboardData.confirm_reference`).",
+    "Ruta grabada de cada tarea: revisa sus pasos, elige la condición final entre las candidatas y "
+    "marca los pasos obligatorios. Al confirmar, la referencia queda lista para el modo guiado y "
+    "el "
+    "análisis.",
 )
+
+STEP_LABELS = {
+    "click": "Clic",
+    "form_submit": "Envío de formulario",
+    "screen_change": "Cambio de pantalla",
+}
+STATUS_LABELS = {"draft": "Borrador", "confirmed": "Confirmada"}
+
+
+def condition_label(condition: dict[str, Any] | None) -> str:
+    """Una condición final en palabras."""
+    if not condition:
+        return "—"
+    kind = condition.get("type")
+    if kind == "url_pattern":
+        return f"La dirección es {condition['pattern']}"
+    if kind == "visible_text":
+        return f"Se ve el texto «{condition['text']}»"
+    if kind == "element_present":
+        return f"Hay un elemento {condition['role']} «{condition['text']}»"
+    return str(condition)
+
+
+def steps_frame(steps: list[dict[str, Any]], required: list[int]) -> pd.DataFrame:
+    """Los pasos de una referencia como tabla editable, con la marca de obligatorio."""
+    rows = []
+    for position, step in enumerate(steps):
+        element = step.get("element") or {}
+        rows.append(
+            {
+                "Obligatorio": position in required,
+                "N.º": position + 1,
+                "Paso": STEP_LABELS.get(step["type"], step["type"]),
+                "Pantalla": heatmap.screen_key(step["screen"]["url"]),
+                "Elemento": " · ".join(
+                    str(part) for part in (element.get("role"), element.get("text")) if part
+                )
+                or "—",
+            }
+        )
+    return pd.DataFrame(rows, columns=["Obligatorio", "N.º", "Paso", "Pantalla", "Elemento"])
+
 
 with ui.selected_data() as data:
     references = data.get_references(ui.selected_study(data))
+    if references.empty:
+        st.caption(
+            "El estudio no tiene referencias. Grábalas desde el panel lateral de la extensión, en "
+            "modo Referencia, y analiza esa sesión."
+        )
+        st.stop()
 
-# Pasos y candidatas son listas largas: en la tabla mínima se muestra cuántos hay.
-references["steps"] = references["steps"].map(len)
-references["candidates"] = references["candidates"].map(len)
-ui.show_table(references, empty="El estudio no tiene referencias grabadas.")
+    overview = references[
+        ["reference_id", "position", "instruction", "status", "source_session_id"]
+    ].copy()
+    overview["status"] = overview["status"].map(lambda status: STATUS_LABELS.get(status, status))
+    overview["end_condition"] = references["end_condition"].map(condition_label)
+    overview["steps"] = references["steps"].map(len)
+    ui.show_table(overview)
+
+    labels = {
+        int(row.reference_id): f"Tarea {row.position} · referencia {row.reference_id} · "
+        f"{STATUS_LABELS.get(row.status, row.status)}"
+        for row in references.itertuples()
+    }
+    reference_id = st.selectbox("Referencia", list(labels), format_func=labels.get)
+    chosen = references.set_index("reference_id").loc[reference_id]
+    st.markdown(f"**Tarea {chosen['position']}:** {chosen['instruction']}")
+
+    steps = chosen["steps"] or []
+    required = chosen["required_steps"] or []
+    st.caption("Pasos grabados. Marca los que no pueden faltar en la ruta de un participante.")
+    edited = st.data_editor(
+        steps_frame(steps, required),
+        hide_index=True,
+        width="stretch",
+        disabled=["N.º", "Paso", "Pantalla", "Elemento"],
+        key=f"steps_{reference_id}",
+    )
+
+    candidates = chosen["candidates"] or []
+    current = chosen["end_condition"]
+    # Si la condición confirmada no está entre las candidatas, se muestra como una más.
+    choices = candidates + ([current] if current and current not in candidates else [])
+    other = len(choices)
+    default = choices.index(current) if current in choices else 0
+    picked = st.radio(
+        "Condición final",
+        [*range(len(choices)), other],
+        index=default,
+        format_func=lambda option: (
+            "Otra condición…" if option == other else condition_label(choices[option])
+        ),
+        key=f"condition_{reference_id}",
+        help="Las candidatas las propone el análisis de la grabación. Si ninguna indica bien que "
+        "la tarea terminó (por ejemplo, un mensaje de confirmación), escribe otra.",
+    )
+    if picked == other:
+        kinds = {
+            "visible_text": "Se ve un texto",
+            "url_pattern": "La dirección coincide con un patrón",
+            "element_present": "Hay un elemento con un rol y un texto",
+        }
+        kind = st.selectbox("Tipo", list(kinds), format_func=kinds.get, key=f"kind_{reference_id}")
+        if kind == "url_pattern":
+            value = st.text_input("Patrón (con {id} en los números)", key=f"pattern_{reference_id}")
+            condition = {"type": kind, "pattern": value.strip()}
+        elif kind == "element_present":
+            role = st.text_input("Rol (por ejemplo, button o heading)", key=f"role_{reference_id}")
+            value = st.text_input("Texto del elemento", key=f"element_{reference_id}")
+            condition = {"type": kind, "role": role.strip(), "text": value.strip()}
+        else:
+            value = st.text_input("Texto que debe verse", key=f"text_{reference_id}")
+            condition = {"type": kind, "text": value.strip()}
+    else:
+        condition = choices[picked]
+    if st.button("Confirmar referencia", type="primary"):
+        positions = [int(number) - 1 for number in edited.loc[edited["Obligatorio"], "N.º"]]
+        try:
+            data.confirm_reference(int(reference_id), condition, positions)
+        except InvalidReferenceError as error:
+            st.error(f"No se pudo confirmar: {error}")
+        else:
+            st.success(
+                f"Referencia {reference_id} confirmada: {condition_label(condition)}, "
+                f"{len(positions)} paso(s) obligatorio(s)."
+            )

@@ -420,3 +420,37 @@ def test_invalid_task_intervals_are_reported(data: SessionData, params: Paramete
     data.tasks.loc[0, "t_end"] = data.tasks.iloc[0]["t_start"] - 1
     with pytest.raises(ValueError, match="task 1: invalid time interval"):
         reference.compare(data, params)
+
+
+@pytest.mark.parametrize(("ended_by", "late_ms", "success"), [
+    ("reference", 300, True),
+    ("reference", reference.ARRIVAL_GRACE_MS + 200, False),
+    ("done", 300, False),
+])  # fmt: skip
+def test_the_arrival_screen_just_after_an_automatic_end_belongs_to_the_task(
+    data: SessionData, params: Parameters, ended_by: str, late_ms: int, success: bool
+) -> None:
+    """Un cambio de pantalla registrado justo después del fin automático cuenta para la tarea.
+
+    La tarea termina sola al llegar a la pantalla final, pero la captura registra
+    ese cambio de pantalla un instante después.
+    """
+    arrival = {
+        "type": "screen_change",
+        "url": "https://shop.local/product/101",
+        "title": "Producto",
+        "screen": "/product/{id}",
+        "element": None,
+    }
+    path = [{"t": 100}, {"t": 500, **arrival}]
+    # La tarea dura 1000 ms; la llegada se registra después de su fin, sin tarea activa.
+    loaded = with_route(
+        data,
+        path,
+        [{"t": 100}, {"t": 1000 + late_ms, **arrival, "task_id": None}],
+        required=[],
+        condition={"type": "url_pattern", "pattern": "/product/{id}"},
+    )
+    loaded = replace(loaded, tasks=loaded.tasks.assign(ended_by=ended_by))
+
+    assert bool(result(loaded, params)["success"]) is success

@@ -197,6 +197,12 @@ class RageClickDetector:
         return columns.frame("incident", rows)
 
 
+#: Demora con que llega la respuesta de un clic después de su ventana de observación, en ms.
+#: La captura registra ``click_response`` al cerrar esa ventana (1500 ms), unos milisegundos
+#: después: sin este margen, una respuesta válida quedaba fuera de ``dead_click.wait_ms``.
+RESPONSE_DELIVERY_SLACK_MS = 250
+
+
 @DETECTORS.register
 class DeadClickDetector:
     """Clics sin cambios, navegación ni respuesta de foco dentro del plazo observado."""
@@ -225,7 +231,7 @@ class DeadClickDetector:
             elif event.type == "click_response" and isinstance(event.data, dict):
                 if event.data.get("navigated") or event.data.get("mutation_count", 0) > 0:
                     for index in by_time.get(event.data["click_t"], ()):
-                        if 0 <= event.t - clicks[index].t <= wait:
+                        if 0 <= event.t - clicks[index].t <= wait + RESPONSE_DELIVERY_SLACK_MS:
                             answered.add(index)
             elif event.type in ("focus_in", "field_change"):
                 identity = _element_identity(event)

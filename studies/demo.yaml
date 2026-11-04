@@ -1,0 +1,40 @@
+# Estudio de demostración: las mismas 4 tareas del estudio de ejemplo, en un
+# estudio aparte para las sesiones automáticas de `python -m scripts.demo_sessions`.
+# Así no se mezclan con las sesiones de personas del estudio de ejemplo.
+#
+# El script lo carga solo; a mano:
+#   python -m scripts.load_study studies/demo.yaml
+#
+# Formato: contracts/study.schema.json. Pon entre comillas los textos que
+# contengan " #" o ": ", porque YAML los interpreta como comentario o clave.
+# - "name" identifica al estudio: volver a cargar el archivo con el mismo nombre
+#   actualiza el estudio; con otro nombre crea uno nuevo.
+# - La posición de cada tarea en la lista la identifica. Si el estudio ya tiene
+#   sesiones, agrega tareas nuevas al final y no reordenes las existentes: los
+#   datos grabados quedan unidos a la posición.
+
+# Nombre único del estudio.
+name: Tienda · demostración automática
+
+# Sistema evaluado.
+system_under_test: "App de prueba: tienda en línea"
+
+# Descripción libre (opcional).
+description: >-
+  Sesiones generadas por un navegador automático sobre la app de prueba. Cubre búsqueda, carrito,
+  un flujo de compra de varios pasos con formulario y la edición del perfil.
+
+# Tareas, en el orden en que se presentan. Las instrucciones las lee el
+# participante: van en español y no indican dónde hacer clic.
+tasks:
+  # 1. Búsqueda y detalle de producto.
+  - instruction: Busca unos audífonos inalámbricos y abre el detalle del primero de la lista.
+
+  # 2. Carrito.
+  - instruction: Agrega dos unidades de esos audífonos al carrito.
+
+  # 3. Compra de varios pasos con formulario; el pago con tarjeta es un paso obligatorio.
+  - instruction: Completa la compra pagando con tarjeta de crédito.
+
+  # 4. Edición del perfil.
+  - instruction: "Cambia la dirección de envío de tu cuenta a Calle 10 # 20-30, Bogotá."

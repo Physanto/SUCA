@@ -304,6 +304,24 @@ class DashboardData:
         )
         return frame
 
+    def get_calibrations(self, session_id: int) -> pd.DataFrame:
+        """Calibraciones de mirada de una sesión, en orden (cada intento es una fila).
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``t``, ``type``, ``error_px``, ``error_deg``, ``accepted`` y
+            ``viewing_distance_cm`` (vacía si no se midió).
+        """
+        return self._frame(
+            "SELECT t, type, error_px, error_deg, accepted, viewing_distance_cm FROM calibration"
+            " WHERE session_id = ? ORDER BY t",
+            session_id,
+            columns=["t", "type", "error_px", "error_deg", "accepted", "viewing_distance_cm"],
+            bools=("accepted",),
+        )
+
     # --- Datos de un estudio -----------------------------------------------------
 
     def get_task_results(self, study_id: int) -> pd.DataFrame:

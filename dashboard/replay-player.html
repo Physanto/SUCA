@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Reproductor de una sesión: dibuja sobre la captura de cada pantalla el
+      cursor, los clics, el scroll y la mirada, en el tiempo en que pasaron.
+      No ejecuta nada en el sitio evaluado. Los datos los pone dashboard/replay.py
+      en lugar de la marca PAYLOAD; no carga recursos externos.
+    -->
+    <style>
+      :root { font: 14px/1.4 system-ui, sans-serif; color: #1f2937; }
+      body { margin: 0; }
+      .stage { position: relative; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;
+        background: #f3f4f6; }
+      canvas#view { display: block; width: 100%; height: auto; }
+      .banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 4px 12px;
+        border-radius: 999px; background: #b91c1c; color: #fff; font-weight: 600; pointer-events: none; }
+      .banner[hidden] { display: none; }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+      button { font: inherit; padding: 4px 14px; border: 0; border-radius: 6px; background: #1a5fb4;
+        color: #fff; cursor: pointer; min-width: 92px; }
+      select { font: inherit; }
+      .time { font-variant-numeric: tabular-nums; }
+      canvas#strip { display: block; width: 100%; height: 34px; margin-top: 6px; cursor: pointer;
+        border-radius: 4px; background: #eef0f3; }
+      .info { margin-top: 6px; color: #4b5563; }
+      .info b { color: #111827; }
+      .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <canvas id="view"></canvas>
+      <div class="banner" hidden></div>
+    </div>
+    <canvas id="strip" title="Haz clic para ir a ese momento"></canvas>
+    <div class="controls">
+      <button id="play" type="button">▶ Reproducir</button>
+      <label>Velocidad
+        <select id="speed">
+          <option value="0.5">×0,5</option>
+          <option value="1" selected>×1</option>
+          <option value="2">×2</option>
+          <option value="4">×4</option>
+        </select>
+      </label>
+      <span class="time" id="time">0:00 / 0:00</span>
+      <label><input type="checkbox" id="show-cursor" checked /> Cursor</label>
+      <label><input type="checkbox" id="show-clicks" checked /> Clics</label>
+      <label><input type="checkbox" id="show-gaze" checked /> Mirada</label>
+      <span class="legend">
+        <span><i style="background:#111827"></i>Cursor</span>
+        <span><i style="background:#dc2626"></i>Clic</span>
+        <span><i style="background:#2563eb"></i>Mirada</span>
+      </span>
+    </div>
+    <div class="info" id="info"></div>
+
+    <script>
+      'use strict';
+
+      const DATA = /*PAYLOAD*/null;
+
+      /** Cuánto se ve la estela de la mirada y cuánto dura el círculo de un clic, en ms. */
+      const GAZE_TRAIL_MS = 600;
+      const CLICK_RIPPLE_MS = 700;
+      /** Un incidente se anuncia desde un poco antes hasta un rato después. */
+      const INCIDENT_BEFORE_MS = 300;
+      const INCIDENT_AFTER_MS = 1800;
+
+      const [width, height] = DATA.viewport;
+      const view = document.getElementById('view');
+      const strip = document.getElementById('strip');
+      const banner = document.querySelector('.banner');
+      const ctx = view.getContext('2d');
+      view.width = width;
+      view.height = height;
+
+      const images = {};
+      for (const [screen, url] of Object.entries(DATA.images)) {
+        const image = new Image();
+        image.src = url;
+        image.onload = () => draw();
+        images[screen] = image;
+      }
+
+      /** Se empieza en la primera pantalla: antes no hay nada que ver. */
+      const FIRST = DATA.screens.length ? DATA.screens[0].t : 0;
+      let now = FIRST;
+      let playing = false;
+      let lastFrame = null;
+
+      /** Índice del último elemento con t <= time en una lista ordenada por t (o -1). */
+      function lastAtOrBefore(list, time, key = (item) => item[0]) {
+        let low = 0;
+        let high = list.length - 1;
+        let found = -1;
+        while (low <= high) {
+          const middle = (low + high) >> 1;
+          if (key(list[middle]) <= time) {
+            found = middle;
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
+        }
+        return found;
+      }
+
+      /** mm:ss */
+      function clock(ms) {
+        const seconds = Math.max(0, Math.floor(ms / 1000));
+        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+      }
+
+      /** Posición del cursor, interpolada entre las dos muestras que rodean el momento. */
+      function cursorAt(time) {
+        const index = lastAtOrBefore(DATA.moves, time);
+        if (index < 0) return null;
+        const [t0, x0, y0] = DATA.moves[index];
+        const next = DATA.moves[index + 1];
+        if (!next || next[0] - t0 > 1000) return { x: x0, y: y0 };
+        const share = (time - t0) / (next[0] - t0);
+        return { x: x0 + (next[1] - x0) * share, y: y0 + (next[2] - y0) * share };
+      }
+
+      function drawBlank(screen) {
+        ctx.fillStyle = '#f6f7f9';
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = '#e4e7eb';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < width; x += 100) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        }
+        for (let y = 0; y < height; y += 100) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+        }
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '18px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(screen ? `${screen.screen} (sin captura de esta pantalla)` : 'Antes de la primera pantalla', width / 2, height / 2);
+        ctx.textAlign = 'start';
+      }
+
+      function drawCursor(point) {
+        ctx.save();
+        ctx.translate(point.x, point.y);
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(0, 20); ctx.lineTo(5, 15); ctx.lineTo(9, 24);
+        ctx.lineTo(12, 22); ctx.lineTo(8, 14); ctx.lineTo(15, 14); ctx.closePath();
+        ctx.fillStyle = '#111827';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function draw() {
+        const screenIndex = lastAtOrBefore(DATA.screens, now, (item) => item.t);
+        const screen = screenIndex >= 0 ? DATA.screens[screenIndex] : null;
+        const scrollIndex = lastAtOrBefore(DATA.scrolls, now);
+        const [, scrollX, scrollY] = scrollIndex >= 0 ? DATA.scrolls[scrollIndex] : [0, 0, 0];
+        const image = screen ? images[screen.screen] : null;
+        if (image && image.complete && image.naturalWidth) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          // La captura muestra la página arriba de todo: el scroll la desplaza hacia arriba.
+          ctx.drawImage(image, -scrollX, -scrollY, width, (image.naturalHeight * width) / image.naturalWidth);
+        } else {
+          drawBlank(screen);
+        }
+
+        if (document.getElementById('show-gaze').checked) {
+          const from = lastAtOrBefore(DATA.gaze, now - GAZE_TRAIL_MS) + 1;
+          const to = lastAtOrBefore(DATA.gaze, now);
+          for (let i = from; i <= to; i += 1) {
+            const [t, x, y] = DATA.gaze[i];
+            const age = (now - t) / GAZE_TRAIL_MS;
+            ctx.beginPath();
+            ctx.arc(x, y, i === to ? 16 : 7, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(37, 99, 235, ${i === to ? 0.55 : 0.35 * (1 - age)})`;
+            ctx.fill();
+          }
+        }
+        if (document.getElementById('show-clicks').checked) {
+          const from = lastAtOrBefore(DATA.clicks, now - CLICK_RIPPLE_MS) + 1;
+          const to = lastAtOrBefore(DATA.clicks, now);
+          for (let i = from; i <= to; i += 1) {
+            const [t, x, y] = DATA.clicks[i];
+            const age = (now - t) / CLICK_RIPPLE_MS;
+            ctx.beginPath();
+            ctx.arc(x, y, 8 + age * 26, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(220, 38, 38, ${1 - age})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+        }
+        if (document.getElementById('show-cursor').checked) {
+          const point = cursorAt(now);
+          if (point) drawCursor(point);
+        }
+
+        const incident = DATA.incidents.find(
+          (item) => now >= item.t - INCIDENT_BEFORE_MS && now <= item.t + INCIDENT_AFTER_MS,
+        );
+        banner.hidden = !incident;
+        if (incident) banner.textContent = `⚠ ${incident.label}`;
+
+        const task = DATA.tasks.find((item) => now >= item.from && now <= item.to);
+        const info = document.getElementById('info');
+        info.replaceChildren();
+        const parts = [
+          ['Pantalla', screen ? `${screen.screen}${screen.title ? ` · ${screen.title}` : ''}` : '—'],
+          ['Tarea', task ? `${task.label}: ${task.instruction}` : 'ninguna'],
+        ];
+        parts.forEach(([label, value], index) => {
+          if (index) info.append(' · ');
+          const name = document.createElement('b');
+          name.textContent = `${label}: `;
+          info.append(name, value);
+        });
+        document.getElementById('time').textContent = `${clock(now)} / ${clock(DATA.duration)}`;
+        drawStrip();
+      }
+
+      /** Franja de tiempo: tareas, incidentes y la posición actual. */
+      function drawStrip() {
+        const ratio = window.devicePixelRatio || 1;
+        const stripWidth = strip.clientWidth;
+        strip.width = stripWidth * ratio;
+        strip.height = 34 * ratio;
+        const g = strip.getContext('2d');
+        g.scale(ratio, ratio);
+        const x = (t) => (t / Math.max(1, DATA.duration)) * stripWidth;
+        g.fillStyle = '#eef0f3';
+        g.fillRect(0, 0, stripWidth, 34);
+        DATA.tasks.forEach((task, index) => {
+          g.fillStyle = index % 2 ? '#bfdbfe' : '#93c5fd';
+          g.fillRect(x(task.from), 4, Math.max(2, x(task.to) - x(task.from)), 14);
+          g.fillStyle = '#1e3a8a';
+          g.font = '11px system-ui, sans-serif';
+          g.fillText(task.label, x(task.from) + 3, 15);
+        });
+        g.fillStyle = '#b91c1c';
+        for (const incident of DATA.incidents) {
+          g.beginPath();
+          g.moveTo(x(incident.t), 20);
+          g.lineTo(x(incident.t) - 4, 30);
+          g.lineTo(x(incident.t) + 4, 30);
+          g.closePath();
+          g.fill();
+        }
+        g.fillStyle = '#111827';
+        g.fillRect(x(now) - 1, 0, 2, 34);
+      }
+
+      function tick(timestamp) {
+        if (!playing) return;
+        if (lastFrame !== null) {
+          now += (timestamp - lastFrame) * Number(document.getElementById('speed').value);
+        }
+        lastFrame = timestamp;
+        if (now >= DATA.duration) {
+          now = DATA.duration;
+          setPlaying(false);
+        }
+        draw();
+        if (playing) requestAnimationFrame(tick);
+      }
+
+      function setPlaying(value) {
+        playing = value;
+        lastFrame = null;
+        document.getElementById('play').textContent = playing ? '❚❚ Pausa' : '▶ Reproducir';
+        if (playing) requestAnimationFrame(tick);
+      }
+
+      document.getElementById('play').addEventListener('click', () => {
+        if (!playing && now >= DATA.duration) now = FIRST;
+        setPlaying(!playing);
+      });
+      strip.addEventListener('click', (event) => {
+        const box = strip.getBoundingClientRect();
+        now = ((event.clientX - box.left) / box.width) * DATA.duration;
+        draw();
+      });
+      for (const id of ['show-cursor', 'show-clicks', 'show-gaze']) {
+        document.getElementById(id).addEventListener('change', draw);
+      }
+      window.addEventListener('resize', draw);
+      draw();
+    </script>
+  </body>
+</html>
