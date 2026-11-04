@@ -54,7 +54,8 @@
       "video_width": 640,
       "video_height": 480,
       "viewing_distance_cm": 60.0,
-      "css_px_per_cm": 37.8,
+      "css_px_per_cm": 55.7,
+      "distance_scale": 1.0,
       "calibration_max_error_deg": 5.0
     }
   });

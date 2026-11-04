@@ -119,6 +119,9 @@ class CameraConfig:
             pasar el error de calibración de píxeles a grados.
         css_px_per_cm: Píxeles CSS por centímetro de la pantalla del
             laboratorio (37.8 corresponde a 96 píxeles por pulgada).
+        distance_scale: Corrección de la distancia a la cámara que estima
+            MediaPipe, propia de cada webcam: distancia medida con un metro
+            dividida por la distancia que muestra la calibración (1.0 sin ajustar).
         calibration_max_error_deg: Error medio máximo, en grados, para aceptar
             una calibración. Provisional hasta el piloto.
     """
@@ -129,6 +132,7 @@ class CameraConfig:
     video_height: int
     viewing_distance_cm: float
     css_px_per_cm: float
+    distance_scale: float
     calibration_max_error_deg: float
 
 

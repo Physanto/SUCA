@@ -107,7 +107,8 @@ Durante la calibración la mirada no se registra, y los clics, el movimiento del
 | `face_hz` | 15 | Frecuencia de muestras faciales |
 | `video_width`, `video_height` | 640, 480 | Resolución que se pide a la webcam |
 | `viewing_distance_cm` | 60 | Distancia del participante a la pantalla |
-| `css_px_per_cm` | 37.8 | Píxeles CSS por centímetro de la pantalla (37.8 = 96 por pulgada). Para la pantalla del laboratorio: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm |
+| `css_px_per_cm` | 55.7 | Píxeles CSS por centímetro de la pantalla. Se mide una vez por pantalla: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm. 55.7 es el portátil del laboratorio (1920 px en 34,5 cm); 37.8 sería una pantalla de 96 píxeles por pulgada |
+| `distance_scale` | 1.0 | Corrección de la distancia a la cámara, propia de cada webcam (ver "Encuadre"). 1.0 sin ajustar |
 | `calibration_max_error_deg` | 5.0 | Umbral para aceptar una calibración. **Provisional:** se ajusta en el piloto |
 
 ## Conexión entre la pestaña y el motor
