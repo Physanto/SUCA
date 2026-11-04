@@ -33,7 +33,7 @@ const PERMISSION_ERRORS = ['NotAllowedError', 'SecurityError'];
 const { config, contracts, clock, platform, messages } = UX;
 const faceValueNames = contracts.enums.face_value;
 const { eyeBoxes, eyePatch, irisOffsets, featureVector } = UX.eyeFeatures;
-const { faceValues, headPose } = UX.faceFeatures;
+const { faceValues, headPose, faceFraming } = UX.faceFeatures;
 
 let delegate = null;
 const engine = UX.createCameraEngine({
@@ -178,8 +178,8 @@ async function createFaceProvider() {
 }
 
 /**
- * Analiza un cuadro: valores faciales, orientación de la cabeza y
- * características de los ojos para la mirada.
+ * Analiza un cuadro: valores faciales, orientación de la cabeza, encuadre del
+ * rostro y características de los ojos para la mirada.
  *
  * @param {object} result - Resultado de Face Landmarker.
  * @param {VideoFrame} frame - Cuadro analizado.
@@ -196,7 +196,12 @@ function readFrame(result, frame, canvas) {
   const face =
     Object.keys(values).length === 0
       ? null
-      : { values, head_yaw: pose.yaw, head_pitch: pose.pitch };
+      : {
+          values,
+          head_yaw: pose.yaw,
+          head_pitch: pose.pitch,
+          framing: faceFraming(landmarks, pose, config.camera.distance_scale),
+        };
   const width = frame.displayWidth;
   const height = frame.displayHeight;
   const boxes = eyeBoxes(landmarks, width, height);

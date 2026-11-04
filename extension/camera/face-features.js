@@ -89,5 +89,43 @@
     };
   }
 
-  UX.faceFeatures = Object.freeze({ mediapipeName, faceValues, headPose });
+  /**
+   * Encuadre del rostro en la imagen de la cámara: dónde está la cara, qué tan
+   * grande se ve y a qué distancia está. Sirve para comprobar, antes de calibrar,
+   * que la persona está a buena distancia y centrada, sin mostrar el video.
+   *
+   * La distancia es la posición `tz` de la cabeza que calcula MediaPipe. Como
+   * MediaPipe supone un ángulo de visión típico de webcam, se corrige con la
+   * escala propia de cada cámara (`camera.distance_scale`).
+   *
+   * @param {Array<{x: number, y: number}>} landmarks - Puntos del rostro, normalizados
+   *   entre 0 y 1 respecto de la imagen.
+   * @param {{tz: number}} pose - Posición de la cabeza (`headPose`).
+   * @param {number} [distanceScale] - Corrección de la distancia de esta webcam.
+   * @returns {{x: number, y: number, width: number, distance_cm: number}} Centro de la
+   *   cara (fracciones de la imagen, sin espejar), ancho de la cara (fracción del ancho
+   *   de la imagen) y distancia a la cámara en centímetros.
+   */
+  function faceFraming(landmarks, pose, distanceScale = 1) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const point of landmarks) {
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+    const round = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+    return {
+      x: round((minX + maxX) / 2, 3),
+      y: round((minY + maxY) / 2, 3),
+      width: round(maxX - minX, 3),
+      // El rostro está delante de la cámara, en z negativa.
+      distance_cm: round(Math.abs(pose.tz) * distanceScale, 1),
+    };
+  }
+
+  UX.faceFeatures = Object.freeze({ mediapipeName, faceValues, headPose, faceFraming });
 })(globalThis);

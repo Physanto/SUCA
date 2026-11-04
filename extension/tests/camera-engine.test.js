@@ -11,6 +11,9 @@ require('../camera/engine.js');
 
 const { UX } = globalThis;
 
+/** Encuadre de un rostro centrado a 60 cm, como lo calcula `faceFraming`. */
+const FRAMING = { x: 0.5, y: 0.45, width: 0.3, distance_cm: 60 };
+
 /** Motor con un reloj manual, y lo que recibió cada pestaña conectada. */
 function setup() {
   let now = 1000;
@@ -38,7 +41,7 @@ function setup() {
     engine.frame({
       t,
       processedAt: t + 20,
-      face: face ? { values: { brow_down_left: 0.1 }, head_yaw: 1, head_pitch: 2 } : null,
+      face: face ? { values: { brow_down_left: 0.1 }, head_yaw: 1, head_pitch: 2, framing: FRAMING } : null,
       features,
     });
   }
@@ -56,8 +59,8 @@ test('greets each tab with the current state and forwards analysed frames', () =
   // `started_at` es el momento en que se creó el motor: identifica a este motor ante la pestaña.
   assert.deepEqual(tab.received[0], { kind: 'hello', status: 'active', calibrated: false, started_at: 1000 });
   assert.deepEqual(tab.of('frame'), [
-    { kind: 'frame', t: 1100, face_detected: true, values: { brow_down_left: 0.1 }, head_yaw: 1, head_pitch: 2, gaze: null },
-    { kind: 'frame', t: 1133, face_detected: false, values: null, head_yaw: null, head_pitch: null, gaze: null },
+    { kind: 'frame', t: 1100, face_detected: true, values: { brow_down_left: 0.1 }, head_yaw: 1, head_pitch: 2, framing: FRAMING, gaze: null },
+    { kind: 'frame', t: 1133, face_detected: false, values: null, head_yaw: null, head_pitch: null, framing: null, gaze: null },
   ]);
 });
 
