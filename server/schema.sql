@@ -233,6 +233,19 @@ CREATE TABLE screen_capture (
     t         REAL    NOT NULL
 );
 
+-- Captura de lo que se veía en la pestaña evaluada durante una sesión, para
+-- la reproducción. Los campos que el estudio no declaró ya vienen tapados. La
+-- imagen vive en data/frames/<sesión>/; aquí solo su ruta. Borrar la sesión
+-- borra las filas; los archivos se borran con la carpeta de la sesión.
+CREATE TABLE session_frame (
+    id         INTEGER PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    t          REAL    NOT NULL,
+    file_path  TEXT    NOT NULL  -- relativa a la carpeta de datos
+);
+
+CREATE INDEX session_frame_session_idx ON session_frame (session_id, t);
+
 -- Pares clave-valor de la base de datos.
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
@@ -240,4 +253,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '3');
+INSERT INTO meta (key, value) VALUES ('schema_version', '4');

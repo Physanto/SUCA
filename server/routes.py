@@ -93,6 +93,12 @@ def post_batch(session_id: int, body: JsonBody, repository: Repo) -> dict[str, i
     )
 
 
+@router.post("/sessions/{session_id}/frames", status_code=201)
+def post_frame(session_id: int, body: JsonBody, repository: Repo) -> dict[str, Any]:
+    """Guarda una captura de lo que se veía durante la sesión."""
+    return services.save_frame(session_id, body, sessions=repository, frames=repository)
+
+
 @router.post("/captures", status_code=201)
 def post_capture(body: JsonBody, repository: Repo, now: Clock) -> dict[str, Any]:
     """Guarda una captura de pantalla de referencia."""

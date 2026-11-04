@@ -16,6 +16,7 @@ from server import ingestion
 from server.repositories import (
     BatchWriter,
     CaptureStore,
+    FrameStore,
     ReferenceStore,
     SessionInfo,
     SessionStore,
@@ -319,6 +320,33 @@ def save_capture(
         study_id=study_id, screen=body["screen"], image=image, extension=extension, t=now()
     )
     return {"capture_id": capture_id, "file_path": file_path}
+
+
+def save_frame(
+    session_id: int, body: Any, *, sessions: SessionStore, frames: FrameStore
+) -> dict[str, Any]:
+    """Guarda una captura de lo que se veía durante una sesión abierta.
+
+    Args:
+        session_id: Sesión de la ruta.
+        body: Petición que cumple ``requests/new-frame.schema.json``.
+        sessions: Consulta de sesiones.
+        frames: Guardado de la imagen y de su registro.
+
+    Returns:
+        ``frame_id`` y ``file_path`` (relativa a la carpeta de datos).
+
+    Raises:
+        NotFoundError: Si la sesión no existe.
+        ConflictError: Si la sesión está cerrada.
+        InvalidRequestError: Si la petición no cumple el contrato o la imagen no
+            es un JPEG válido o es demasiado grande.
+    """
+    _open_session(sessions, session_id)
+    _validate("new-frame", body, "frame request does not match its contract")
+    image, _ = _decode_image(body["image"])
+    frame_id, file_path = frames.add_frame(session_id=session_id, image=image, t=body["t"])
+    return {"frame_id": frame_id, "file_path": file_path}
 
 
 def _decode_image(data_url: str) -> tuple[bytes, str]:

@@ -80,6 +80,7 @@ EXPECTED_COLUMNS = {
         "duration_ms",
     ],
     "screen_capture": ["id", "study_id", "screen", "file_path", "t"],
+    "session_frame": ["id", "session_id", "t", "file_path"],
     "meta": ["key", "value"],
 }
 

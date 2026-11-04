@@ -15,7 +15,7 @@ Contrato de los mensajes que intercambian las partes de la extensión. Los nombr
 
 - **Del panel a la pestaña:** `chrome.runtime.sendMessage` no llega a los content scripts, así que el panel envía al worker y el worker reenvía el mensaje **solo a la pestaña evaluada** de la sesión activa (`tab_id` en el estado de la sesión).
 - **De la pestaña al panel:** Chrome entrega el mensaje de un content script a todas las páginas de la extensión, incluido el panel lateral. El worker no lo reenvía: el panel lo recibiría dos veces.
-- **Al worker:** `batch`, `screen_capture.request` y `tab.identify` terminan en el worker, que habla con el servidor.
+- **Al worker:** `batch`, `screen_capture.request`, `frame.request` y `tab.identify` terminan en el worker, que habla con el servidor.
 - **Del motor de la cámara:** `camera.status` lo envía el motor, que es una página de la extensión: llega directo al panel lateral (y al worker, que solo lo usa para abrir la página del permiso de cámara). La mirada y el rostro no viajan como mensajes: van del motor a `camera.js` por una conexión propia de la cámara, descrita en `extension/camera/README.md`.
 
 Solo participa la pestaña evaluada. Los content scripts se cargan en todas las pestañas, pero cada uno pregunta su id con `tab.identify` y solo arranca sus módulos si coincide con `tab_id`.
@@ -45,6 +45,7 @@ Solo participa la pestaña evaluada. Los content scripts se cargan en todas las 
 | `session.closed` | Worker al panel; pestaña al worker | Al panel, `{ "closing": true }`; al worker, `{ "flushed": true }` (`false` si algún lote quedó para reintentar) | La pestaña responde después de detener sus módulos y vaciar su acumulador; el worker responde después de poner el cierre en la cola |
 | `screen_capture.request` | Worker | `{ "capture_id", "file_path" }` | Cuando el servidor guardó la captura |
 | `tab.identify` | Worker | `{ "tab_id" }` | De inmediato |
+| `frame.masks` | `frames.js` | `{ "viewport_width", "masks" }` | De inmediato, con las zonas medidas en ese momento |
 
 Si el receptor falla, la promesa se rechaza con su mensaje de error.
 
@@ -80,6 +81,8 @@ Solo el panel lateral lo escribe: `UX.session.start` al iniciar la sesión, `upd
 | `calibration.result` | `calibration.js` | Panel lateral | `error_px`, `error_deg`, `accepted` |
 | `camera.status` | Motor de la cámara | Panel lateral | `status` |
 | `screen_capture.request` | Panel lateral | Service worker | `study_id`, `screen` |
+| `frame.request` | `frames.js` | Service worker | `viewport_width`, `masks` |
+| `frame.masks` | Service worker | `frames.js` | — |
 | `batch` | Content scripts, panel lateral | Service worker | `session_id`, `type`, `records` |
 | `tab.identify` | Content scripts | Service worker | — |
 
@@ -214,6 +217,26 @@ El evaluador pide una captura de pantalla de referencia para los mapas de calor.
   "payload": { "study_id": 2, "screen": { "url": "https://shop.local/cart", "title": "Carrito" } }
 }
 ```
+
+### `frame.request`
+
+La pestaña evaluada pide una captura de lo que se ve en ese momento, para la reproducción de la sesión. La envía `content/frames.js` después de un cambio de pantalla, un clic, un scroll, una escritura o la salida de un campo, como máximo una por segundo. El worker la atiende solo si viene de la pestaña evaluada y esa pestaña es la activa de su ventana: captura la parte visible como JPEG, vuelve a pedir las zonas con `frame.masks`, pinta un rectángulo gris sobre cada zona de las dos mediciones y la envía al servidor (`POST /sessions/{id}/frames`), sin pasar por la cola. Las dos mediciones cubren un cambio de la página entre el pedido y la captura. Si algo falla (también la segunda medición), la captura no se envía: la siguiente la reemplaza. No responde.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `viewport_width` | number | Ancho de la ventana en píxeles CSS, para pasar las zonas a píxeles de la imagen |
+| `masks` | array | Zonas que se tapan, en píxeles CSS de la ventana: `{ "x", "y", "w", "h" }`. Son los campos donde se escribe que el estudio no declaró en `recorded_fields`, y siempre las contraseñas y los datos de tarjeta |
+
+```json
+{
+  "type": "frame.request",
+  "payload": { "viewport_width": 1200, "masks": [{ "x": 400, "y": 300, "w": 280, "h": 32 }] }
+}
+```
+
+### `frame.masks`
+
+El worker pide a la pestaña evaluada las zonas que se tapan, justo después de capturarla. `content/frames.js` responde con las zonas medidas en ese momento, con la forma de `frame.request` (`{ "viewport_width", "masks" }`). Sin datos.
 
 ### `batch`
 

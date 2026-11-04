@@ -39,6 +39,7 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
     ),
     "gaze.invalid.valid-sample-without-zone.json": (("zone",), "None is not one of"),
     "new-capture.invalid.not-a-data-url.json": (("image",), "does not match"),
+    "new-frame.invalid.png-image.json": (("image",), "does not match"),
     "new-session.invalid.participant-name.json": (("participant_id",), "does not match"),
     "reference.invalid.screen-change-with-element.json": (
         ("steps", 1, "element"),

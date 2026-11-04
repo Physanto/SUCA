@@ -22,6 +22,7 @@ from typing import Any, Protocol
 from shared import db
 
 CAPTURES_FOLDER = "captures"
+FRAMES_FOLDER = "frames"
 """Carpeta de las capturas de pantalla, dentro de la carpeta de datos."""
 
 
@@ -140,7 +141,17 @@ class CaptureStore(Protocol):
         ...
 
 
-class Repository(StudyReader, SessionStore, BatchWriter, ReferenceStore, CaptureStore, Protocol):
+class FrameStore(Protocol):
+    """Guardado de las capturas de una sesión."""
+
+    def add_frame(self, *, session_id: int, image: bytes, t: float) -> tuple[int, str]:
+        """Guarda la imagen JPEG en disco, registra la captura y devuelve su id y su ruta."""
+        ...
+
+
+class Repository(
+    StudyReader, SessionStore, BatchWriter, ReferenceStore, CaptureStore, FrameStore, Protocol
+):
     """Todo lo que ofrece el repositorio del servidor.
 
     Solo lo usan los endpoints, para entregar a cada servicio la interfaz que
@@ -352,20 +363,42 @@ class SqliteRepository:
     def add_capture(
         self, *, study_id: int, screen: Mapping[str, Any], image: bytes, extension: str, t: float
     ) -> tuple[int, str]:
-        """Guarda la imagen en disco, registra la captura y devuelve su id y su ruta.
+        """Guarda la imagen en disco, registra la captura y devuelve su id y su ruta."""
+        file_path = PurePosixPath(CAPTURES_FOLDER, str(study_id), f"{uuid.uuid4().hex}.{extension}")
+        return self._store_image(
+            file_path,
+            image,
+            "INSERT INTO screen_capture (study_id, screen, file_path, t) VALUES (?, ?, ?, ?)",
+            (study_id, to_json(screen), str(file_path), t),
+        )
+
+    def add_frame(self, *, session_id: int, image: bytes, t: float) -> tuple[int, str]:
+        """Guarda la imagen JPEG en disco, registra la captura y devuelve su id y su ruta.
+
+        Las capturas de una sesión van juntas en ``frames/<sesión>/``, para borrarlas
+        con la carpeta si el participante se retira.
+        """
+        file_path = PurePosixPath(FRAMES_FOLDER, str(session_id), f"{uuid.uuid4().hex}.jpg")
+        return self._store_image(
+            file_path,
+            image,
+            "INSERT INTO session_frame (session_id, t, file_path) VALUES (?, ?, ?)",
+            (session_id, t, str(file_path)),
+        )
+
+    def _store_image(
+        self, file_path: PurePosixPath, image: bytes, insert: str, values: tuple[Any, ...]
+    ) -> tuple[int, str]:
+        """Escribe la imagen en ``file_path`` y su fila con ``insert``.
 
         El nombre del archivo lo genera el servidor; nunca sale de la petición.
         La ruta registrada es relativa a la carpeta de datos, con ``/``.
         """
-        file_path = PurePosixPath(CAPTURES_FOLDER, str(study_id), f"{uuid.uuid4().hex}.{extension}")
         target = self.data_dir.joinpath(*file_path.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(image)
         try:
-            cursor = self.connection.execute(
-                "INSERT INTO screen_capture (study_id, screen, file_path, t) VALUES (?, ?, ?, ?)",
-                (study_id, to_json(screen), str(file_path), t),
-            )
+            cursor = self.connection.execute(insert, values)
         except BaseException:
             # Sin fila no hay captura: no se deja un archivo huérfano.
             target.unlink(missing_ok=True)
