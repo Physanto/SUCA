@@ -236,9 +236,10 @@ const CAPTURE_CONFIG = { mousemove_hz: 50, scroll_hz: 10, click_response_wait_ms
  */
 function startCapture(
   session = { task_id: 3 },
-  { config = CAPTURE_CONFIG, fakeClock = false, liveSession = null } = {},
+  { config = CAPTURE_CONFIG, fakeClock = false, liveSession = null, title = 'Carrito', settleInitialScreen = true } = {},
 ) {
   const document = createFakeDocument();
+  document.title = title;
   globalThis.document = document;
   globalThis.location = { href: 'https://shop.local/cart' };
   const pageListeners = new Map();
@@ -268,6 +269,13 @@ function startCapture(
       config: { capture: config },
       contracts: UX.contracts,
     });
+    // La pantalla inicial espera hasta 500 ms el título de la página; en las pruebas el
+    // título no cambia, así que se registra al vencer la espera. El reloj vuelve a 0
+    // para que los tiempos de cada prueba no dependan de esa espera.
+    if (settleInitialScreen) {
+      timers.advanceSync(500);
+      timers.rewind(500);
+    }
   } finally {
     globalThis.setTimeout = real.setTimeout;
     globalThis.clearTimeout = real.clearTimeout;
@@ -1717,6 +1725,58 @@ test('records after at most 500 ms when the title never changes, keeping the det
   assert.deepEqual(screens(added), [{ url: 'https://shop.local/otra', title: 'Carrito' }]);
   assert.equal(added[0].record.t, 250);
   assert.equal(added[0].at, 750);
+});
+
+test('waits for the title of a page that just loaded before recording its first screen, with the start time', async () => {
+  // Una aplicación de una sola página arranca con el título del HTML y pone el suyo después.
+  const { document, added, timers } = startCapture(
+    { task_id: 2 },
+    { fakeClock: true, title: 'Ceiba', settleInitialScreen: false },
+  );
+
+  assert.deepEqual(screens(added), []);
+  await timers.advance(300);
+  document.title = 'Inicio · Ceiba';
+  await timers.advance(50);
+  registered.stop();
+
+  assert.deepEqual(screens(added), [{ url: 'https://shop.local/cart', title: 'Inicio · Ceiba' }]);
+  assert.equal(added[0].record.t, 0);
+  assert.equal(added[0].record.task_id, 2);
+});
+
+test('events take the title of the recorded screen, never the one of the previous screen', async () => {
+  const { document, added, timers, click } = startCapture(undefined, { fakeClock: true });
+  const button = el('button', { id: 'btn-pay' }, { text: 'Ir a pagar' });
+
+  // La dirección cambia y el título todavía es el de la pantalla anterior.
+  navigateTo(document, 'https://shop.local/checkout');
+  await timers.advance(10);
+  click(button);
+  await timers.advance(100);
+  document.title = 'Pago';
+  await timers.advance(100);
+  click(button);
+  // Cambia el título sin cambiar la dirección: no hay pantalla nueva, y los eventos
+  // siguen con el título de la pantalla registrada.
+  document.title = 'Pago · paso 2';
+  await timers.advance(100);
+  click(button);
+  registered.stop();
+
+  const records = added.map((entry) => entry.record).filter((record) => ['click', 'screen_change'].includes(record.type));
+  assert.deepEqual(
+    records.map((record) => [record.type, record.screen.url, record.screen.title]),
+    [
+      ['click', 'https://shop.local/checkout', ''],
+      ['screen_change', 'https://shop.local/checkout', 'Pago'],
+      ['click', 'https://shop.local/checkout', 'Pago'],
+      ['click', 'https://shop.local/checkout', 'Pago'],
+    ],
+  );
+  // El clic detectó el cambio antes que la revisión periódica: la pantalla empieza con él.
+  assert.equal(records[1].t, 10);
+  assert.equal(records[0].t, 10);
 });
 
 test('records the older pending screen when a new address arrives, in order and with its own address', async () => {

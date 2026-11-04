@@ -143,6 +143,34 @@ function createFakeTimers() {
     },
     now: () => now,
     pending: () => timers.size,
+    /** Como `advance`, pero sin esperar promesas: para temporizadores cuyo efecto es inmediato. */
+    advanceSync(ms) {
+      const target = now + ms;
+      for (;;) {
+        const due = [...timers.entries()]
+          .filter(([, timer]) => timer.at <= target)
+          .sort((a, b) => a[1].at - b[1].at)[0];
+        if (!due) {
+          break;
+        }
+        const [id, timer] = due;
+        timers.delete(id);
+        now = timer.at;
+        timer.callback();
+      }
+      now = target;
+    },
+    /**
+     * Retrocede el reloj y los temporizadores pendientes, como si lo ya ocurrido
+     * hubiera pasado antes del momento 0. Así una espera de arranque no corre los
+     * tiempos que comprueban las pruebas.
+     */
+    rewind(ms) {
+      now -= ms;
+      for (const timer of timers.values()) {
+        timer.at -= ms;
+      }
+    },
     /** Avanza el reloj y ejecuta, en orden, los temporizadores que vencen. */
     async advance(ms) {
       const target = now + ms;

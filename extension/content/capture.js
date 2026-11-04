@@ -354,10 +354,11 @@
    * @param {string} type - Tipo de evento.
    * @param {object} fields - Campos propios del tipo.
    * @param {number|null} [taskId] - Tarea del momento del hecho; por omisión, la activa ahora.
-   * @param {{url: string, title: string}} [screen] - Pantalla del registro; por omisión, la actual.
+   * @param {{url: string, title: string}} [screen] - Pantalla del registro; por omisión, la de
+   *   `eventScreen`.
    * @returns {void}
    */
-  function record(t, type, fields, taskId = activeTask(), screen = currentScreen()) {
+  function record(t, type, fields, taskId = activeTask(), screen = eventScreen()) {
     ctx.batcher.add('events', { t, type, ...fields, screen, task_id: taskId });
   }
 
@@ -376,9 +377,30 @@
     return { url, title: url === href ? title : '' };
   }
 
-  /** Pantalla en la que está la página ahora. */
+  /** Pantalla en la que está la página ahora, con el título vivo del documento. */
   function currentScreen() {
     return screenOf(root.location.href, root.document.title);
+  }
+
+  /**
+   * Pantalla de un evento que no es un cambio de pantalla: la URL actual con el
+   * título de la pantalla ya registrada.
+   *
+   * En una aplicación de una sola página la URL cambia antes que el título, y la
+   * dirección se revisa cada `SCREEN_POLL_MS`. Con el título vivo, un evento justo
+   * después de navegar llevaría la URL nueva con el título de la pantalla anterior,
+   * y el análisis vería dos títulos en la misma URL (dos pantallas donde hay una).
+   * Por eso, si la dirección cambió, el cambio se detecta ya, antes del evento, y
+   * mientras la pantalla nueva espera su título el evento va con el título vacío.
+   *
+   * @returns {{url: string, title: string}} Pantalla para el registro.
+   */
+  function eventScreen() {
+    const href = root.location.href;
+    if (lastHref !== null && href !== lastHref) {
+      checkScreen();
+    }
+    return screenOf(href, pendingScreen === null && lastTitle !== null ? lastTitle : '');
   }
 
   /** Decodifica el nombre de un parámetro; si está mal codificado, lo deja como está. */
@@ -999,10 +1021,13 @@
       root.addEventListener('popstate', onHistoryChange);
       root.addEventListener('hashchange', onHistoryChange);
       // Cada carga de página inicia la captura de nuevo, así que esta es la pantalla de la carga
-      // (o la primera de la sesión, si se inició sobre una página ya cargada).
+      // (o la primera de la sesión, si se inició sobre una página ya cargada). Una aplicación
+      // de una sola página pone su título un instante después de cargar (antes queda el del
+      // HTML): se espera como en cualquier otro cambio, con la hora de ahora.
       lastHref = root.location.href;
       lastTitle = root.document.title;
-      recordScreen();
+      pendingScreen = { t: ctx.clock.now(), taskId: activeTask(), href: lastHref, title: lastTitle, waited: 0 };
+      settleTitle();
       screenTimer = timers.setTimeout(pollScreen, SCREEN_POLL_MS);
       // Solo se observa un atributo, para que el costo en páginas con muchos cambios sea mínimo.
       ariaObserver = new root.MutationObserver(onAriaMutations);
