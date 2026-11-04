@@ -8,8 +8,9 @@
     "t": { "description": "Momento en que terminó la validación.", "$ref": "../common.json#/$defs/timestamp" },
     "type": { "description": "Calibración inicial o final.", "$ref": "../enums.json#/$defs/calibration_type" },
     "error_px": { "description": "Error medio de validación en píxeles CSS.", "type": "number", "minimum": 0 },
-    "error_deg": { "description": "Error medio de validación en grados de ángulo visual, a la distancia de referencia.", "type": "number", "minimum": 0 },
+    "error_deg": { "description": "Error medio de validación en grados de ángulo visual, a la distancia medida (viewing_distance_cm) o, si no se midió, a la distancia de la configuración (camera.viewing_distance_cm).", "type": "number", "minimum": 0 },
     "accepted": { "description": "Si el error quedó por debajo del umbral y se aceptó la calibración.", "type": "boolean" },
+    "viewing_distance_cm": { "description": "Distancia del participante a la cámara durante la validación, en centímetros: la mediana de la que estima MediaPipe en esos cuadros, con la corrección de la webcam (camera.distance_scale). Con ella se calcula error_deg. null si no se pudo medir. Opcional: los lotes de versiones anteriores de los contratos no la traen.", "type": ["number", "null"], "exclusiveMinimum": 0 },
     "camera_delay_ms": { "description": "Retraso de la cámara respecto de los eventos, en milisegundos: desde que el sensor capta la imagen hasta la marca de tiempo de la muestra. No incluye el tiempo de análisis del cuadro, porque la marca de tiempo se toma antes de analizarlo. null si no se midió.", "type": ["number", "null"], "minimum": 0 }
   },
   "required": ["t", "type", "error_px", "error_deg", "accepted"],

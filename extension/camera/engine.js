@@ -20,7 +20,7 @@
  * Mensajes por la conexión (forma en `camera/README.md`):
  * - Al conectar: `hello` con el estado, si hay calibración y el momento en que
  *   arrancó este motor (`started_at`).
- * - Del motor a la pestaña: `status`, `frame`, `gap` y `reply`.
+ * - Del motor a la pestaña: `status`, `frame` (con el encuadre del rostro), `gap` y `reply`.
  * - De la pestaña al motor: `request` con `action` y un `id` que la respuesta repite.
  */
 
@@ -205,8 +205,8 @@
        * @param {object} frame - Cuadro.
        * @param {number} frame.t - Momento en que llegó el cuadro (reloj común).
        * @param {number} frame.processedAt - Momento en que terminó su análisis.
-       * @param {({values: object, head_yaw: number, head_pitch: number}|null)} frame.face -
-       *   Valores del rostro, o `null` si no se detectó.
+       * @param {({values: object, head_yaw: number, head_pitch: number, framing: object}|null)} frame.face -
+       *   Valores del rostro y su encuadre (`faceFraming`), o `null` si no se detectó.
        * @param {(number[]|null)} frame.features - Características de los ojos, o `null`.
        * @returns {void}
        */
@@ -235,6 +235,7 @@
           values: face ? face.values : null,
           head_yaw: face ? face.head_yaw : null,
           head_pitch: face ? face.head_pitch : null,
+          framing: face && face.framing ? face.framing : null,
           gaze,
         });
       },

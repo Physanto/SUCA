@@ -88,12 +88,33 @@ El modelo se entrena **solo** en la calibración: los clics de la sesión no lo 
 El panel lateral envía `calibration.request` con `type`:
 
 - **`initial`:** pantalla de instrucciones → 9 puntos (en el 10 %, 50 % y 90 % del ancho y del alto, en orden al azar). El participante mira cada uno y hace clic; se usan los cuadros desde 400 ms antes hasta 1000 ms después del clic, mientras el punto se achica. Luego, 5 puntos de validación distintos (centro y 30 %/70 %), sin clic: se espera 700 ms y se mide durante 1000 ms la distancia entre la mirada estimada y el punto.
-- **`final`:** solo la validación, con el modelo de la calibración inicial, para medir cuánto se degradó.
+- **`final`:** solo la validación, con el modelo de la calibración inicial, para medir cuánto se degradó. No comprueba el encuadre: debe medir la degradación con la postura que la persona tenga, sin corregirla.
 
 Resultado:
 - `error_px`: distancia media entre la mirada y el punto, en píxeles CSS, sobre todas las muestras de la validación.
-- `error_deg`: ese error en grados de ángulo visual: `atan(error_px / css_px_per_cm / viewing_distance_cm)`.
+- `viewing_distance_cm`: mediana de la distancia a la cámara durante la validación (ver "Encuadre"); `null` si no se pudo medir.
+- `error_deg`: ese error en grados de ángulo visual: `atan(error_px / css_px_per_cm / distancia)`, con la distancia medida o, si no hay, `viewing_distance_cm` de la configuración. Así cada sesión usa la distancia real de su participante.
 - `accepted`: `error_deg ≤ calibration_max_error_deg`.
+
+## Encuadre
+
+Antes de la calibración **inicial**, la pantalla de instrucciones comprueba que la persona esté bien ubicada, sin mostrar el video: una figura (cabeza y hombros) se mueve con ella como en un espejo, sobre un óvalo que marca dónde debería verse la cara (si está fuera del rango de distancias, el óvalo tiene el tamaño que tendría en el borde más cercano del rango). La figura es verde cuando todo está bien y naranja si no, y una lista dice qué corregir:
+
+| Comprobación | Criterio | Indicación si falla |
+|---|---|---|
+| Rostro | Visible en al menos el 80 % de los cuadros del último segundo | "No se ve tu cara…" |
+| Distancia | Entre `min_distance_cm` y `max_distance_cm` (de 35 a 75 cm): cada persona se sienta donde le es cómodo, porque la calibración mide su distancia | "Estás muy cerca / muy lejos (unos N cm)" |
+| Centrado horizontal | El centro de la cara a menos del 15 % del ancho de la imagen del centro | "Muévete un poco hacia tu izquierda / derecha" |
+| Centrado vertical | A menos del 20 % del alto | "Inclina la cámara un poco hacia arriba / abajo (en un portátil, la pantalla hacia atrás / adelante)" |
+| De frente | Cabeza girada menos de 15° a un lado | "Gira la cabeza hacia la pantalla" |
+
+La **inclinación vertical de la cabeza no se exige**: en un portátil la cámara está en el borde de la pantalla y la persona mira un poco hacia abajo. Lo que importa es que no cambie de postura después de calibrar.
+
+**Comenzar** se habilita solo con todo bien. **Comenzar de todos modos** deja seguir al evaluador si la estimación falla (por ejemplo, con una webcam sin ajustar o con poca luz); la distancia queda igual registrada en la calibración.
+
+**Cómo se calcula.** En cada cuadro, el motor toma los puntos del rostro de MediaPipe (centro y ancho de la cara en la imagen) y la posición de la cabeza (`tz`, en centímetros). MediaPipe supone un ángulo de visión típico de webcam, así que la distancia de una cámara concreta puede salir corrida. Por eso se corrige con `camera.distance_scale`.
+
+**Ajuste de la distancia, una vez por cámara.** Con `distance_scale` en 1.0, siéntate con un metro a una distancia conocida de la pantalla (por ejemplo 60 cm, de los ojos a la cámara), pide una calibración inicial y mira la distancia que muestra la pantalla de instrucciones (por ejemplo, "unos 48 cm"). Pon en `config/shared.json` `distance_scale` = distancia medida ÷ distancia mostrada (60 ÷ 48 = 1.25), regenera la configuración (`python -m scripts.generate_config`) y recarga la extensión. Repítelo si cambias de webcam. La calibración de la mirada, en cambio, se hace en **cada sesión**, porque depende de la persona y de su postura.
 
 Se envía `calibration.result` al panel y el registro `calibration` al servidor. Si no se acepta, la capa ofrece **Repetir** o **Continuar**, y cada intento queda registrado. Si la cámara todavía está arrancando (el motor carga MediaPipe y su modelo), la capa muestra "Preparando la cámara…" y espera hasta 20 s. **No hay resultado** si la cámara no está activa, si no se detectó el rostro o si se cancela con **Cancelar** o con Escape; la capa lo explica, y el panel ve el estado de la cámara por `camera.status`.
 
@@ -106,8 +127,10 @@ Durante la calibración la mirada no se registra, y los clics, el movimiento del
 | `gaze_hz` | 30 | Frecuencia máxima de análisis y de muestras de mirada |
 | `face_hz` | 15 | Frecuencia de muestras faciales |
 | `video_width`, `video_height` | 640, 480 | Resolución que se pide a la webcam |
-| `viewing_distance_cm` | 60 | Distancia del participante a la pantalla |
-| `css_px_per_cm` | 37.8 | Píxeles CSS por centímetro de la pantalla (37.8 = 96 por pulgada). Para la pantalla del laboratorio: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm |
+| `viewing_distance_cm` | 60 | Distancia de referencia: la que usa `error_deg` si la calibración no pudo medir la del participante |
+| `css_px_per_cm` | 55.7 | Píxeles CSS por centímetro de la pantalla. Se mide una vez por pantalla: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm. 55.7 es el portátil del laboratorio (1920 px en 34,5 cm); 37.8 sería una pantalla de 96 píxeles por pulgada |
+| `distance_scale` | 1.24 | Corrección de la distancia a la cámara, propia de cada webcam (ver "Encuadre"). 1.24 es la webcam del portátil del laboratorio (52 cm medidos, 42 estimados); 1.0 sin ajustar |
+| `min_distance_cm`, `max_distance_cm` | 35, 75 | Distancias aceptables a la cámara antes de calibrar. Provisionales: se ajustan en el piloto |
 | `calibration_max_error_deg` | 5.0 | Umbral para aceptar una calibración. **Provisional:** se ajusta en el piloto |
 
 ## Conexión entre la pestaña y el motor
@@ -118,7 +141,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 |---|---|
 | `hello` | `status`, `calibrated` y `started_at`, el momento en que arrancó ese motor (al conectar) |
 | `status` | `status`: `active`, `no_permission` o `error` |
-| `frame` | `t`, `face_detected`, `values`, `head_yaw`, `head_pitch`, `gaze` (`{x, y}` o `null`) |
+| `frame` | `t`, `face_detected`, `values`, `head_yaw`, `head_pitch`, `framing` (`{x, y, width, distance_cm}` o `null`, ver "Encuadre"), `gaze` (`{x, y}` o `null`) |
 | `gap` | `t`, `t_end`, `reason` |
 | `reply` | `id` del pedido, `ok` y los datos de la respuesta, o `error` |
 
@@ -151,17 +174,18 @@ Cada pedido espera la respuesta hasta 3 s. El `flush` del cierre espera solo 1,5
 1. Comprueba WebGL en `chrome://gpu` (paso 4 de "Preparación de la computadora"). Carga la extensión (si ya estaba cargada, **recárgala** en `chrome://extensions`) y da el permiso de cámara en la página que se abre al instalar.
 2. Inicia el servidor y la app de prueba, y empieza una sesión desde el panel.
 3. En `chrome://extensions` → SUCA → **Inspeccionar vistas: camera/engine.html**, en la consola del motor no debe haber errores. Mientras hay sesión, Chrome muestra el indicador de cámara en uso.
-4. Pide una calibración inicial desde el panel y complétala. Anota `error_px`, `error_deg` y si se aceptó.
-5. **Frecuencia, retraso y CPU:** en la consola del motor, el estado (`hz`, `delay_ms`, `delegate`, `benchmark_ms`, `face_ratio`) se lee con:
+4. **Encuadre:** pide una calibración inicial desde el panel. Acércate, aléjate, muévete a los lados y gira la cabeza: la figura y las indicaciones deben seguirte, y **Comenzar** solo se habilita con la figura verde. Con un metro, comprueba la distancia que muestra (y ajusta `distance_scale` si hace falta, ver "Encuadre").
+5. Completa la calibración. Anota `error_px`, `error_deg`, `viewing_distance_cm` y si se aceptó.
+6. **Frecuencia, retraso y CPU:** en la consola del motor, el estado (`hz`, `delay_ms`, `delegate`, `benchmark_ms`, `face_ratio`) se lee con:
    ```javascript
    const p = chrome.runtime.connect({ name: 'camera' });
    p.onMessage.addListener((m) => m.kind === 'reply' && console.log(m));
    p.postMessage({ kind: 'request', action: 'stats', id: 1 });
    ```
    (esta conexión cuenta como una pestaña más; ciérrala con `p.disconnect()`). La CPU se mira en el **Administrador de tareas de Chrome** (Shift+Esc), en la fila del documento offscreen y en la de la pestaña.
-6. **Orientación:** gira la cabeza hacia tu derecha: `head_yaw` debe ser positivo. Mira hacia arriba: `head_pitch` debe ser positivo.
-7. **Navegación:** navega a otra página con recarga completa (no dentro de la aplicación de una sola página): debe quedar un `camera_gap` con `reason: navigation` y la mirada debe seguir sin calibrar de nuevo.
-8. **Sin video:** en DevTools de la pestaña evaluada → **Network**, durante la sesión no debe haber más que los mensajes de la extensión; en el servidor, los lotes `gaze` y `face` solo traen números.
-9. **Capa de calibración:** durante una calibración, mueve el cursor, usa la rueda y las flechas: la página de abajo no se desplaza y en la base no quedan `mousemove` ni `scroll` de ese tiempo. Pide una calibración apenas empieza la sesión: la capa debe mostrar "Preparando la cámara…" y seguir sola cuando la cámara esté activa.
-10. **Motor reemplazado:** con la sesión en curso y la calibración hecha, en la consola del service worker (`chrome://extensions` → SUCA → **Inspeccionar vistas: service worker**) ejecuta `chrome.offscreen.closeDocument()`, sin recargar la pestaña. En uno o dos segundos debe aparecer de nuevo `camera/engine.html` en las vistas; en la base debe quedar un `camera_gap` con `reason: error`, y la mirada debe pasar a `valid: false` hasta calibrar otra vez.
-11. Cierra la sesión: el indicador de cámara de Chrome se apaga.
+7. **Orientación:** gira la cabeza hacia tu derecha: `head_yaw` debe ser positivo. Mira hacia arriba: `head_pitch` debe ser positivo.
+8. **Navegación:** navega a otra página con recarga completa (no dentro de la aplicación de una sola página): debe quedar un `camera_gap` con `reason: navigation` y la mirada debe seguir sin calibrar de nuevo.
+9. **Sin video:** en DevTools de la pestaña evaluada → **Network**, durante la sesión no debe haber más que los mensajes de la extensión; en el servidor, los lotes `gaze` y `face` solo traen números.
+10. **Capa de calibración:** durante una calibración, mueve el cursor, usa la rueda y las flechas: la página de abajo no se desplaza y en la base no quedan `mousemove` ni `scroll` de ese tiempo. Pide una calibración apenas empieza la sesión: la capa debe mostrar "Preparando la cámara…" y seguir sola cuando la cámara esté activa.
+11. **Motor reemplazado:** con la sesión en curso y la calibración hecha, en la consola del service worker (`chrome://extensions` → SUCA → **Inspeccionar vistas: service worker**) ejecuta `chrome.offscreen.closeDocument()`, sin recargar la pestaña. En uno o dos segundos debe aparecer de nuevo `camera/engine.html` en las vistas; en la base debe quedar un `camera_gap` con `reason: error`, y la mirada debe pasar a `valid: false` hasta calibrar otra vez.
+12. Cierra la sesión: el indicador de cámara de Chrome se apaga.

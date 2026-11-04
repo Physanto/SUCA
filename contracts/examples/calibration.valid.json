@@ -4,5 +4,6 @@
   "error_px": 112.5,
   "error_deg": 2.8,
   "accepted": true,
+  "viewing_distance_cm": 58.4,
   "camera_delay_ms": null
 }

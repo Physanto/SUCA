@@ -237,3 +237,16 @@ test('reads head pitch with positive values upward, in either matrix layout', ()
   }
   assert.throws(() => headPose([1, 2, 3]), /4x4/);
 });
+
+test('frames the face: its center and width in the image, and its distance corrected for the webcam', () => {
+  const { faceFraming } = UX.faceFeatures;
+  const landmarks = [
+    { x: 0.4, y: 0.3 },
+    { x: 0.6, y: 0.5 },
+    { x: 0.5, y: 0.6 },
+  ];
+
+  assert.deepEqual(faceFraming(landmarks, { tz: -48 }), { x: 0.5, y: 0.45, width: 0.2, distance_cm: 48 });
+  // Con la escala de la webcam (60 cm medidos con el metro, 48 estimados): 60 cm.
+  assert.equal(faceFraming(landmarks, { tz: -48 }, 1.25).distance_cm, 60);
+});

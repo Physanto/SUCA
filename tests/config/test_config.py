@@ -52,12 +52,28 @@ def test_default_configuration_loads(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_camera_numbers_accept_integers_and_decimals(tmp_path: Path) -> None:
     """Las medidas de la cámara admiten 60 o 37.8 y siempre quedan como float."""
-    config = load_config(write_config(tmp_path, camera__viewing_distance_cm=60))
+    config = load_config(
+        write_config(tmp_path, camera__viewing_distance_cm=60, camera__css_px_per_cm=37.8)
+    )
 
     assert config.camera.viewing_distance_cm == 60.0
     assert isinstance(config.camera.viewing_distance_cm, float)
     assert config.camera.css_px_per_cm == 37.8
     assert config.camera.calibration_max_error_deg == 5.0
+
+
+def test_the_accepted_distance_range_cannot_be_empty(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="min_distance_cm must be less than"):
+        load_config(write_config(tmp_path, camera__min_distance_cm=80, camera__max_distance_cm=75))
+
+
+def test_distance_scale_must_be_a_positive_number(tmp_path: Path) -> None:
+    """La corrección de distancia de la webcam: 1 sin ajustar; nunca 0 ni negativa."""
+    config = load_config(write_config(tmp_path, camera__distance_scale=1))
+
+    assert config.camera.distance_scale == 1.0
+    with pytest.raises(ConfigError, match="camera.distance_scale: must be positive"):
+        load_config(write_config(tmp_path, camera__distance_scale=0))
 
 
 def test_relative_paths_resolve_from_repository_root() -> None:
