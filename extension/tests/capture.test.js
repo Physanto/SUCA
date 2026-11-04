@@ -62,8 +62,14 @@ class FakeElement {
     return this.hasAttribute('contenteditable') && this.getAttribute('contenteditable') !== 'false';
   }
 
-  /** Solo entiende los selectores que usa la captura: zonas editables, cuadros de texto por rol y `textarea`. */
+  /**
+   * Solo entiende los selectores que usa la captura (zonas editables, cuadros de
+   * texto por rol y `textarea`) y los `#id` de los campos declarados por el estudio.
+   */
   matches(selector) {
+    if (/^#[\w-]+$/.test(selector)) {
+      return this.id === selector.slice(1);
+    }
     const matchers = {
       [EDITABLE]: (node) => node.isEditable(),
       [TEXT_INPUT]: (node) => TEXT_INPUT_ROLES.includes(node.getAttribute('role')),
@@ -811,32 +817,104 @@ test('records focus_in and focus_out only for form fields, describing the field 
   assert.equal(added[2].record.element.tag, 'div');
 });
 
-test('never reads or records what the participant typed in any kind of field', () => {
-  const fields = [
-    secretField('input', { type: 'text' }),
+test('records only how much text an undeclared field has, and never reads secret fields', () => {
+  const typed = (tag, attributes = {}) => {
+    const field = el(tag, attributes);
+    field.value = 'CANARIO';
+    return field;
+  };
+  const text = typed('input', { type: 'text', id: 'name' });
+  const area = typed('textarea', { id: 'notes' });
+  const secrets = [
     secretField('input', { type: 'password', id: 'password' }),
-    secretField('textarea'),
+    secretField('input', { type: 'text', autocomplete: 'cc-number' }),
+    secretField('input', { type: 'text', autocomplete: 'one-time-code' }),
     secretField('select'),
-    secretField('div', { contenteditable: 'true' }),
+    secretField('input', { type: 'checkbox' }),
   ];
   const { document, added } = startCapture(undefined, { fakeClock: true });
 
-  for (const field of fields) {
+  for (const field of [text, area, ...secrets]) {
     document.dispatch(guardedEvent('focusin', field));
     document.dispatch(guardedEvent('input', field));
     document.dispatch(guardedEvent('focusout', field));
   }
   registered.stop();
 
-  assert.equal(added.length, 15);
-  assert.deepEqual(
-    [...new Set(added.map((entry) => entry.record.type))].sort(),
-    ['field_change', 'focus_in', 'focus_out'],
-  );
-  for (const { record } of added) {
-    assert.equal(record.element.text, null);
-    assert.deepEqual(record.data, {});
+  const changes = added.filter((entry) => entry.record.type === 'field_change').map((entry) => entry.record);
+  assert.equal(changes.length, 7);
+  assert.deepEqual(changes[0].data, { length: 7, deleted: 0 });
+  assert.deepEqual(changes[1].data, { length: 7, deleted: 0 });
+  changes.slice(2).forEach((record) => assert.deepEqual(record.data, {}));
+  assert.ok(!JSON.stringify(added).includes('CANARIO'));
+});
+
+test('records the text only of the fields the study declares', () => {
+  const fields = [{ name: 'search', selector: '#q' }, { name: 'pin', selector: '#pin' }];
+  const { document, added } = startCapture({ task_id: 3, recorded_fields: fields }, { fakeClock: true });
+  const search = el('input', { type: 'search', id: 'q' });
+  const name = el('input', { type: 'text', id: 'name' });
+  const pin = secretField('input', { type: 'password', id: 'pin' });
+  search.value = 'audifonos';
+  name.value = 'Ana';
+
+  for (const field of [search, name, pin]) {
+    document.dispatch(guardedEvent('input', field));
   }
+  registered.stop();
+
+  assert.deepEqual(
+    added.map((entry) => entry.record.data),
+    [{ length: 9, deleted: 0, field: 'search', text: 'audifonos' }, { length: 3, deleted: 0 }, {}],
+  );
+});
+
+test('counts the characters deleted since the last recorded change', async () => {
+  const { document, added, timers } = startCapture(undefined, { fakeClock: true });
+  const field = el('input', { type: 'text', id: 'name' });
+  field.value = 'Calle 10';
+  document.dispatch({ type: 'focusin', target: field });
+
+  field.value = 'Calle';
+  document.dispatch({ type: 'input', target: field });
+  field.value = 'Car';
+  await timers.advance(300);
+  document.dispatch({ type: 'input', target: field });
+  field.value = 'Carrera';
+  await timers.advance(300);
+  document.dispatch({ type: 'input', target: field });
+  await timers.advance(400);
+  registered.stop();
+
+  const changes = added.filter((entry) => entry.record.type === 'field_change');
+  assert.deepEqual(changes.map((entry) => entry.record.data), [
+    { length: 5, deleted: 3 },
+    { length: 7, deleted: 2 },
+  ]);
+  assert.equal(changes[1].record.t - changes[0].record.t, 1000);
+});
+
+test('the last change waiting for its turn is recorded on leaving the field, submitting or leaving the page', async () => {
+  const { document, added, timers, pageListeners } = startCapture(undefined, { fakeClock: true });
+  const changes = () => added.filter((entry) => entry.record.type === 'field_change');
+  const field = el('input', { type: 'search', id: 'q' });
+  field.value = 'a';
+
+  for (const leave of [
+    () => document.dispatch({ type: 'focusout', target: field }),
+    () => document.dispatch({ type: 'submit', target: el('form') }),
+    () => pageListeners.get('pagehide')({ type: 'pagehide' }),
+  ]) {
+    const before = changes().length;
+    await timers.advance(1000);
+    document.dispatch({ type: 'input', target: field });
+    field.value += 'b';
+    document.dispatch({ type: 'input', target: field });
+    leave();
+    assert.equal(changes().length, before + 2);
+    assert.equal(changes().at(-1).record.data.length, field.value.length);
+  }
+  registered.stop();
 });
 
 test('records at most one field_change per second for each field', async () => {
@@ -854,12 +932,15 @@ test('records at most one field_change per second for each field', async () => {
   await timers.advance(699);
   document.dispatch({ type: 'input', target: name });
   assert.equal(changes().length, 2);
+  // El cambio de 300 ms esperó su turno y se registra al cumplirse el segundo.
   await timers.advance(1);
+  assert.equal(changes().length, 3);
   document.dispatch({ type: 'input', target: name });
+  assert.equal(changes().length, 3);
+  // Al cerrar, el último cambio que esperaba se registra.
   registered.stop();
 
-  assert.equal(changes().length, 3);
-  assert.equal(changes()[2].record.element.id, 'name');
+  assert.deepEqual(changes().map((entry) => entry.record.element.id), ['name', 'email', 'name', 'name']);
 });
 
 test('records form_submit with the form as the element and no text from textareas', () => {
@@ -1548,10 +1629,15 @@ test('still records a screen change when only a redacted parameter changes', asy
 
 /** Un campo de cada clase, con su contenido y con un valor que no se debe poder leer. */
 function privacyFixture(canary) {
+  // Los campos de texto se pueden leer (para su longitud); el resto no.
   const guard = (node) =>
     Object.defineProperty(node, 'value', {
       get() {
-        throw new Error('the value of a field must never be read');
+        const readable = ['text', 'search', null].includes(node.getAttribute('type')) && node.tagName !== 'SELECT';
+        if (!readable) {
+          throw new Error(`the value of a ${node.tagName} ${node.getAttribute('type')} must never be read`);
+        }
+        return `${canary} valor`;
       },
     });
   const named = (tag, attributes, text) => guard(el(tag, attributes, { text: `${canary} ${text}` }));
@@ -1577,7 +1663,7 @@ function privacyFixture(canary) {
   };
 }
 
-test('no event type ever lets a typed value reach a record, whatever the field', async () => {
+test('no event type ever lets a typed value reach a record when the study declares no field', async () => {
   const canary = 'CANARIO-ESCRITO-731';
   const { form, fields, extras, page } = privacyFixture(canary);
   const { document, added, initial, click, timers, pageListeners } = startCapture(undefined, { fakeClock: true });

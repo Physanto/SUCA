@@ -161,7 +161,7 @@ test('creates the session for the active tab, saves the state and tells the tab'
     },
   });
   assert.deepEqual(world.areas.session.get('session'), {
-    session_id: 12, mode: 'free', study_id: 1, tab_id: 42, task_id: null,
+    session_id: 12, mode: 'free', study_id: 1, tab_id: 42, recorded_fields: [], task_id: null,
   });
   assert.deepEqual(calls[1], {
     send: 'session.started',
@@ -172,6 +172,18 @@ test('creates the session for the active tab, saves the state and tells the tab'
   assert.equal(state.tabStatus, 'capturing');
   assert.deepEqual(state.failedModules, ['camera']);
   assert.deepEqual(state.tab, { title: 'Página de prueba', url: 'http://127.0.0.1:8766/' });
+});
+
+test('the session keeps the fields whose text the study records', async () => {
+  const fields = [{ name: 'search', selector: '#q' }];
+  const { controller, session } = setup({
+    api: { listStudies: async () => [{ ...STUDIES[0], recorded_fields: fields }] },
+  });
+  await controller.init();
+
+  await controller.startSession(FORM);
+
+  assert.deepEqual(session.get().recorded_fields, fields);
 });
 
 test('keeps the session active when the tab does not answer yet', async () => {

@@ -46,7 +46,7 @@ Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de es
 
 ### Reproducción (`replay.py`, `replay-player.html`)
 
-**No vuelve a ejecutar la prueba**: lo escrito nunca se captura, la tienda no queda en el mismo estado y volver a pulsar haría las acciones de nuevo. Dibuja lo capturado en el tiempo en que pasó. `build_payload` arma los datos (tiempos en ms desde el inicio, coordenadas de la ventana) con las capturas como imágenes JPEG incrustadas; `player_html` los pone en `replay-player.html`, una página sin recursos externos que la página muestra con `st.iframe`.
+**No vuelve a ejecutar la prueba**: lo escrito solo se guarda en los campos que declara el estudio, la tienda no queda en el mismo estado y volver a pulsar haría las acciones de nuevo. Dibuja lo capturado en el tiempo en que pasó. `build_payload` arma los datos (tiempos en ms desde el inicio, coordenadas de la ventana) con las capturas como imágenes JPEG incrustadas; `player_html` los pone en `replay-player.html`, una página sin recursos externos que la página muestra con `st.iframe`.
 
 **Mirada en cada clic.** Casi siempre se mira lo que se pulsa: para cada clic se toma la mediana de la mirada válida entre 0,5 s antes y 0,1 s después, y se mide la distancia al clic. La página da la mediana (en píxeles y en grados, a la distancia medida en la calibración) y la fracción de clics con la mirada a menos de 100 px. Es una comprobación de que la mirada funciona, no una medida de precisión: la persona puede mirar a otro lado al pulsar.
 

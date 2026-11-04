@@ -524,11 +524,14 @@
               chrome_version: await environment.chromeVersion(),
             },
           });
+          const study = state.studies.find((item) => item.id === form.study_id);
           await session.start({
             session_id: created.session_id,
             mode: form.mode,
             study_id: form.study_id,
             tab_id: tab.id,
+            // La captura solo lee el texto de estos campos; un servidor anterior no los envía.
+            recorded_fields: (study && study.recorded_fields) || [],
           });
           setState({
             phase: PHASES.ACTIVE,

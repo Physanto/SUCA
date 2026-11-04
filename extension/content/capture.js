@@ -1,13 +1,15 @@
 /**
  * @file Captura de interacción (M1): registra lo que hace el participante en la
  * página evaluada (clics, cursor, scroll, selección, formularios y cambios de
- * pantalla), sin capturar nunca lo que escribe.
+ * pantalla). De lo que escribe solo registra cuánto texto tiene cada campo y
+ * cuánto borró; el texto, únicamente en los campos que el estudio declaró en
+ * `recorded_fields` (nunca en contraseñas ni datos de tarjeta).
  *
  * Por ahora registra los clics (`click`, `dblclick` y `contextmenu`) con el
  * descriptor definitivo del elemento, y el movimiento del cursor y el scroll
  * con una frecuencia máxima configurable, la longitud (nunca el contenido) del
- * texto seleccionado y los eventos de formulario (foco, cambio de campo y
- * envío, sin valores), los errores de validación, la respuesta de la página tras un
+ * texto seleccionado y los eventos de formulario (foco, cambio de campo con su
+ * longitud y envío), los errores de validación, la respuesta de la página tras un
  * clic y los cambios de pantalla.
  *
  * Mensajes:
@@ -38,6 +40,13 @@
   const SELECTION_WAIT_MS = 300;
   /** Tiempo mínimo, en milisegundos, entre dos `field_change` del mismo campo. */
   const FIELD_CHANGE_INTERVAL_MS = 1000;
+  /** Largo máximo del texto registrado de un campo declarado (el contrato no admite más). */
+  const FIELD_TEXT_MAX_LENGTH = 200;
+  /**
+   * Valores de `autocomplete` de campos cuyo contenido nunca se lee, ni siquiera su
+   * longitud: contraseñas, códigos de un solo uso y datos de tarjeta (`cc-*`).
+   */
+  const SECRET_AUTOCOMPLETE = /^(current-password|new-password|one-time-code|cc-.*)$/;
   /** Eventos de foco del navegador y el tipo de evento que se registra por cada uno. */
   const FOCUS_TYPES = { focusin: 'focus_in', focusout: 'focus_out' };
   /** Espera, en milisegundos, tras salir de un campo para ver si el sitio le mostró un error. */
@@ -555,8 +564,10 @@
     const waiting = [...pendingResponses];
     waiting.forEach((watch) => watch.finish(true));
     const hadScreen = pendingScreen !== null;
+    const hadChanges = pendingChanges.size > 0;
+    flushPendingChanges();
     flushPendingScreen();
-    if (waiting.length > 0 || hadScreen) {
+    if (waiting.length > 0 || hadScreen || hadChanges) {
       Promise.resolve(ctx.batcher.flush()).catch(() => {});
     }
   }
@@ -705,11 +716,121 @@
 
   /** Último `field_change` registrado de cada campo, para limitarlos a uno por segundo. */
   let lastChanges = new WeakMap();
+  /** Longitud conocida de cada campo y caracteres borrados que aún no se registraron. */
+  let fieldLengths = new WeakMap();
+  /** Cambios que esperan a que pase el segundo para registrarse, por campo. */
+  let pendingChanges = new Map();
+
+  /** Si en el campo se escribe texto: `input` de texto, `textarea` o zona editable. */
+  function isTextEntry(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'input') {
+      return TEXT_ENTRY_INPUT_TYPES.includes((element.getAttribute('type') || 'text').toLowerCase());
+    }
+    return tag === 'textarea' || (tag !== 'select' && isFormField(element));
+  }
+
+  /** Si el contenido del campo nunca se lee: contraseñas, códigos y datos de tarjeta. */
+  function isSecretField(element) {
+    if ((element.getAttribute('type') || '').toLowerCase() === 'password') {
+      return true;
+    }
+    const tokens = (element.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/);
+    return tokens.some((token) => SECRET_AUTOCOMPLETE.test(token));
+  }
+
+  /** Si se puede leer cuánto texto tiene el campo. */
+  function isMeasurable(element) {
+    return isTextEntry(element) && !isSecretField(element);
+  }
+
+  /** Texto actual de un campo medible. */
+  function fieldText(element) {
+    const tag = element.tagName.toLowerCase();
+    return String(tag === 'input' || tag === 'textarea' ? element.value : element.textContent || '');
+  }
+
+  /**
+   * Campo de `recorded_fields` del estudio que corresponde al elemento, o `null`.
+   * Un selector inválido se ignora: no se registra texto por error.
+   */
+  function declaredField(element) {
+    const state = ctx.session.get();
+    const fields = (state && state.recorded_fields) || [];
+    return (
+      fields.find((field) => {
+        try {
+          return element.matches(field.selector);
+        } catch (error) {
+          return false;
+        }
+      }) || null
+    );
+  }
+
+  /** Actualiza la longitud conocida del campo y acumula lo que se borró. */
+  function trackLength(element) {
+    const length = fieldText(element).length;
+    const known = fieldLengths.get(element);
+    if (known === undefined) {
+      fieldLengths.set(element, { length, deleted: 0 });
+      return;
+    }
+    known.deleted += Math.max(0, known.length - length);
+    known.length = length;
+  }
+
+  /**
+   * Datos de un `field_change`: longitud y borrados si el campo es medible, y el
+   * texto solo si el estudio lo declaró. Reinicia los borrados acumulados.
+   */
+  function fieldData(element) {
+    if (!isMeasurable(element)) {
+      return {};
+    }
+    const known = fieldLengths.get(element) || { length: fieldText(element).length, deleted: 0 };
+    const data = { length: known.length, deleted: known.deleted };
+    known.deleted = 0;
+    const declared = declaredField(element);
+    if (declared !== null) {
+      data.field = declared.name;
+      data.text = fieldText(element).slice(0, FIELD_TEXT_MAX_LENGTH);
+    }
+    return data;
+  }
+
+  /** Registra un `field_change` del campo con su estado de ahora. */
+  function recordChange(element, now, taskId = activeTask()) {
+    const pending = pendingChanges.get(element);
+    if (pending) {
+      timers.clearTimeout(pending.timer);
+      pendingChanges.delete(element);
+    }
+    lastChanges.set(element, now);
+    record(now, 'field_change', { element: describe(element, true), data: fieldData(element) }, taskId);
+  }
+
+  /** Registra ya los cambios que esperaban su turno (al salir del campo, enviar o dejar la página). */
+  function flushPendingChanges(only = null) {
+    for (const [element, pending] of [...pendingChanges]) {
+      if (only === null || only === element) {
+        recordChange(element, ctx.clock.now(), pending.taskId);
+      }
+    }
+  }
 
   /** Registra que un campo ganó o perdió el foco. Solo el campo, nunca su valor. */
   function onFocus(event) {
     const target = event.target;
     if (target instanceof Element && isFormField(target)) {
+      if (event.type === 'focusin' && isMeasurable(target)) {
+        // Punto de partida para contar lo que se borre.
+        fieldLengths.set(target, { length: fieldText(target).length, deleted: 0 });
+      }
+      if (event.type === 'focusout') {
+        // El último cambio queda registrado antes de la salida del campo.
+        flushPendingChanges(target);
+      }
       record(ctx.clock.now(), FOCUS_TYPES[event.type], { element: describe(target, true), data: {} });
       if (event.type === 'focusout') {
         scheduleFieldCheck(target);
@@ -718,25 +839,38 @@
   }
 
   /**
-   * Registra que un campo cambió: solo que hubo un cambio y en qué campo. No se lee
-   * `value` ni nada del evento (`data`, `inputType`), porque contendría lo escrito.
+   * Registra que un campo cambió, como máximo una vez por segundo por campo. Si
+   * llegan más cambios dentro del segundo, el último se registra al cumplirse, para
+   * que quede el estado final del campo. Nunca se lee nada del evento (`data`,
+   * `inputType`); del campo, su longitud, y su texto solo si está declarado.
    */
   function onInput(event) {
     const target = event.target;
     if (!(target instanceof Element) || !isFormField(target)) {
       return;
     }
+    if (isMeasurable(target)) {
+      trackLength(target);
+    }
     const now = ctx.clock.now();
     const last = lastChanges.get(target);
     if (last !== undefined && now - last < FIELD_CHANGE_INTERVAL_MS) {
+      if (!pendingChanges.has(target)) {
+        const taskId = activeTask();
+        const timer = timers.setTimeout(
+          () => recordChange(target, ctx.clock.now(), taskId),
+          FIELD_CHANGE_INTERVAL_MS - (now - last),
+        );
+        pendingChanges.set(target, { timer, taskId });
+      }
       return;
     }
-    lastChanges.set(target, now);
-    record(now, 'field_change', { element: describe(target, true), data: {} });
+    recordChange(target, now);
   }
 
   /** Registra el envío de un formulario. El navegador solo lo avisa si pasó la validación. */
   function onSubmit(event) {
+    flushPendingChanges();
     if (event.target instanceof Element) {
       record(ctx.clock.now(), 'form_submit', { element: describe(event.target, true), data: {} });
     }
@@ -1044,8 +1178,10 @@
      * @returns {void}
      */
     stop() {
-      // Un cambio de pantalla que aún esperaba su título se registra antes de cerrar.
+      // Un cambio de pantalla que aún esperaba su título, y el último cambio de cada
+      // campo, se registran antes de cerrar.
       if (ctx && timers) {
+        flushPendingChanges();
         flushPendingScreen();
       }
       CLICK_TYPES.forEach((type) => root.document.removeEventListener(type, onClick, true));
@@ -1083,9 +1219,12 @@
       reportedErrors = new WeakMap();
       nativeFlags = [];
       lastChanges = new WeakMap();
+      fieldLengths = new WeakMap();
       if (timers) {
+        pendingChanges.forEach((pending) => timers.clearTimeout(pending.timer));
         timers.clearTimeout(selectionTimer);
       }
+      pendingChanges = new Map();
       selectionTimer = null;
       [mouseSampler, scrollSampler].forEach((sampler) => sampler && sampler.cancel());
       mouseSampler = null;

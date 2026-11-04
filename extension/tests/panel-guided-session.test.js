@@ -115,6 +115,7 @@ test('a complete guided session records the start and end of each task, how it e
     mode: 'guided',
     study_id: 1,
     tab_id: 42,
+    recorded_fields: [],
     task_id: null,
   });
 

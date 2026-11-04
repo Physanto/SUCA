@@ -286,7 +286,7 @@ SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i1_real_capture.py 
 SUCA_BROWSER_TESTS=1 SUCA_EXTERNAL_SITES=1 python -m pytest tests/integration/test_i1_real_capture.py  # y dos sitios reales
 ```
 
-**Sesión guiada en Chrome.** `tests/integration/test_i2_guided_session.py` hace una sesión guiada completa en la app de prueba (V1) con el panel real del evaluador: inicio de sesión en la tienda, las 4 tareas del estudio de ejemplo (tres con **Terminé** y una con **No pude**), un recorrido entre tareas (ordenar, filtrar, el ancla de opiniones y la página de términos), el SUS y el cierre. Revisa que la base tenga la sesión, cada tarea con su forma de terminar, el SUS con su puntaje, la tarea activa en cada evento, un cambio de pantalla por ruta y nada de lo escrito, y que el análisis corra sobre la sesión. Sin interfaz el panel lateral no se puede abrir, así que el panel se abre como una pestaña de la misma ventana y la tienda queda como la pestaña activa, que es la que el panel toma como evaluada.
+**Sesión guiada en Chrome.** `tests/integration/test_i2_guided_session.py` hace una sesión guiada completa en la app de prueba (V1) con el panel real del evaluador: inicio de sesión en la tienda, las 4 tareas del estudio de ejemplo (tres con **Terminé** y una con **No pude**), un recorrido entre tareas (ordenar, filtrar, el ancla de opiniones y la página de términos), el SUS y el cierre. Revisa que la base tenga la sesión, cada tarea con su forma de terminar, el SUS con su puntaje, la tarea activa en cada evento, un cambio de pantalla por ruta, que solo los campos declarados en `recorded_fields` guarden su texto, y que el análisis corra sobre la sesión. Sin interfaz el panel lateral no se puede abrir, así que el panel se abre como una pestaña de la misma ventana y la tienda queda como la pestaña activa, que es la que el panel toma como evaluada.
 
 ```bash
 SUCA_BROWSER_TESTS=1 python -m pytest tests/integration/test_i2_guided_session.py
@@ -343,7 +343,7 @@ Para trabajar sin sesiones reales, usa los datos simulados (paso 3).
 
 ## Privacidad
 
-- Nunca se captura el contenido escrito en los campos de formulario.
+- De lo escrito en los campos solo se guarda su longitud y lo borrado. El texto, únicamente en los campos que el estudio declara en `recorded_fields` (por ejemplo, el buscador de la app de prueba); nunca contraseñas, códigos ni datos de tarjeta. El servidor rechaza el texto de un campo no declarado.
 - Nunca se guarda ni se envía video o imágenes del rostro: solo números.
 - El servidor y el panel solo escuchan en `127.0.0.1`: nada sale de la computadora.
 - La carpeta `data/` y cualquier dato de participantes nunca se suben al repositorio.

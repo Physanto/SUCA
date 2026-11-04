@@ -53,7 +53,10 @@ Si el receptor falla, la promesa se rechaza con su mensaje de error.
 Un content script que se carga después de un mensaje (por ejemplo, tras una navegación) no lo recibe. Por eso el estado de la sesión activa vive en `chrome.storage.session` y todos los contextos lo leen con `UX.session`:
 
 ```json
-{ "session_id": 17, "mode": "guided", "study_id": 2, "tab_id": 412, "task_id": 3 }
+{
+  "session_id": 17, "mode": "guided", "study_id": 2, "tab_id": 412, "task_id": 3,
+  "recorded_fields": [{ "name": "search", "selector": "#q" }]
+}
 ```
 
 | Campo | Descripción |
@@ -61,6 +64,7 @@ Un content script que se carga después de un mensaje (por ejemplo, tras una nav
 | `session_id`, `mode`, `study_id` | Los de la sesión creada en el servidor |
 | `tab_id` | Pestaña evaluada: la activa cuando el panel inició la sesión |
 | `task_id` | Tarea activa del modo guiado, o `null` |
+| `recorded_fields` | Campos cuyo texto registra el estudio (`recorded_fields` de `GET /studies`); lista vacía si ninguno |
 
 Solo el panel lateral lo escribe: `UX.session.start` al iniciar la sesión, `update({ task_id })` al empezar y terminar cada tarea, y `clear` después de cerrarla. No hay sesión activa si el estado es `null`.
 
