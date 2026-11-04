@@ -24,7 +24,9 @@ CREATE TABLE study (
     id                INTEGER PRIMARY KEY,
     name              TEXT    NOT NULL UNIQUE,
     system_under_test TEXT    NOT NULL,
-    description       TEXT
+    description       TEXT,
+    -- JSON: campos cuyo texto se registra ([{name, selector}]); '[]' si ninguno.
+    recorded_fields   TEXT    NOT NULL DEFAULT '[]'
 );
 
 -- Tarea del modo guiado. La posición (desde 1) la identifica dentro del
@@ -238,4 +240,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '2');
+INSERT INTO meta (key, value) VALUES ('schema_version', '3');

@@ -106,7 +106,9 @@ def list_studies(*, studies: StudyReader) -> list[dict[str, Any]]:
         studies: Consulta de estudios.
 
     Returns:
-        Estudios con ``id``, ``name``, ``system_under_test`` y ``description``.
+        Estudios con ``id``, ``name``, ``system_under_test``, ``description`` y
+        ``recorded_fields`` (campos cuyo texto se registra; la extensión los
+        necesita al iniciar la sesión).
     """
     return studies.list_studies()
 
@@ -396,11 +398,36 @@ def store_batch(
     ]
     if foreign:
         raise InvalidRequestError("batch references tasks of another study", foreign)
+    undeclared = _undeclared_texts(records, studies.recorded_field_names(session.study_id))
+    if undeclared:
+        raise InvalidRequestError("batch has text of fields the study does not record", undeclared)
 
     handler = ingestion.handler_for(body["type"])
     with writer.transaction():
         handler(writer, session_id, records)
     return {"stored": len(records)}
+
+
+def _undeclared_texts(records: Sequence[Any], declared: set[str]) -> list[ErrorItem]:
+    """Errores por cada registro con texto de un campo que el estudio no declaró.
+
+    Es la segunda barrera de privacidad: la extensión solo envía el texto de los
+    campos declarados, pero si fallara, el servidor no lo guarda.
+
+    Args:
+        records: Registros del lote, ya validados con su contrato.
+        declared: Nombres de ``recorded_fields`` del estudio de la sesión.
+
+    Returns:
+        Un error por registro con ``data.text`` y un ``data.field`` no declarado.
+    """
+    errors = []
+    for index, record in enumerate(records):
+        data = record.get("data")
+        if isinstance(data, dict) and "text" in data and data.get("field") not in declared:
+            message = f"field {data.get('field')!r} is not in the study's recorded_fields"
+            errors.append(ErrorItem(record=index, field="data/field", message=message))
+    return errors
 
 
 def _open_session(sessions: SessionStore, session_id: int) -> SessionInfo:

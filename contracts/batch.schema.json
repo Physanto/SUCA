@@ -9,7 +9,7 @@
       "description": "Versión semántica de los contratos con la que se armó el lote. Se aceptan todas las versiones de la misma versión mayor; 'default' es la versión actual de los contratos.",
       "type": "string",
       "pattern": "^1\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
-      "default": "1.1.0"
+      "default": "1.2.0"
     },
     "type": {
       "description": "Tipo de los registros del lote.",

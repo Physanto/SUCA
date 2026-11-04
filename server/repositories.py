@@ -68,6 +68,10 @@ class StudyReader(Protocol):
         """Devuelve los identificadores de las tareas de un estudio."""
         ...
 
+    def recorded_field_names(self, study_id: int) -> set[str]:
+        """Devuelve los nombres de los campos cuyo texto registra un estudio."""
+        ...
+
 
 class SessionStore(Protocol):
     """Creación, consulta y cierre de sesiones, y respuestas del SUS."""
@@ -169,9 +173,10 @@ class SqliteRepository:
     def list_studies(self) -> list[dict[str, Any]]:
         """Devuelve todos los estudios, ordenados por id."""
         rows = self.connection.execute(
-            "SELECT id, name, system_under_test, description FROM study ORDER BY id"
+            "SELECT id, name, system_under_test, description, recorded_fields"
+            " FROM study ORDER BY id"
         )
-        return [dict(row) for row in rows]
+        return [{**dict(row), "recorded_fields": from_json(row["recorded_fields"])} for row in rows]
 
     def study_exists(self, study_id: int) -> bool:
         """Indica si existe un estudio."""
@@ -213,6 +218,15 @@ class SqliteRepository:
         """Devuelve los identificadores de las tareas de un estudio."""
         rows = self.connection.execute("SELECT id FROM task WHERE study_id = ?", (study_id,))
         return {row["id"] for row in rows}
+
+    def recorded_field_names(self, study_id: int) -> set[str]:
+        """Devuelve los nombres de los campos cuyo texto registra un estudio."""
+        row = self.connection.execute(
+            "SELECT recorded_fields FROM study WHERE id = ?", (study_id,)
+        ).fetchone()
+        return (
+            set() if row is None else {field["name"] for field in from_json(row["recorded_fields"])}
+        )
 
     # --- Sesiones ---------------------------------------------------------
 

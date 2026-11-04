@@ -26,8 +26,8 @@ def test_stores_every_event_of_the_example_batch(
     response = client.post(f"/sessions/{session_id}/batches", json=example("batch.valid.json"))
 
     assert response.status_code == 200
-    assert response.json() == {"stored": 14}
-    assert count("event") == 14
+    assert response.json() == {"stored": 15}
+    assert count("event") == 15
 
 
 def test_event_columns_keep_the_record(
@@ -154,8 +154,9 @@ def test_contract_errors_name_the_record_and_field(
     client: TestClient, session_id: int, example: Example, count: Count
 ) -> None:
     batch = example("batch.valid.json")
+    submit = next(i for i, r in enumerate(batch["records"]) if r["type"] == "form_submit")
     del batch["records"][3]["x"]
-    batch["records"][10]["element"]["text"] = "x" * 51
+    batch["records"][submit]["element"]["text"] = "x" * 51
 
     response = client.post(f"/sessions/{session_id}/batches", json=batch)
 
@@ -163,7 +164,44 @@ def test_contract_errors_name_the_record_and_field(
     assert response.json()["detail"] == "batch does not match its contract"
     assert [(error["record"], error["field"]) for error in response.json()["errors"]] == [
         (3, "x"),
-        (10, "element/text"),
+        (submit, "element/text"),
+    ]
+    assert count("event") == 0
+
+
+def test_text_of_a_declared_field_is_stored(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    record = {**example("events.valid.json"), "type": "field_change"}
+    record["element"] = example("element.valid.json")
+    record["data"] = {"length": 9, "deleted": 0, "field": "search", "text": "audifonos"}
+    del record["x"], record["y"]
+
+    response = client.post(f"/sessions/{session_id}/batches", json=make_batch("events", [record]))
+
+    assert response.status_code == 200, response.json()
+    data = connection.execute("SELECT data FROM event").fetchone()["data"]
+    assert json.loads(data)["text"] == "audifonos"
+
+
+def test_text_of_a_field_the_study_does_not_record_is_rejected(
+    client: TestClient, session_id: int, example: Example, make_batch: MakeBatch, count: Count
+) -> None:
+    """Segunda barrera: si la extensión enviara texto de otro campo, no se guarda."""
+    record = {**example("events.valid.json"), "type": "field_change"}
+    record["element"] = example("element.valid.json")
+    record["data"] = {"length": 4, "field": "card_number", "text": "4111"}
+    del record["x"], record["y"]
+
+    response = client.post(f"/sessions/{session_id}/batches", json=make_batch("events", [record]))
+
+    assert response.status_code == 422
+    assert [(error["record"], error["field"]) for error in response.json()["errors"]] == [
+        (0, "data/field")
     ]
     assert count("event") == 0
 

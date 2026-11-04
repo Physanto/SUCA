@@ -24,8 +24,8 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 
 | Método y ruta | Cuerpo | Respuesta | Errores |
 |---|---|---|---|
-| `GET /health` | — | `{"status": "ok", "contract_version": "1.1.0", "schema_version": "2"}` | 401 |
-| `GET /studies` | — | `[{"id", "name", "system_under_test", "description"}]` | 401 |
+| `GET /health` | — | `{"status": "ok", "contract_version": "1.2.0", "schema_version": "3"}` | 401 |
+| `GET /studies` | — | `[{"id", "name", "system_under_test", "description", "recorded_fields"}]` | 401 |
 | `GET /studies/{id}/tasks` | — | Tareas en orden: `[{"id", "position", "instruction", "references": [{"id", "end_condition"}]}]`, solo con referencias confirmadas | 401, 404 |
 | `POST /sessions` | `new-session` | 201 `{"session_id", "started_at"}` | 401, 422 |
 | `POST /sessions/{id}/batches` | Lote | `{"stored": <registros>}` | 401, 404, 409, 422 |
@@ -52,7 +52,7 @@ Todos los errores tienen la forma `{"detail": "<resumen>"}`.
 | 401 | Falta `X-Api-Token` o no coincide |
 | 404 | No existe el recurso de la ruta (`/sessions/{id}`, `/studies/{id}`) |
 | 409 | La sesión de la ruta está cerrada |
-| 422 | El cuerpo no cumple su contrato, nombra algo que no existe (por ejemplo `study_id`) o el lote es de otra versión mayor de los contratos |
+| 422 | El cuerpo no cumple su contrato, nombra algo que no existe (por ejemplo `study_id`), el lote es de otra versión mayor de los contratos o trae el texto de un campo que el estudio no declaró en `recorded_fields` |
 | 500 | Error interno; no se guardó nada del lote |
 
 Los 422 agregan `errors`, una lista con el registro (posición en el lote, o `null`), el campo y el motivo:

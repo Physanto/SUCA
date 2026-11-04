@@ -8,7 +8,7 @@ import pytest
 from shared import db
 
 EXPECTED_COLUMNS = {
-    "study": ["id", "name", "system_under_test", "description"],
+    "study": ["id", "name", "system_under_test", "description", "recorded_fields"],
     "task": ["id", "study_id", "position", "instruction"],
     "participant": ["id", "age", "digital_experience", "wears_glasses"],
     "session": [

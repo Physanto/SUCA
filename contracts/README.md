@@ -24,7 +24,7 @@ Los esquemas usan JSON Schema draft 2020-12. Cada `$id` empieza por `https://suc
 - Claves y valores en inglés y `snake_case`, en todos los lenguajes. `description` en español en cada esquema y cada propiedad.
 - **Las enumeraciones solo se definen en `enums.json`.** Los esquemas las usan con `$ref` (`"$ref": "enums.json#/$defs/event_type"`), y el código Python las lee con `shared.contracts.enums()`. Ningún valor se escribe a mano.
 - Las marcas de tiempo son milisegundos desde 1970 (`performance.timeOrigin + performance.now()`); se rechazan valores en segundos.
-- Los registros no admiten campos que no estén en su esquema (`additionalProperties: false`). Esto también protege la privacidad: un `field_change` con un campo `value` se rechaza.
+- Los registros no admiten campos que no estén en su esquema (`additionalProperties: false`). Esto también protege la privacidad: un `field_change` con un campo `value` se rechaza, y `text` solo se admite junto con `field`, el nombre de un campo que el estudio declaró en `recorded_fields` (el servidor comprueba que lo esté).
 - Cuando un campo obligatorio admite `null`, `null` indica que el dato no existe (por ejemplo, `task_id` fuera de una tarea o `id` en un elemento sin id); el campo no se omite.
 
 ### Intervalos sin datos de cámara
