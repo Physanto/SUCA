@@ -133,6 +133,27 @@ def _candidates(events: pd.DataFrame) -> list[dict[str, str]]:
     return candidates
 
 
+#: Tras el fin automático de una tarea, cuánto se espera el cambio de pantalla de su
+#: llegada, en ms. La tarea termina sola en cuanto la página cumple la condición final,
+#: pero la captura revisa la dirección cada 250 ms y espera el título hasta 500: el
+#: cambio de pantalla a la pantalla final puede quedar registrado justo después.
+ARRIVAL_GRACE_MS = 800
+
+
+def _late_arrival(events: pd.DataFrame, task: Any) -> pd.DataFrame:
+    """Cambios de pantalla registrados poco después del fin automático de una tarea.
+
+    Args:
+        events: Todos los eventos de la sesión.
+        task: Tarea terminada por su referencia (``ended_by == "reference"``).
+
+    Returns:
+        Los ``screen_change`` entre el fin de la tarea y ``ARRIVAL_GRACE_MS`` después.
+    """
+    late = events["t"].gt(task.t_end) & events["t"].le(task.t_end + ARRIVAL_GRACE_MS)
+    return events[late & events["type"].eq("screen_change")]
+
+
 def compare(data: SessionData, params: Parameters) -> pd.DataFrame:
     """Compara cada tarea de la sesión con sus referencias.
 
@@ -182,7 +203,10 @@ def compare(data: SessionData, params: Parameters) -> pd.DataFrame:
             events = columns.empty("events")
         events = events[
             events["t"].between(task.t_start, task.t_end) & events["type"].ne("camera_gap")
-        ].sort_values("t", kind="stable")
+        ]
+        if task.ended_by == "reference":
+            events = pd.concat([events, _late_arrival(data.events, task)])
+        events = events.sort_values("t", kind="stable")
         steps = extract_steps(events)
         routes = [
             _Route(
