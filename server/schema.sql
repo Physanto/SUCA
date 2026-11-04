@@ -120,6 +120,7 @@ CREATE TABLE calibration (
     error_px        REAL    NOT NULL,
     error_deg       REAL    NOT NULL,
     accepted        INTEGER NOT NULL,  -- 0/1
+    viewing_distance_cm REAL,          -- distancia medida en la validación; NULL si no se midió
     camera_delay_ms REAL
 );
 
@@ -237,4 +238,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '1');
+INSERT INTO meta (key, value) VALUES ('schema_version', '2');

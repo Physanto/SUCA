@@ -43,6 +43,7 @@ EXPECTED_COLUMNS = {
         "error_px",
         "error_deg",
         "accepted",
+        "viewing_distance_cm",
         "camera_delay_ms",
     ],
     "session_task": ["session_id", "task_id", "t_start", "t_end", "ended_by"],

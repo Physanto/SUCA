@@ -93,6 +93,27 @@ def test_calibration_summarizes_the_last_error_of_each_type(
     assert connection.execute("SELECT COUNT(*) FROM calibration").fetchone()[0] == 3
 
 
+def test_calibration_keeps_the_measured_distance_and_accepts_records_without_it(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    """Los lotes de la versión 1.0 de los contratos no traen la distancia."""
+    measured = example("calibration.valid.json")
+    older = {key: value for key, value in measured.items() if key != "viewing_distance_cm"}
+    older["t"] = measured["t"] + 1000
+
+    response = client.post(
+        f"/sessions/{session_id}/batches", json=make_batch("calibration", [measured, older])
+    )
+
+    assert response.status_code == 200
+    rows = connection.execute("SELECT viewing_distance_cm FROM calibration ORDER BY t").fetchall()
+    assert [row[0] for row in rows] == [measured["viewing_distance_cm"], None]
+
+
 def test_sending_a_task_again_replaces_it(
     client: TestClient,
     connection: sqlite3.Connection,
