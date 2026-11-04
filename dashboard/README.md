@@ -23,18 +23,32 @@ En la barra lateral se elige:
 | `app.py` | Navegación: registra las páginas (`PAGES`) y muestra los selectores de base y estudio |
 | `data.py` | `DashboardData`: todas las consultas del panel y su única escritura. No importa Streamlit |
 | `ui.py` | Ayudas de Streamlit: selectores, base elegida (`selected_data`), estudio elegido (`selected_study`), encabezado de página y tablas en español (`show_table`) |
+| `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice) y el resumen por tarea |
+| `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla |
+| `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |
 
 ## Páginas
 
-| Archivo | Título | Contenido previsto | Hoy muestra |
-|---|---|---|---|
-| `pages/sessions.py` | Sesiones | Lista filtrable por estudio, versión y modo | Sesiones con filtros de versión y modo |
-| `pages/session.py` | Sesión | Línea de tiempo con tareas, eventos, incidentes, episodios y señal facial; mapa de calor por pantalla | Elección de sesión, métricas y pestañas con tareas, incidentes, episodios y eventos |
-| `pages/tasks.py` | Tareas | Éxito, tiempos, pasos, desvío más frecuente, comparación entre versiones | Resultados por tarea de cada sesión |
-| `pages/screens.py` | Pantallas | Fricción, tiempo e incidentes por pantalla y componente | Visitas, tiempo e incidentes por pantalla |
-| `pages/index.py` | Índice | IUC y componentes por sesión y versión; relación con el SUS | Índice, componentes y SUS de cada sesión |
-| `pages/references.py` | Referencias | Revisar pasos, confirmar la condición final, marcar pasos obligatorios | Referencias con sus pasos, condición y estado |
+| Archivo | Título | Qué muestra |
+|---|---|---|
+| `pages/sessions.py` | Sesiones | Lista filtrable por versión y modo; cantidad por versión, SUS e IUC medios |
+| `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
+| `pages/tasks.py` | Tareas | Tasa de éxito y duración de cada tarea por versión; resumen con duración y pasos medianos y el paso de desvío más frecuente |
+| `pages/screens.py` | Pantallas | Incidentes por pantalla (por tipo) y tiempo en cada una; mapa de calor de todas las sesiones del estudio, por versión |
+| `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
+| `pages/references.py` | Referencias | Pasos de cada referencia, con la marca de obligatorio editable; elección de la condición final entre las candidatas; **Confirmar referencia** (la única escritura) |
+| `pages/replay.py` | Reproducción | La sesión dibujada sobre cada pantalla (cursor, clics, scroll y mirada), con reproducir, velocidad y la línea de tiempo con tareas e incidentes; y la distancia entre la mirada y cada clic |
+
+### Mapas de calor (`heatmap.py`)
+
+Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de ese momento). El fondo es la última captura de referencia de esa pantalla (`screen_capture`), escalada al ancho de la ventana de la sesión; sin captura, un fondo neutro. La captura muestra lo que se veía en la ventana al tomarla: los puntos más abajo se cuentan como "fuera de la imagen". La pantalla de cada punto se calcula con la misma regla que el análisis (`screen_key`).
+
+### Reproducción (`replay.py`, `replay-player.html`)
+
+**No vuelve a ejecutar la prueba**: lo escrito nunca se captura, la tienda no queda en el mismo estado y volver a pulsar haría las acciones de nuevo. Dibuja lo capturado en el tiempo en que pasó. `build_payload` arma los datos (tiempos en ms desde el inicio, coordenadas de la ventana) con las capturas como imágenes JPEG incrustadas; `player_html` los pone en `replay-player.html`, una página sin recursos externos que la página muestra con `st.iframe`.
+
+**Mirada en cada clic.** Casi siempre se mira lo que se pulsa: para cada clic se toma la mediana de la mirada válida entre 0,5 s antes y 0,1 s después, y se mide la distancia al clic. La página da la mediana (en píxeles y en grados, a la distancia medida en la calibración) y la fracción de clics con la mirada a menos de 100 px. Es una comprobación de que la mirada funciona, no una medida de precisión: la persona puede mirar a otro lado al pulsar.
 
 ## Funciones de datos
 
@@ -51,6 +65,7 @@ En la barra lateral se elige:
 | `get_episodes(session_id)` | Episodios con su duración y `metrics` |
 | `get_face(session_id)` | Muestras faciales con sus `values` |
 | `get_gaze(session_id, valid_only)` | Muestras de mirada (por defecto, solo las válidas) |
+| `get_calibrations(session_id)` | Cada intento de calibración: error en px y en grados, si se aceptó y la distancia medida |
 | `get_task_results(study_id)` | Resultados por tarea de todas las sesiones del estudio, con versión y participante |
 | `get_screen_summary(study_id)` | Por pantalla normalizada: visitas, sesiones, tiempo e incidentes |
 | `get_usability_index(study_id)` | Índice y componentes de cada sesión, con su SUS |
