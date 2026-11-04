@@ -104,28 +104,48 @@ with ui.selected_data() as data:
 
     candidates = chosen["candidates"] or []
     current = chosen["end_condition"]
-    options = list(range(len(candidates)))
-    default = candidates.index(current) if current in candidates else 0
-    if not candidates:
-        st.warning(
-            "El análisis no propuso condiciones finales para esta referencia: analiza su sesión."
-        )
-        st.stop()
+    # Si la condición confirmada no está entre las candidatas, se muestra como una más.
+    choices = candidates + ([current] if current and current not in candidates else [])
+    other = len(choices)
+    default = choices.index(current) if current in choices else 0
     picked = st.radio(
         "Condición final",
-        options,
+        [*range(len(choices)), other],
         index=default,
-        format_func=lambda option: condition_label(candidates[option]),
+        format_func=lambda option: (
+            "Otra condición…" if option == other else condition_label(choices[option])
+        ),
         key=f"condition_{reference_id}",
+        help="Las candidatas las propone el análisis de la grabación. Si ninguna indica bien que "
+        "la tarea terminó (por ejemplo, un mensaje de confirmación), escribe otra.",
     )
+    if picked == other:
+        kinds = {
+            "visible_text": "Se ve un texto",
+            "url_pattern": "La dirección coincide con un patrón",
+            "element_present": "Hay un elemento con un rol y un texto",
+        }
+        kind = st.selectbox("Tipo", list(kinds), format_func=kinds.get, key=f"kind_{reference_id}")
+        if kind == "url_pattern":
+            value = st.text_input("Patrón (con {id} en los números)", key=f"pattern_{reference_id}")
+            condition = {"type": kind, "pattern": value.strip()}
+        elif kind == "element_present":
+            role = st.text_input("Rol (por ejemplo, button o heading)", key=f"role_{reference_id}")
+            value = st.text_input("Texto del elemento", key=f"element_{reference_id}")
+            condition = {"type": kind, "role": role.strip(), "text": value.strip()}
+        else:
+            value = st.text_input("Texto que debe verse", key=f"text_{reference_id}")
+            condition = {"type": kind, "text": value.strip()}
+    else:
+        condition = choices[picked]
     if st.button("Confirmar referencia", type="primary"):
         positions = [int(number) - 1 for number in edited.loc[edited["Obligatorio"], "N.º"]]
         try:
-            data.confirm_reference(int(reference_id), candidates[picked], positions)
+            data.confirm_reference(int(reference_id), condition, positions)
         except InvalidReferenceError as error:
             st.error(f"No se pudo confirmar: {error}")
         else:
             st.success(
-                f"Referencia {reference_id} confirmada: {condition_label(candidates[picked])}, "
+                f"Referencia {reference_id} confirmada: {condition_label(condition)}, "
                 f"{len(positions)} paso(s) obligatorio(s)."
             )
