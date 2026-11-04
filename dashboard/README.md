@@ -38,7 +38,7 @@ En la barra lateral se elige:
 | `pages/screens.py` | Pantallas | Incidentes por pantalla (por tipo) y tiempo en cada una; mapa de calor de todas las sesiones del estudio, por versión |
 | `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
 | `pages/references.py` | Referencias | Pasos de cada referencia, con la marca de obligatorio editable; elección de la condición final entre las candidatas; **Confirmar referencia** (la única escritura) |
-| `pages/replay.py` | Reproducción | La sesión dibujada sobre cada pantalla (cursor, clics, scroll y mirada), con reproducir, velocidad y la línea de tiempo con tareas e incidentes; y la distancia entre la mirada y cada clic |
+| `pages/replay.py` | Reproducción | La sesión, o una tarea, sobre las capturas tomadas durante la sesión, con cada señal en su color y en una capa que se puede ocultar; reproducir, velocidad, saltos de 5 s y la línea de tiempo con tareas, pantallas, clics e incidentes; y la distancia entre la mirada y cada clic |
 
 ### Mapas de calor (`heatmap.py`)
 
@@ -46,7 +46,13 @@ Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de es
 
 ### Reproducción (`replay.py`, `replay-player.html`)
 
-**No vuelve a ejecutar la prueba**: lo escrito solo se guarda en los campos que declara el estudio, la tienda no queda en el mismo estado y volver a pulsar haría las acciones de nuevo. Dibuja lo capturado en el tiempo en que pasó. `build_payload` arma los datos (tiempos en ms desde el inicio, coordenadas de la ventana) con las capturas como imágenes JPEG incrustadas; `player_html` los pone en `replay-player.html`, una página sin recursos externos que la página muestra con `st.iframe`.
+**No vuelve a ejecutar la prueba**: la tienda no queda en el mismo estado y volver a pulsar haría las acciones de nuevo. Muestra lo que se veía y dibuja encima lo capturado, en el tiempo en que pasó.
+
+- **Fondo:** la captura de la sesión más reciente (`session_frame`), que la extensión toma al cambiar de pantalla, tras un clic, al detenerse el scroll o la escritura, al salir de un campo y cuando la página cambia sola, como máximo una por segundo. Es la página real de ese momento: se ve lo escrito en los campos declarados en `recorded_fields`; los demás campos, las contraseñas y los datos de tarjeta llegan tapados en gris. Si la última captura es de antes del cambio de pantalla, o la sesión no tiene capturas, se usa la captura de referencia de la pantalla (desplazada por el scroll) o un fondo neutro. La línea de información dice cuál se está usando.
+- **Señales, cada una con su color y su capa:** cursor (gris, con estela de 1 s), clics (rojo: onda y un punto que queda 2,5 s), scroll (verde: flecha con la dirección y la posición), mirada (azul, con estela), campos y escritura (naranja: contorno del campo enfocado y lo escrito, o cuántos caracteres y cuánto se borró), cambios de pantalla (morado) e incidentes y errores de validación (rosa).
+- **Tramo:** toda la sesión o una tarea con 2 s de margen (`task_windows`). Las capturas van incrustadas en la página, así que con más de 300 se empieza por la primera tarea.
+
+`build_payload` arma los datos (tiempos en ms desde el inicio del tramo, coordenadas de la ventana) con las capturas como imágenes JPEG incrustadas; `player_html` los pone en `replay-player.html`, una página sin recursos externos que la página muestra con `st.iframe`. Teclas: espacio reproduce o pausa, ← y → saltan 5 s.
 
 **Mirada en cada clic.** Casi siempre se mira lo que se pulsa: para cada clic se toma la mediana de la mirada válida entre 0,5 s antes y 0,1 s después, y se mide la distancia al clic. La página da la mediana (en píxeles y en grados, a la distancia medida en la calibración) y la fracción de clics con la mirada a menos de 100 px. Es una comprobación de que la mirada funciona, no una medida de precisión: la persona puede mirar a otro lado al pulsar.
 

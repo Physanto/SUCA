@@ -463,6 +463,25 @@ class DashboardData:
         frame["absolute_path"] = [str(self._data_dir / path) for path in frame["file_path"]]
         return frame
 
+    def get_session_frames(self, session_id: int) -> pd.DataFrame:
+        """Capturas de lo que se veía durante una sesión, en orden de tiempo.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``frame_id``, ``t``, ``file_path`` (relativa a la carpeta de la base)
+            y ``absolute_path``.
+        """
+        frame = self._frame(
+            "SELECT id AS frame_id, t, file_path FROM session_frame"
+            " WHERE session_id = ? ORDER BY t, id",
+            session_id,
+            columns=["frame_id", "t", "file_path"],
+        )
+        frame["absolute_path"] = [str(self._data_dir / path) for path in frame["file_path"]]
+        return frame
+
     def confirm_reference(
         self,
         reference_id: int,

@@ -1,12 +1,18 @@
 """Reproducción visual de una sesión y comprobación de la mirada con los clics.
 
-La reproducción **no vuelve a ejecutar** la prueba: dibuja lo capturado
-(cursor, clics, scroll y mirada) sobre la captura de cada pantalla, en el
-tiempo en que pasó. Así se puede ver qué hizo la persona y dónde miraba, y
-comprobar que la captura es coherente.
+La reproducción **no vuelve a ejecutar** la prueba: muestra las capturas que la
+extensión tomó durante la sesión (la página real de ese momento, con lo escrito
+en los campos que el estudio declara) y dibuja encima lo capturado: cursor,
+clics, scroll, mirada, campos e incidentes, cada uno con su color, en el tiempo
+en que pasó. Si la sesión no tiene capturas, usa la captura de referencia de
+cada pantalla. Así se puede ver qué hizo la persona y dónde miraba, y comprobar
+que la captura es coherente.
 
-- ``build_payload`` arma los datos que necesita el reproductor (tiempos en ms
-  desde el inicio de la sesión y coordenadas de la ventana en píxeles CSS).
+- ``build_payload`` arma los datos que necesita el reproductor, de toda la
+  sesión o de un tramo (tiempos en ms desde el inicio del tramo y coordenadas de
+  la ventana en píxeles CSS).
+- ``task_windows`` da los tramos de cada tarea, para no cargar todas las
+  capturas de una sesión larga.
 - ``player_html`` devuelve la página del reproductor con esos datos adentro;
   la página la muestra con ``st.iframe``.
 - ``gaze_at_clicks`` mide, en cada clic, qué tan lejos estaba la mirada del
@@ -80,6 +86,39 @@ def _image_url(path: str, width: int) -> str | None:
     return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+#: Tipos de evento de campos que se dibujan, y la clase con que los ve el reproductor.
+FIELD_EVENT_KINDS = {
+    "focus_in": "focus",
+    "focus_out": "blur",
+    "field_change": "change",
+    "validation_error": "error",
+}
+
+
+def _field_label(kind: str, data: Mapping[str, Any]) -> str | None:
+    """Texto que acompaña a un evento de campo en el reproductor."""
+    if kind == "field_change":
+        if "text" in data:
+            return f"«{data['text']}»"
+        if "length" in data:
+            deleted = data.get("deleted", 0)
+            return f"{data['length']} caracteres" + (f" (borró {deleted})" if deleted else "")
+        return "cambió"
+    if kind == "validation_error":
+        return f"error: {data.get('error_type', '')}".strip()
+    return None
+
+
+def _last_before_and_inside(rows: list[list[Any]], low: float, high: float) -> list[list[Any]]:
+    """Filas ``[t, ...]`` dentro de ``[low, high]``, más la última anterior puesta en ``low``.
+
+    Así el tramo empieza con la pantalla, el scroll o la captura que ya se veía.
+    """
+    before = [row for row in rows if row[0] < low]
+    inside = [row for row in rows if low <= row[0] <= high]
+    return ([[low, *before[-1][1:]]] if before else []) + inside
+
+
 def build_payload(
     session: Mapping[str, Any],
     events: pd.DataFrame,
@@ -87,8 +126,10 @@ def build_payload(
     tasks: pd.DataFrame,
     incidents: pd.DataFrame,
     captures: pd.DataFrame,
+    frames: pd.DataFrame | None = None,
+    window: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
-    """Datos del reproductor para una sesión.
+    """Datos del reproductor para una sesión, o para un tramo de ella.
 
     Args:
         session: ``DashboardData.get_session``.
@@ -96,63 +137,101 @@ def build_payload(
         gaze: Mirada válida de la sesión (``DashboardData.get_gaze``).
         tasks: ``DashboardData.get_session_tasks``.
         incidents: ``DashboardData.get_incidents`` de la sesión.
-        captures: ``DashboardData.get_screen_captures`` del estudio.
+        captures: ``DashboardData.get_screen_captures`` del estudio (fondo de
+            respaldo cuando no hay captura de la sesión).
+        frames: ``DashboardData.get_session_frames``: lo que se veía en cada
+            momento. Si falta, se dibuja sobre las capturas de referencia.
+        window: Tramo a reproducir (inicio y fin, en ms con el reloj de la
+            sesión). Si falta, toda la sesión.
 
     Returns:
-        Diccionario serializable en JSON: ``duration``, ``viewport``, ``screens``
-        (cambios de pantalla), ``scrolls``, ``moves`` (posiciones del cursor),
-        ``clicks``, ``gaze``, ``tasks``, ``incidents`` e ``images`` (captura de
-        cada pantalla normalizada que la tenga).
+        Diccionario serializable en JSON, con tiempos en ms desde el inicio del
+        tramo: ``duration``, ``viewport``, ``screens`` (cambios de pantalla),
+        ``scrolls``, ``moves`` (posiciones del cursor), ``clicks``, ``gaze``,
+        ``fields`` (foco, cambios y errores de campos, con su caja y su texto),
+        ``tasks``, ``incidents``, ``frames`` (``[t, índice]`` en ``frame_images``),
+        ``frame_images`` e ``images`` (captura de referencia de cada pantalla).
     """
     start = float(session["started_at"])
     last = [float(session["ended_at"] or start)]
-    for frame in (events, gaze):
-        if not frame.empty:
-            last.append(float(frame["t"].max()))
+    for table in (events, gaze):
+        if not table.empty:
+            last.append(float(table["t"].max()))
+    low, high = window if window is not None else (start, max(last))
     viewport = viewport_of(session)
 
     def rows(kind: str) -> pd.DataFrame:
         return events[events["type"] == kind] if not events.empty else events
 
-    screens = [
-        {"t": _ms(row.t, start), "url": row.url, "title": row.title, "screen": screen_key(row.url)}
+    def relative(items: list[list[Any]]) -> list[list[Any]]:
+        return [[_ms(item[0], low), *item[1:]] for item in items]
+
+    def inside(t: float) -> bool:
+        return low <= t <= high
+
+    screen_rows = [
+        [float(row.t), row.url, row.title, screen_key(row.url)]
         for row in rows("screen_change").itertuples()
     ]
+    screens = [
+        {"t": t, "url": url, "title": title, "screen": screen}
+        for t, url, title, screen in relative(_last_before_and_inside(screen_rows, low, high))
+    ]
     # Cada cambio de pantalla vuelve el scroll arriba; después, cada evento scroll lo mueve.
-    scrolls = [[screen["t"], 0.0, 0.0] for screen in screens]
+    scroll_rows = [[row[0], 0.0, 0.0] for row in screen_rows]
     for row in rows("scroll").itertuples():
         data = row.data if isinstance(row.data, dict) else {}
-        scrolls.append(
-            [_ms(row.t, start), float(data.get("scroll_x", 0)), float(data.get("scroll_y", 0))]
+        scroll_rows.append(
+            [float(row.t), float(data.get("scroll_x", 0)), float(data.get("scroll_y", 0))]
         )
-    scrolls.sort(key=lambda item: item[0])
+    scroll_rows.sort(key=lambda item: item[0])
     pointer = (
         events[events["type"].isin(["mousemove", "click"]) & events["x"].notna()]
         if not events.empty
         else events
     )
-    moves = [[_ms(row.t, start), round(row.x, 1), round(row.y, 1)] for row in pointer.itertuples()]
+    move_rows = [[float(row.t), round(row.x, 1), round(row.y, 1)] for row in pointer.itertuples()]
     clicks = [
-        [_ms(row.t, start), round(row.x, 1), round(row.y, 1)]
+        [_ms(row.t, low), round(row.x, 1), round(row.y, 1)]
         for row in rows("click").itertuples()
-        if not pd.isna(row.x)
+        if not pd.isna(row.x) and inside(row.t)
     ]
     valid = gaze[gaze["x"].notna()] if not gaze.empty else gaze
     gaze_points = [
-        [_ms(row.t, start), round(row.x, 1), round(row.y, 1)] for row in valid.itertuples()
+        [_ms(row.t, low), round(row.x, 1), round(row.y, 1)]
+        for row in valid.itertuples()
+        if inside(row.t)
     ]
+    fields = []
+    field_events = events[events["type"].isin(FIELD_EVENT_KINDS)] if not events.empty else events
+    for row in field_events.itertuples():
+        if not inside(row.t):
+            continue
+        element = row.element if isinstance(row.element, dict) else {}
+        data = row.data if isinstance(row.data, dict) else {}
+        box = element.get("box")
+        fields.append(
+            {
+                "t": _ms(row.t, low),
+                "kind": FIELD_EVENT_KINDS[row.type],
+                "box": [box["x"], box["y"], box["w"], box["h"]] if box else None,
+                "label": _field_label(row.type, data),
+            }
+        )
     task_bands = [
         {
-            "from": _ms(row.t_start, start),
-            "to": _ms(row.t_end, start),
+            "from": _ms(max(row.t_start, low), low),
+            "to": _ms(min(row.t_end, high), low),
             "label": f"Tarea {row.position}",
             "instruction": row.instruction,
         }
         for row in tasks.itertuples()
+        if row.t_end >= low and row.t_start <= high
     ]
     incident_marks = [
-        {"t": _ms(row.t, start), "label": incident_label(row.type), "screen": row.screen}
+        {"t": _ms(row.t, low), "label": incident_label(row.type), "screen": row.screen}
         for row in incidents.itertuples()
+        if inside(row.t)
     ]
     images: dict[str, str] = {}
     for row in captures.sort_values("t").itertuples():
@@ -160,18 +239,55 @@ def build_payload(
         if url is not None:
             # La más reciente de cada pantalla reemplaza a las anteriores.
             images[screen_key(row.url)] = url
+    frame_rows = (
+        [[float(row.t), row.absolute_path] for row in frames.itertuples()]
+        if frames is not None and not frames.empty
+        else []
+    )
+    frame_marks: list[list[int]] = []
+    frame_images: list[str] = []
+    for t, path in _last_before_and_inside(frame_rows, low, high):
+        url = _image_url(path, viewport[0])
+        if url is not None:
+            frame_marks.append([_ms(t, low), len(frame_images)])
+            frame_images.append(url)
     return {
-        "duration": _ms(max(last), start),
+        "duration": _ms(high, low),
         "viewport": list(viewport),
         "screens": screens,
-        "scrolls": scrolls,
-        "moves": moves,
+        "scrolls": relative(_last_before_and_inside(scroll_rows, low, high)),
+        "moves": relative(_last_before_and_inside(move_rows, low, high)),
         "clicks": clicks,
         "gaze": gaze_points,
+        "fields": fields,
         "tasks": task_bands,
         "incidents": incident_marks,
+        "frames": frame_marks,
+        "frame_images": frame_images,
         "images": images,
     }
+
+
+#: Margen antes y después de una tarea al reproducirla, para ver cómo empieza y termina.
+TASK_MARGIN_MS = 2000
+
+
+def task_windows(tasks: pd.DataFrame) -> list[tuple[str, tuple[float, float]]]:
+    """Tramos de la sesión que se pueden reproducir por separado: uno por tarea.
+
+    Args:
+        tasks: ``DashboardData.get_session_tasks``.
+
+    Returns:
+        Pares ``(nombre, (inicio, fin))`` en orden, con ``TASK_MARGIN_MS`` a cada lado.
+    """
+    return [
+        (
+            f"Tarea {row.position}: {row.instruction}",
+            (float(row.t_start) - TASK_MARGIN_MS, float(row.t_end) + TASK_MARGIN_MS),
+        )
+        for row in tasks.sort_values("position").itertuples()
+    ]
 
 
 def player_html(payload: Mapping[str, Any]) -> str:

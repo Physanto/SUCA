@@ -1,7 +1,8 @@
-"""Página Reproducción: la sesión otra vez, dibujada sobre las pantallas, y la prueba de la mirada.
+"""Página Reproducción: la sesión otra vez, sobre lo que se veía, y la prueba de la mirada.
 
-No vuelve a ejecutar la prueba en el sitio: dibuja lo capturado (cursor, clics,
-scroll y mirada) sobre la captura de cada pantalla, en el tiempo en que pasó.
+No vuelve a ejecutar la prueba en el sitio: muestra las capturas tomadas durante
+la sesión y dibuja encima lo capturado (cursor, clics, scroll, mirada, campos,
+pantallas e incidentes), cada señal con su color, en el tiempo en que pasó.
 """
 
 import math
@@ -14,15 +15,17 @@ from shared.config import load_config
 
 ui.page_header(
     "Reproducción",
-    "La sesión dibujada sobre cada pantalla, como un video: cursor, clics, scroll y mirada, con "
-    "las tareas y los incidentes en la línea de tiempo. Debajo, cuánto coincide la mirada con los "
-    "clics, para comprobar que la mirada funciona.",
+    "La sesión como un video sobre lo que se veía en la página: cursor, clics, scroll, mirada, "
+    "campos y lo escrito en los campos declarados, cambios de pantalla e incidentes, cada uno con "
+    "su color. Debajo, cuánto coincide la mirada con los clics, para comprobar que funciona.",
 )
 
 #: Ancho con que se calcula la altura del reproductor en la página (diseño ancho de Streamlit).
 PLAYER_WIDTH_PX = 1150
-#: Alto de los controles y la franja de tiempo bajo la imagen.
-CONTROLS_HEIGHT_PX = 110
+#: Alto de los controles, las capas y la franja de tiempo bajo la imagen.
+CONTROLS_HEIGHT_PX = 150
+#: Más capturas que esto en un tramo hacen lenta la página: se sugiere elegir una tarea.
+MANY_FRAMES = 300
 
 with ui.selected_data() as data:
     study_id = ui.selected_study(data)
@@ -34,22 +37,43 @@ with ui.selected_data() as data:
     session = data.get_session(session_id)
     events = data.get_events(session_id)
     gaze = data.get_gaze(session_id)
+    tasks = data.get_session_tasks(session_id)
+    frames = data.get_session_frames(session_id)
+    windows = [("Toda la sesión", None), *replay.task_windows(tasks)]
+    # Con muchas capturas, se empieza por la primera tarea para que la página cargue rápido.
+    default = 1 if len(frames) > MANY_FRAMES and len(windows) > 1 else 0
+    names = [name for name, _ in windows]
+    chosen = st.selectbox("Tramo", names, index=default)
+    window = dict(windows)[chosen]
     payload = replay.build_payload(
         session,
         events,
         gaze,
-        data.get_session_tasks(session_id),
+        tasks,
         data.get_incidents(session_id=session_id),
         data.get_screen_captures(study_id),
+        frames,
+        window,
     )
     calibrations = data.get_calibrations(session_id)
 
-if not payload["images"]:
+if payload["frames"]:
+    if len(payload["frames"]) > MANY_FRAMES:
+        st.caption(
+            f"Este tramo tiene {len(payload['frames'])} capturas y puede tardar en cargar: elige "
+            "una tarea en **Tramo**."
+        )
+elif payload["images"]:
     st.info(
-        "No hay capturas de las pantallas de este estudio: se dibuja sobre un fondo neutro. Para "
-        "verlas de fondo, graba una referencia desde el panel lateral y pulsa "
-        "**Capturar pantalla** "
-        "en cada pantalla.",
+        "Esta sesión no tiene capturas propias (se grabó antes de que la extensión las tomara, o "
+        "la pestaña no estaba activa): de fondo va la captura de referencia de cada pantalla, que "
+        "no muestra lo que pasó en esta sesión.",
+        icon=":material/image:",
+    )
+else:
+    st.info(
+        "No hay capturas de esta sesión ni de las pantallas del estudio: se dibuja sobre un fondo "
+        "neutro.",
         icon=":material/image:",
     )
 width, height = payload["viewport"]

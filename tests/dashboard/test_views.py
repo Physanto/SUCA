@@ -183,3 +183,99 @@ def test_the_player_gets_the_session_with_relative_times(
     assert all(0 <= move[0] <= payload["duration"] for move in payload["moves"])
     assert list(payload["images"]) == ["/cart"]
     assert replay.PAYLOAD_MARK not in html and '"viewport":[1280,800]' in html
+
+
+def replay_session() -> dict[str, Any]:
+    """Sesión mínima para el reproductor: empieza en 1000 ms y dura 9 s."""
+    return {"started_at": 1000.0, "ended_at": 10000.0, "screen_info": {}}
+
+
+def test_a_window_keeps_what_was_on_screen_when_it_starts(tmp_path: Path) -> None:
+    """Un tramo empieza con la pantalla, el scroll, el cursor y la captura que ya se veían."""
+    image = tmp_path / "frame.jpg"
+    Image.new("RGB", (1280, 800), "white").save(image)
+    events = events_frame(
+        [
+            {"t": 1000, "type": "screen_change", "url": "http://a/"},
+            {"t": 1500, "type": "scroll", "url": "http://a/", "data": {"scroll_y": 300}},
+            {"t": 1800, "type": "mousemove", "x": 5, "y": 6, "url": "http://a/"},
+            {"t": 2000, "type": "click", "x": 5, "y": 6, "url": "http://a/"},
+            {"t": 5000, "type": "click", "x": 50, "y": 60, "url": "http://a/"},
+            {"t": 9000, "type": "click", "x": 9, "y": 9, "url": "http://a/"},
+        ]
+    )
+    frames = pd.DataFrame({"t": [1200.0, 4500.0, 9500.0], "absolute_path": [str(image)] * 3})
+    gaze = pd.DataFrame({"t": [4900.0], "x": [1.0], "y": [2.0]})
+    no_rows = pd.DataFrame(columns=["t", "type", "screen"])
+
+    payload = replay.build_payload(
+        replay_session(), events, gaze, pd.DataFrame(columns=["t_start", "t_end"]), no_rows,
+        pd.DataFrame(columns=["t", "url", "absolute_path"]), frames, window=(4000.0, 6000.0),
+    )  # fmt: skip
+
+    assert payload["duration"] == 2000
+    assert [screen["t"] for screen in payload["screens"]] == [0]
+    assert payload["scrolls"] == [[0, 0.0, 300.0]]
+    assert payload["moves"] == [[0, 5, 6], [1000, 50, 60]]
+    assert payload["clicks"] == [[1000, 50, 60]]
+    assert payload["gaze"] == [[900, 1.0, 2.0]]
+    assert payload["frames"] == [[0, 0], [500, 1]]
+    assert len(payload["frame_images"]) == 2
+
+
+def test_field_events_carry_their_box_and_what_was_typed() -> None:
+    box = {"x": 10, "y": 20, "w": 100, "h": 30}
+    rows = [
+        ("focus_in", {}),
+        ("field_change", {"length": 9, "deleted": 0, "field": "search", "text": "audifonos"}),
+        ("field_change", {"length": 4, "deleted": 2}),
+        ("field_change", {}),
+        ("validation_error", {"error_type": "value_missing"}),
+        ("focus_out", {}),
+    ]
+    events = events_frame(
+        [
+            {
+                "t": 2000 + index,
+                "type": kind,
+                "url": "http://a/",
+                "element": {"box": box},
+                "data": data,
+            }
+            for index, (kind, data) in enumerate(rows)
+        ]
+    )
+    no_rows = pd.DataFrame(columns=["t", "type", "screen"])
+
+    payload = replay.build_payload(
+        replay_session(), events, pd.DataFrame(columns=["t", "x", "y"]),
+        pd.DataFrame(columns=["t_start", "t_end"]), no_rows,
+        pd.DataFrame(columns=["t", "url", "absolute_path"]),
+    )  # fmt: skip
+
+    assert [(field["kind"], field["label"]) for field in payload["fields"]] == [
+        ("focus", None),
+        ("change", "«audifonos»"),
+        ("change", "4 caracteres (borró 2)"),
+        ("change", "cambió"),
+        ("error", "error: value_missing"),
+        ("blur", None),
+    ]
+    assert payload["fields"][0]["box"] == [10, 20, 100, 30]
+    assert payload["frames"] == [] and payload["frame_images"] == []
+
+
+def test_each_task_is_a_window_with_a_margin() -> None:
+    tasks = pd.DataFrame(
+        {
+            "position": [2, 1],
+            "instruction": ["B", "A"],
+            "t_start": [9000, 3000],
+            "t_end": [12000, 8000],
+        }
+    )
+
+    assert replay.task_windows(tasks) == [
+        ("Tarea 1: A", (1000.0, 10000.0)),
+        ("Tarea 2: B", (7000.0, 14000.0)),
+    ]
