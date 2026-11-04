@@ -200,10 +200,11 @@ function createFakeTimers() {
  * @param {object} [options] - Opciones.
  * @param {function(string, object): {status: number, body: object}} [options.server] -
  *   Responde cada petición; por defecto, 200 con `{}`.
+ * @param {number[]} [options.inactiveTabs] - Pestañas que no son las activas de su ventana.
  * @returns {object} `chrome`, `fetch`, registros de llamadas y funciones para
  *   simular al panel y a las pestañas.
  */
-function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
+function createFakeChrome({ server = () => ({ status: 200, body: {} }), inactiveTabs = [] } = {}) {
   const areas = { session: new Map(), local: new Map() };
   const storageListeners = [];
   const runtimeListeners = [];
@@ -213,6 +214,7 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
     accessLevel: null,
     panelBehavior: null,
     captured: [],
+    masked: [],
     offscreen: [],
     openedTabs: [],
   };
@@ -288,14 +290,14 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
         }
         return clone(await handler(clone(message)));
       },
-      get: async (id) => ({ id, windowId: 100 + id }),
+      get: async (id) => ({ id, windowId: 100 + id, active: !inactiveTabs.includes(id) }),
       create: async (options) => {
         calls.openedTabs.push(options.url);
         return { id: 900 + calls.openedTabs.length };
       },
       captureVisibleTab: async (windowId, options) => {
         calls.captured.push({ windowId, options });
-        return 'data:image/png;base64,iVBORw0KGgo=';
+        return options.format === 'jpeg' ? 'data:image/jpeg;base64,/9j/4AAQ' : 'data:image/png;base64,iVBORw0KGgo=';
       },
     },
   };
@@ -362,6 +364,41 @@ function createFakeChrome({ server = () => ({ status: 200, body: {} }) } = {}) {
  * @param {object} fake - Resultado de `createFakeChrome`.
  * @returns {object} Contexto global del worker (con `UX`).
  */
+/**
+ * APIs de imagen falsas para `common/frame-mask.js`: la imagen mide 2400 px de
+ * ancho (una ventana de 1200 px con densidad 2) y cada rectángulo pintado se anota
+ * en `masked`. El resultado es un JPEG cuyo contenido son los bytes "MASKED".
+ *
+ * @param {Array<object>} masked - Lista donde se anotan los rectángulos.
+ * @returns {object} `createImageBitmap`, `OffscreenCanvas`, `Blob`, `atob` y `btoa`.
+ */
+function createFakeImaging(masked) {
+  class FakeCanvas {
+    constructor(width, height) {
+      this.width = width;
+      this.height = height;
+    }
+
+    getContext() {
+      return {
+        drawImage() {},
+        fillRect: (x, y, w, h) => masked.push({ x, y, w, h }),
+      };
+    }
+
+    async convertToBlob({ type }) {
+      return new Blob([Buffer.from('MASKED')], { type });
+    }
+  }
+  return {
+    createImageBitmap: async () => ({ width: 2400, height: 1400 }),
+    OffscreenCanvas: FakeCanvas,
+    Blob,
+    atob,
+    btoa,
+  };
+}
+
 function loadWorker(fake) {
   const context = vm.createContext({
     chrome: fake.chrome,
@@ -373,6 +410,7 @@ function loadWorker(fake) {
     structuredClone,
     performance,
     URL,
+    ...createFakeImaging(fake.calls.masked),
   });
   /** Ejecuta un archivo de la extensión en el contexto del worker. */
   const run = (file) =>
@@ -384,4 +422,4 @@ function loadWorker(fake) {
   return context;
 }
 
-module.exports = { createFakeWorld, createFakeTimers, createFakeChrome, loadWorker, settle };
+module.exports = { createFakeWorld, createFakeTimers, createFakeChrome, createFakeImaging, loadWorker, settle };

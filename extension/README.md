@@ -6,7 +6,7 @@ Captura lo que hace el participante en la aplicación evaluada, muestra las tare
 
 | Parte | Archivos | Dónde corre |
 |---|---|---|
-| Content scripts | `content/`: los módulos (`capture.js`, `camera.js`, `calibration.js`, `task-end.js`) y `bootstrap.js` | En la pestaña evaluada. Solo arrancan sus módulos si su pestaña es la de la sesión |
+| Content scripts | `content/`: los módulos (`capture.js`, `frames.js`, `camera.js`, `calibration.js`, `task-end.js`) y `bootstrap.js` | En la pestaña evaluada. Solo arrancan sus módulos si su pestaña es la de la sesión |
 | Panel lateral | `panel/` | Panel lateral de Chrome; persiste al navegar |
 | Service worker | `worker.js` | Segundo plano: mediador entre panel y pestaña, y envío al servidor |
 | Motor de la cámara | `camera/`: `engine.html` (documento *offscreen*), `permission.html` y sus scripts | Documento oculto de la extensión que abre la webcam y persiste al navegar; detalle en `camera/README.md` |
@@ -140,6 +140,7 @@ El nombre del módulo usa `snake_case`, porque viaja en la respuesta de `session
 | Archivo | Nombre | Estado |
 |---|---|---|
 | `content/capture.js` | `capture` | Completo: clics, cursor, scroll, selección, formularios, errores de validación, respuesta tras un clic y cambios de pantalla, con filtros de privacidad. Detalle en `content/capture/README.md` |
+| `content/frames.js` | `frames` | Completo: pide al worker una captura de lo que se ve (`frame.request`) al cargar o cambiar de pantalla, tras un clic, al detenerse el scroll o la escritura, al salir de un campo y cuando la página cambia sola; como máximo una por segundo. Envía las zonas que se tapan: los campos donde se escribe que el estudio no declaró en `recorded_fields`, y siempre contraseñas, códigos y datos de tarjeta. El worker captura solo si la pestaña es la activa, tapa las zonas (`common/frame-mask.js`) y la envía a `POST /sessions/{id}/frames`. No ve campos dentro de iframes ni de shadow DOM |
 | `content/camera.js` | `camera` | Completo: registra mirada (con elemento y zona), rostro e intervalos sin datos que llegan del motor de la cámara. Detalle en `camera/README.md` |
 | `content/calibration.js` | `calibration` | Completo: capa de 9 puntos de calibración y 5 de validación, con error en píxeles y grados. Detalle en `camera/README.md` |
 | `content/task-end.js` | `task_end` | Esqueleto, sin lógica |

@@ -14,6 +14,9 @@
  * - `session.closed`: lo reenvía a la pestaña, espera que vacíe su acumulador y
  *   pone el cierre de la sesión en la cola, detrás de sus lotes.
  * - `screen_capture.request`: captura la pestaña evaluada y la envía al servidor.
+ * - `frame.request`: captura la pestaña evaluada durante la sesión, vuelve a pedirle
+ *   las zonas que se tapan (`frame.masks`), tapa las de las dos mediciones y la
+ *   envía al servidor, para la reproducción.
  * - `tab.identify`: responde a un content script el id de su pestaña.
  * - `camera.status`: si el motor de la cámara no tiene permiso, abre la página
  *   para darlo (una vez por sesión).
@@ -33,12 +36,13 @@ importScripts(
   'common/session.js',
   'common/send-queue.js',
   'common/api.js',
+  'common/frame-mask.js',
 );
 
 (function (UX) {
   'use strict';
 
-  const { platform, messages, session, api, config, contracts } = UX;
+  const { platform, messages, session, api, config, contracts, clock } = UX;
   const { types } = messages;
 
   /** Clave de la cola de envío en `storage.local`. */
@@ -54,6 +58,9 @@ importScripts(
     reasons: ['USER_MEDIA'],
     justification: 'Estimar la mirada y los movimientos faciales con la webcam durante la sesión.',
   };
+  /** Capturas de la sesión: calidad JPEG y tiempo mínimo entre dos (Chrome admite dos por segundo). */
+  const FRAME_QUALITY = 60;
+  const FRAME_MIN_INTERVAL_MS = 500;
   /** Página para dar el permiso de cámara. */
   const CAMERA_PERMISSION_PAGE = 'camera/permission.html';
 
@@ -194,6 +201,51 @@ importScripts(
     return api.sendCapture({ study_id, screen, image });
   }
 
+  /** Zona en otra escala (si la ventana cambió de ancho entre las dos mediciones). */
+  const scaleZone = ({ x, y, w, h }, factor) => ({ x: x * factor, y: y * factor, w: w * factor, h: h * factor });
+
+  /** Momento de la última captura de la sesión y si hay una en curso. */
+  let lastFrameAt = -Infinity;
+  let frameBusy = false;
+
+  /**
+   * Captura lo que se ve en la pestaña evaluada, tapa las zonas pedidas y la envía
+   * al servidor. Se descarta si no viene de la pestaña evaluada, si la pestaña no
+   * es la activa, si hay otra en curso o si la anterior fue hace muy poco. Si algo
+   * falla (también al tapar), no se envía nada: la siguiente captura la reemplaza.
+   *
+   * @param {{viewport_width: number, masks: Array<object>}} payload - Pedido de la pestaña.
+   * @param {{tabId: (number|null)}} sender - Quién lo envía.
+   * @returns {Promise<void>}
+   */
+  async function recordFrame({ viewport_width: viewportWidth, masks }, sender) {
+    const state = await session.reload();
+    const t = clock.now();
+    if (state === null || state.tab_id !== sender.tabId || frameBusy || t - lastFrameAt < FRAME_MIN_INTERVAL_MS) {
+      return;
+    }
+    frameBusy = true;
+    lastFrameAt = t;
+    try {
+      const image = await platform.captureActiveTab(state.tab_id, FRAME_QUALITY);
+      if (image !== null) {
+        // La página pudo cambiar entre el pedido y la captura: se tapan las zonas de
+        // las dos mediciones. Sin la segunda, no se envía nada.
+        const after = await messages.sendToTab(state.tab_id, types.FRAME_MASKS);
+        if (!after || !Array.isArray(after.masks)) {
+          throw new Error('the tab did not measure the masks again');
+        }
+        const scaled = after.masks.map((zone) => scaleZone(zone, viewportWidth / after.viewport_width));
+        const masked = await UX.maskFrame(image, [...masks, ...scaled], viewportWidth, FRAME_QUALITY);
+        await api.sendFrame(state.session_id, { t, image: masked });
+      }
+    } catch (error) {
+      console.warn(`session frame not recorded: ${error.message}`);
+    } finally {
+      frameBusy = false;
+    }
+  }
+
   // Los manejadores se registran al cargar, como exige Chrome para despertar al worker.
   messages.on(types.BATCH, (payload) => enqueueBatch(payload));
 
@@ -217,6 +269,12 @@ importScripts(
   messages.on(types.SCREEN_CAPTURE_REQUEST, (payload, sender) =>
     fromPanel(sender) ? captureScreen(payload) : undefined,
   );
+
+  // No responde: la pestaña no espera la captura.
+  messages.on(types.FRAME_REQUEST, (payload, sender) => {
+    recordFrame(payload, sender);
+    return undefined;
+  });
 
   messages.on(types.TAB_IDENTIFY, (payload, sender) => {
     // Cada página que carga la pestaña evaluada lo pregunta, y la cámara lo repite
