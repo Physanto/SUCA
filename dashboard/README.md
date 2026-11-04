@@ -25,6 +25,7 @@ En la barra lateral se elige:
 | `ui.py` | Ayudas de Streamlit: selectores, base elegida (`selected_data`), estudio elegido (`selected_study`), encabezado de página y tablas en español (`show_table`) |
 | `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice) y el resumen por tarea |
 | `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla |
+| `findings.py` | Hallazgos de un estudio: agrupación de incidentes, gravedad propuesta, resúmenes e informe |
 | `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |
 
@@ -39,10 +40,15 @@ En la barra lateral se elige:
 | `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
 | `pages/references.py` | Referencias | Pasos de cada referencia, con la marca de obligatorio editable; elección de la condición final entre las candidatas; **Confirmar referencia** (la única escritura) |
 | `pages/replay.py` | Reproducción | La sesión, o una tarea, sobre las capturas tomadas durante la sesión, con cada señal en su color y en una capa que se puede ocultar; reproducir, velocidad, saltos de 5 s y la línea de tiempo con tareas, pantallas, clics e incidentes; y la distancia entre la mirada y cada clic |
+| `pages/findings.py` | Hallazgos | Los problemas agrupados por pantalla, elemento y tipo de incidente, de más a menos graves: personas afectadas por versión, tareas no completadas, si aparece también en V0, qué suele indicar y qué revisar, y dónde verlo en Reproducción. Resumen por versión y por tarea, recomendación y conclusiones del evaluador, e informe en Markdown para descargar |
 
 ### Mapas de calor (`heatmap.py`)
 
 Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de ese momento). El fondo es la última captura de referencia de esa pantalla (`screen_capture`), escalada al ancho de la ventana de la sesión; sin captura, un fondo neutro. La captura muestra lo que se veía en la ventana al tomarla: los puntos más abajo se cuentan como "fuera de la imagen". La pantalla de cada punto se calcula con la misma regla que el análisis (`screen_key`).
+
+### Hallazgos (`findings.py`)
+
+`build_findings` agrupa los incidentes de las sesiones elegidas por pantalla, elemento (su texto o, si no tiene, su selector) y tipo, y cuenta a cuántas personas afectó cada grupo en cada versión. La **gravedad propuesta** es alta si alguna persona afectada no completó la tarea del incidente, o si afectó a la mitad o más de las sesiones de las versiones donde aparece y al menos a 2 personas; media si afectó a un cuarto o más; si no, baja. Con menos de 3 sesiones por versión la página advierte que es poco fiable. Un hallazgo que aparece también en V0 se marca: puede ser una falsa alarma o un problema no sembrado. Para cada tipo de incidente, `INCIDENT_ADVICE` dice qué suele indicar y qué revisar; **la recomendación la escribe el evaluador** después de verlo en la reproducción. La gravedad editada, las recomendaciones y las conclusiones no se guardan en la base: van en el informe que se descarga (`report_markdown`).
 
 ### Reproducción (`replay.py`, `replay-player.html`)
 
