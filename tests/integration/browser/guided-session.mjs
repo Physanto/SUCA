@@ -25,6 +25,16 @@
  * Lo que se escribe en el boletín lleva el prefijo `qzx`, que no aparece en la
  * tienda: si llega a la base, la captura guardó algo escrito.
  *
+ * Opciones para generar datos de demostración (`scripts/demo_sessions.py`):
+ * - `--mode reference`: graba la referencia de las 4 tareas (sin SUS) y toma una
+ *   captura de cada pantalla con **Capturar pantalla**, para los mapas de calor y
+ *   la reproducción;
+ * - `--complete-all`: también termina la tarea 4 (cambia la dirección);
+ * - `--frustrated`: insiste en lo que no responde (la imagen que parece botón del
+ *   problema 1), como haría una persona, para que el análisis vea incidentes;
+ * - `--no-browse`: sin el recorrido entre las tareas 3 y 4;
+ * - `--study`, `--participant`: el estudio (por su nombre) y el código del participante.
+ *
  * Requiere el servidor local escuchando en la dirección de la configuración y
  * la app de prueba servida en `--app-url`.
  *
@@ -44,8 +54,11 @@ const EXTENSION_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 
 /** Prefijo de todo lo que se escribe que la tienda no muestra. */
 export const SENTINEL = 'qzx';
 
-/** Participante de la sesión: un código, no un nombre. */
+/** Participante por omisión: un código, no un nombre. */
 const PARTICIPANT = 'I2-auto';
+
+/** Si se define, se llama al llegar a cada pantalla (en modo referencia, captura la pantalla). */
+let onScreen = null;
 
 /** Respuestas del SUS, de la pregunta 1 a la 10. */
 const SUS_ANSWERS = [4, 2, 4, 1, 5, 2, 4, 2, 4, 3];
@@ -121,8 +134,12 @@ async function choose(page, label, option) {
 }
 
 /** Espera a que la ruta (con la consulta) cumpla una expresión regular. */
-const waitForPath = (page, pattern) =>
-  page.waitFor(`${pattern}.test(location.pathname + location.search)`, 15000);
+async function waitForPath(page, pattern) {
+  await page.waitFor(`${pattern}.test(location.pathname + location.search)`, 15000);
+  if (onScreen !== null) {
+    await onScreen();
+  }
+}
 
 /** Espera a que la página muestre un texto. */
 const waitForText = (page, text) => page.waitFor(`document.body.innerText.includes(${JSON.stringify(text)})`, 15000);
@@ -189,6 +206,45 @@ const TASKS = [
   },
 ];
 
+/** La tarea 4 completa: cambia la dirección de envío desde el menú de la cuenta. */
+const FULL_TASK_4 = {
+  name: 'task 4: change the shipping address',
+  async run(page) {
+    await clickText(page, 'button', 'Mi cuenta');
+    await clickText(page, 'a', 'Ver mi cuenta');
+    await waitForPath(page, /^\/account$/);
+    await clickText(page, 'a', 'Cambiar dirección de envío');
+    await waitForPath(page, /^\/account\/address$/);
+    await fill(page, 'Dirección', 'Calle 10 # 20-30');
+    await choose(page, 'Ciudad', 'Bogotá');
+    await clickText(page, 'button', 'Guardar');
+    await waitForText(page, 'Dirección actualizada');
+  },
+  end: 'done',
+};
+
+/**
+ * Como una persona frente a lo que no responde: si la imagen del producto parece
+ * un botón y no lo es (problema 1), la pulsa varias veces seguidas.
+ */
+async function insistOnFakeButtons(page) {
+  if (await page.evaluate("!!document.querySelector('img.zoom-badge')")) {
+    const { x, y } = await page.evaluate(`(() => {
+      const image = document.querySelector('img.zoom-badge');
+      image.scrollIntoView({ block: 'center' });
+      const box = image.getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    })()`);
+    await page.moveTo(x, y);
+    for (let i = 0; i < 4; i += 1) {
+      await page.target.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await page.target.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await sleep(180);
+    }
+    await sleep(CLICK_RESPONSE_MS);
+  }
+}
+
 /**
  * Lo que se hace entre la tarea 3 y la 4, sin tarea activa: lo que no debe
  * crear pantallas nuevas en el análisis (ordenar, filtrar, ancla) y lo que sí
@@ -243,22 +299,57 @@ async function press(panel, id) {
 const panelText = (panel, id) => panel.evaluate(`document.getElementById(${JSON.stringify(id)}).innerText`);
 
 /** Llena el formulario de inicio y empieza una sesión guiada con el primer estudio. */
-async function startGuidedSession(panel, version) {
+async function startSession(panel, { version, mode = 'guided', participant = PARTICIPANT, study = null }) {
   await panel.waitFor("document.getElementById('study').options.length > 0");
-  await panel.evaluate(`(() => {
+  const found = await panel.evaluate(`(() => {
     const set = (id, value) => {
       const field = document.getElementById(id);
       field.value = value;
       field.dispatchEvent(new Event('input', { bubbles: true }));
       field.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    set('participant', ${JSON.stringify(PARTICIPANT)});
+    const study = ${JSON.stringify(study)};
+    if (study !== null) {
+      const option = [...document.getElementById('study').options].find((item) => item.text === study);
+      if (!option) return false;
+      set('study', option.value);
+    }
+    set('participant', ${JSON.stringify(participant)});
     set('version', ${JSON.stringify(version)});
-    set('mode', 'guided');
+    set('mode', ${JSON.stringify(mode)});
     document.getElementById('start-form').requestSubmit();
+    return true;
   })()`);
+  if (!found) throw new Error(`study not found: ${study}`);
   await panel.waitFor("!document.getElementById('active-section').hidden", 20000);
-  await panel.waitFor("document.getElementById('task-start').checkVisibility()", 20000);
+  const ready = mode === 'guided' ? 'task-start' : 'reference-start';
+  await panel.waitFor(`document.getElementById('${ready}').checkVisibility()`, 20000);
+}
+
+/** Toma una captura de la pantalla actual con **Capturar pantalla** y espera a que se guarde. */
+async function captureScreen(panel) {
+  const before = await panel.evaluate("document.querySelectorAll('#capture-list li').length");
+  await press(panel, 'capture-screen');
+  await panel.waitFor(`document.querySelectorAll('#capture-list li').length > ${before}`, 15000);
+}
+
+/** Graba la referencia de una tarea: la elige, **Iniciar grabación**, la hace y **Terminar y guardar**. */
+async function recordTask(panel, page, task, index) {
+  await panel.evaluate(`(() => {
+    const select = document.getElementById('reference-task');
+    select.value = select.options[0].value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  const saved = await panel.evaluate("document.querySelectorAll('#reference-saved li').length");
+  await press(panel, 'reference-start');
+  await panel.waitFor("document.getElementById('reference-stop').checkVisibility()");
+  await sleep(TASK_SWITCH_MS);
+  await task.run(page);
+  await sleep(CLICK_RESPONSE_MS);
+  await press(panel, 'reference-stop');
+  await panel.waitFor(`document.querySelectorAll('#reference-saved li').length > ${saved}`, 20000);
+  log(`reference of task ${index + 1} saved`);
+  await sleep(TASK_SWITCH_MS);
 }
 
 /** Hace una tarea: **Empezar**, la tarea en la tienda y **Terminé** o **No pude**. */
@@ -268,7 +359,11 @@ async function doTask(panel, page, task) {
   await sleep(TASK_SWITCH_MS);
   await task.run(page);
   await sleep(CLICK_RESPONSE_MS);
-  await press(panel, task.end === 'done' ? 'task-done' : 'task-gave-up');
+  // Con una referencia confirmada, la tarea termina sola al cumplirse su condición final.
+  const running = await panel.evaluate("document.getElementById('task-done').checkVisibility()");
+  if (running) {
+    await press(panel, task.end === 'done' ? 'task-done' : 'task-gave-up');
+  }
   // Pasa a la siguiente tarea, o a "todas terminadas".
   await panel.waitFor(
     "document.getElementById('task-start').checkVisibility() || !document.getElementById('sus-section').hidden",
@@ -365,6 +460,12 @@ async function main() {
     options: {
       'app-url': { type: 'string' },
       version: { type: 'string', default: 'V1' },
+      mode: { type: 'string', default: 'guided' },
+      participant: { type: 'string', default: PARTICIPANT },
+      study: { type: 'string' },
+      'complete-all': { type: 'boolean', default: false },
+      frustrated: { type: 'boolean', default: false },
+      'no-browse': { type: 'boolean', default: false },
       headed: { type: 'boolean', default: false },
     },
   });
@@ -372,13 +473,19 @@ async function main() {
     throw new Error('--app-url is required');
   }
   const appUrl = options['app-url'].replace(/\/$/, '');
+  const tasks = options['complete-all'] ? [...TASKS.slice(0, 3), FULL_TASK_4] : TASKS;
+  if (options.frustrated) {
+    const [, second] = tasks;
+    tasks[1] = { ...second, run: async (page) => { await insistOnFakeButtons(page); await second.run(page); } };
+  }
   const browser = await launchWithExtension(EXTENSION_DIR, { headless: !options.headed });
   const summary = {
     sentinel: SENTINEL,
-    participant_id: PARTICIPANT,
+    participant_id: options.participant,
     version: options.version,
+    mode: options.mode,
     sus_answers: SUS_ANSWERS,
-    tasks: TASKS.map((task) => task.end),
+    tasks: tasks.map((task) => task.end),
     session_label: null,
     capture_status: null,
     error: null,
@@ -403,29 +510,46 @@ async function main() {
     page = store.page;
     await page.waitFor("location.pathname === '/login'");
 
-    log('starting the guided session');
-    await startGuidedSession(panel, options.version);
+    log(`starting the ${options.mode} session`);
+    await startSession(panel, {
+      version: options.version,
+      mode: options.mode,
+      participant: options.participant,
+      study: options.study ?? null,
+    });
     await sleep(1500);
     await keepStoreActive(browser, panel, store.tabId);
     summary.session_label = await panelText(panel, 'active-session');
     summary.capture_status = await panelText(panel, 'active-capture');
 
+    if (options.mode === 'reference') {
+      // Cada pantalla a la que se llega queda capturada; las repetidas se reemplazan.
+      await captureScreen(panel);
+      onScreen = () => captureScreen(panel);
+    }
     log('logging in, before the first task');
     await logIn(page);
     await sleep(CLICK_RESPONSE_MS);
 
-    for (const [index, task] of TASKS.entries()) {
-      if (index === 3) {
+    for (const [index, task] of tasks.entries()) {
+      if (index === 3 && options.mode === 'guided' && !options['no-browse']) {
         log('browsing between tasks 3 and 4');
         await browseBetweenTasks(page);
         await sleep(CLICK_RESPONSE_MS);
       }
       log(task.name);
-      await doTask(panel, page, task);
+      if (options.mode === 'reference') {
+        await recordTask(panel, page, task, index);
+      } else {
+        await doTask(panel, page, task);
+      }
     }
+    onScreen = null;
 
-    log('answering the SUS');
-    await answerSus(panel);
+    if (options.mode === 'guided') {
+      log('answering the SUS');
+      await answerSus(panel);
+    }
     log('closing the session');
     await closeSession(panel, worker);
   } catch (failure) {
