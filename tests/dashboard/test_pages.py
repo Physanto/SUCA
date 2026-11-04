@@ -23,6 +23,7 @@ TITLES = {
     "screens": "Pantallas",
     "index": "Índice",
     "references": "Referencias",
+    "replay": "Reproducción",
 }
 
 
@@ -54,14 +55,15 @@ def test_the_app_opens_on_the_mock_database_when_there_is_no_real_one(
 
 
 @pytest.mark.parametrize("page", list(TITLES))
-def test_each_page_shows_its_title_note_and_a_table(
+def test_each_page_shows_its_title_description_and_its_data(
     dashboard_config: dict[str, Path], page: str
 ) -> None:
-    app = run(DASHBOARD / "pages" / f"{page}.py", database="mock", study_id=1)
+    # La sesión 3 es guiada, en V1, con mirada: tiene datos en todas las páginas.
+    app = run(DASHBOARD / "pages" / f"{page}.py", database="mock", study_id=1, session_id=3)
 
     assert not app.exception
     assert [title.value for title in app.title] == [TITLES[page]]
-    assert app.info[0].value.startswith("**Contenido previsto:**")
+    assert app.caption[0].value
     assert app.dataframe and len(app.dataframe[0].value) > 0
     # Todas las columnas que muestran las páginas están en español.
     for table in app.dataframe:

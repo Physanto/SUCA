@@ -12,6 +12,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -76,12 +77,25 @@ COLUMN_LABELS: Mapping[str, str] = {
     "required_steps": "Pasos obligatorios",
     "url": "URL",
     "title": "Título",
+    "error_px": "Error (px)",
+    "error_deg": "Error (°)",
+    "accepted": "Aceptada",
+    "viewing_distance_cm": "Distancia (cm)",
+    "success_rate": "Éxito (%)",
+    "median_duration_ms": "Duración mediana (s)",
+    "median_steps": "Pasos (mediana)",
+    "frequent_deviation": "Desvío más frecuente",
+    "x": "x",
+    "y": "y",
+    "gaze_x": "Mirada x",
+    "gaze_y": "Mirada y",
+    "distance_px": "Distancia (px)",
 }
 """Etiqueta en español de cada columna que devuelve ``dashboard.data``."""
 
 #: Columnas con marcas de tiempo (ms desde 1970) y con duraciones en ms.
 _TIME_COLUMNS = ("started_at", "ended_at", "t", "t_start", "t_end")
-_DURATION_COLUMNS = ("duration_ms", "off_path_ms", "time_ms")
+_DURATION_COLUMNS = ("duration_ms", "off_path_ms", "time_ms", "median_duration_ms")
 
 
 def database_paths() -> dict[str, Path]:
@@ -188,15 +202,59 @@ def selected_study(data: DashboardData) -> int | None:
     return None if studies.empty else int(studies["id"].iloc[0])
 
 
-def page_header(title: str, contents: str) -> None:
-    """Título de una página y una nota de lo que mostrará.
+SESSION_KEY = "session_id"
+"""Clave de ``st.session_state`` con la sesión elegida; la comparten Sesión y Reproducción."""
+
+
+def page_header(title: str, description: str) -> None:
+    """Título de una página y una línea que explica qué muestra.
 
     Args:
         title: Título.
-        contents: Qué contendrá la página cuando esté completa.
+        description: Qué muestra la página.
     """
     st.title(title)
-    st.info(f"**Contenido previsto:** {contents}", icon=":material/construction:")
+    st.caption(description)
+
+
+def session_label(row: Any) -> str:
+    """Nombre de una sesión en los selectores: id, participante, versión y modo."""
+    mode = MODE_LABELS.get(row.mode, row.mode)
+    return f"{row.session_id} · {row.participant_id} · {row.version} · {mode}"
+
+
+def session_selector(sessions: pd.DataFrame) -> int:
+    """Elección de una sesión; recuerda la última elegida entre páginas.
+
+    Args:
+        sessions: ``DashboardData.get_sessions`` (no vacío).
+
+    Returns:
+        Id de la sesión elegida.
+    """
+    labels = {int(row.session_id): session_label(row) for row in sessions.itertuples()}
+    if st.session_state.get(SESSION_KEY) not in labels:
+        # Sin elección, la primera sesión guiada: es la que tiene más que mostrar.
+        guided = sessions[sessions["mode"] == "guided"]["session_id"]
+        st.session_state[SESSION_KEY] = int(
+            guided.iloc[0] if len(guided) else sessions["session_id"].iloc[0]
+        )
+    return st.selectbox("Sesión", list(labels), format_func=labels.get, key=SESSION_KEY)
+
+
+def seconds(ms: float | None) -> str:
+    """Una duración en ms como texto (``1:05`` o ``—``)."""
+    if ms is None or pd.isna(ms):
+        return "—"
+    total = int(round(float(ms) / 1000))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def number(value: float | None, digits: int = 1, suffix: str = "") -> str:
+    """Un número con coma decimal, o ``—`` si falta."""
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{float(value):.{digits}f}".replace(".", ",") + suffix
 
 
 def show_table(df: pd.DataFrame, *, empty: str = "Todavía no hay datos.") -> None:

@@ -15,6 +15,8 @@ import streamlit as st
 
 from dashboard import ui
 
+# Páginas del panel, en el orden del menú: archivo (relativo a esta carpeta), título e ícono.
+# Es un comentario y no un docstring: Streamlit mostraría en la página un texto suelto.
 PAGES: tuple[tuple[str, str, str], ...] = (
     ("pages/sessions.py", "Sesiones", ":material/list:"),
     ("pages/session.py", "Sesión", ":material/timeline:"),
@@ -22,8 +24,8 @@ PAGES: tuple[tuple[str, str, str], ...] = (
     ("pages/screens.py", "Pantallas", ":material/web:"),
     ("pages/index.py", "Índice", ":material/speed:"),
     ("pages/references.py", "Referencias", ":material/route:"),
+    ("pages/replay.py", "Reproducción", ":material/play_circle:"),
 )
-"""Páginas del panel, en el orden del menú: archivo (relativo a esta carpeta), título e ícono."""
 
 st.set_page_config(page_title="SUCA · Resultados", page_icon=":material/insights:", layout="wide")
 navigation = st.navigation([st.Page(path, title=title, icon=icon) for path, title, icon in PAGES])
