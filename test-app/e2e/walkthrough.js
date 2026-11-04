@@ -143,6 +143,26 @@ const STEPS = [
     },
   ],
   [
+    'listing: a click on a product image opens its detail through the name link',
+    async (page) => {
+      // Lo que queda bajo el centro de la imagen es el enlace del nombre: el clic
+      // se registra igual que un clic en el nombre (mismo texto y mismo rol).
+      const target = await page.evaluate(`(() => {
+        const image = document.querySelector('.product-grid .product-image');
+        image.scrollIntoView({ block: 'center' });
+        const box = image.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        const card = image.closest('.product-card');
+        return { tag: hit.tagName, same: hit === card.querySelector('.product-card-title a') };
+      })()`);
+      assert.deepEqual(target, { tag: 'A', same: true });
+      await page.clickSelector('.product-grid .product-image');
+      await page.waitForPath(/^\/product\/\d+$/);
+      await page.back();
+      await page.waitForPath(/^\/products\?sort=price_asc&discount=1$/);
+    },
+  ],
+  [
     'product: opens and closes the image dialog and jumps to the reviews in place',
     async (page) => {
       await page.fill('Buscar productos', 'parlante');
