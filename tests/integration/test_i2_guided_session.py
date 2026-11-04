@@ -12,7 +12,7 @@ servidor real:
 - que cada ruta de la tienda registra su cambio de pantalla, incluidos ordenar,
   filtrar, el ancla de opiniones y la página de términos;
 - que nada de lo escrito llega a la base y que la búsqueda queda redactada;
-- que el análisis corre sobre la sesión real.
+- que el análisis corre sobre la sesión real y ve una pantalla por ruta.
 
 Es lenta y necesita Chrome y Node, así que solo corre con
 ``SUCA_BROWSER_TESTS=1``. El servidor escucha en la dirección de la
@@ -274,14 +274,6 @@ def test_the_analysis_runs_on_the_real_session(analysis: AnalysisResults) -> Non
     assert sorted(analysis.task_results["task_id"].tolist()) == [1, 2, 3, 4]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "events recorded right after a route change carry the previous title, and "
-        "assign_screens adds the title to every URL with more than one: one route "
-        "becomes several screens"
-    ),
-)
 def test_the_analysis_sees_one_screen_per_route(analysis: AnalysisResults) -> None:
     """Ordenar, filtrar y el ancla de opiniones no crean pantallas nuevas."""
     screens = set(analysis.data.events["screen"])
