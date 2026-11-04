@@ -471,6 +471,13 @@ export const FIRST_ORDER_ID = 5012;
 export const MAX_QUANTITY = 10;
 
 /**
+ * Productos destacados de la portada, en orden. No incluye audífonos
+ * inalámbricos: la tarea 1 pide buscarlos, y un destacado sería un atajo que
+ * se salta la búsqueda (por lo mismo no hay sugerencias mientras se escribe).
+ */
+export const FEATURED_PRODUCTS = Object.freeze([105, 201, 301, 402, 104, 305, 204, 401]);
+
+/**
  * Busca un producto por su identificador.
  *
  * @param {number} id - Identificador del producto.

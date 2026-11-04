@@ -522,7 +522,11 @@ main.container {
   list-style: none;
 }
 
+/* Toda la tarjeta lleva al detalle, como en las tiendas reales: el enlace del
+   nombre se extiende sobre la tarjeta con ::after. Sigue siendo un solo enlace,
+   así que un clic en la imagen es un clic en el enlace del nombre. */
 .product-card {
+  position: relative;
   height: 100%;
   padding: var(--space-4);
   background: var(--color-surface);
@@ -556,6 +560,12 @@ main.container {
 .product-card-title a {
   color: var(--color-text);
   text-decoration: none;
+}
+
+.product-card-title a::after {
+  position: absolute;
+  inset: 0;
+  content: '';
 }
 
 .product-card-title a:hover {

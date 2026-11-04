@@ -95,9 +95,12 @@ La tienda incluye a propósito comportamientos comunes en la web que una herrami
 | Validación propia con `aria-invalid` y mensajes por campo | Envío, pago, cuenta |
 | Campo de contraseña que pasa a texto | "Mostrar contraseña" |
 | Formulario opcional, ajeno a las tareas | Boletín del pie |
+| Tarjeta clicable entera con un solo enlace (el del nombre, extendido sobre la tarjeta) | Tarjetas de producto de los listados y la portada |
 | Foco que se mueve al título al cambiar de pantalla | Toda la tienda |
 
-Las sugerencias de búsqueda mientras se escribe se dejaron fuera a propósito: abrirían una segunda ruta para la tarea 1 (ir al producto sin pasar por los resultados).
+Las sugerencias de búsqueda mientras se escribe se dejaron fuera a propósito: abrirían una segunda ruta para la tarea 1 (ir al producto sin pasar por los resultados). Por lo mismo, los destacados de la portada (`FEATURED_PRODUCTS` en `data.js`) no incluyen audífonos inalámbricos.
+
+Toda la tarjeta de un producto lleva a su detalle, porque en una tienda real la gente pulsa la imagen. Es un solo enlace (el del nombre, extendido con `::after`), así que un clic en la imagen se registra como un clic en el enlace del nombre, con el mismo texto y el mismo rol que el paso de la ruta ideal.
 
 ### Estados finales de las tareas del estudio de ejemplo
 

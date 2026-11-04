@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { PRODUCTS } from '../public/js/data.js';
+import { FEATURED_PRODUCTS, PRODUCTS } from '../public/js/data.js';
 import { editDistance, searchProducts } from '../public/js/search.js';
 
 const ids = (products) => products.map((product) => product.id);
@@ -11,6 +11,14 @@ test('finds the wireless headphones first, ignoring case and accents', () => {
 
   assert.equal(found[0].id, 101);
   assert.deepEqual(ids(found).slice(0, 3), [101, 102, 103]);
+});
+
+test('the home page features none of the products task 1 searches for', () => {
+  // Un destacado sería un atajo a la tarea 1 sin pasar por la búsqueda.
+  const found = ids(searchProducts(PRODUCTS, 'audifonos inalambricos'));
+
+  assert.deepEqual(FEATURED_PRODUCTS.filter((id) => found.includes(id)), []);
+  assert.ok(FEATURED_PRODUCTS.every((id) => PRODUCTS.some((product) => product.id === id)));
 });
 
 test('tolerates small typos by default', () => {
