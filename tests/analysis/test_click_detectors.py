@@ -161,7 +161,9 @@ def test_rage_click_uses_the_configured_time_window_and_radius(
     [
         (0, 1, False, False),
         (1500, 1, False, False),
-        (1501, 1, False, True),
+        # La captura registra la respuesta al cerrar su ventana, unos ms después de 1500.
+        (1506, 1, False, False),
+        (1500 + detectors.RESPONSE_DELIVERY_SLACK_MS + 1, 1, False, True),
         (100, 0, False, True),
         (100, 0, True, False),
     ],
