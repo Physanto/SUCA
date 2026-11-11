@@ -23,6 +23,8 @@ BATCH_RECORD_TABLES = {
     "tasks": "session_task",
     "calibration": "calibration",
     "layout": "page_layout",
+    "gaze_features": "gaze_feature",
+    "gaze_target": "gaze_target",
 }
 """Tabla donde termina cada tipo de registro de lote."""
 

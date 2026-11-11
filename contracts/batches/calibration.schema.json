@@ -2,16 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://suca.local/contracts/batches/calibration.schema.json",
   "title": "Resultado de calibración",
-  "description": "Resultado de una calibración de mirada con su validación.",
+  "description": "Resultado de una calibración de mirada con su validación, o de una comprobación de deriva.",
   "type": "object",
   "properties": {
     "t": { "description": "Momento en que terminó la validación.", "$ref": "../common.json#/$defs/timestamp" },
-    "type": { "description": "Calibración inicial o final.", "$ref": "../enums.json#/$defs/calibration_type" },
+    "type": { "description": "Calibración inicial, validación final o comprobación de deriva.", "$ref": "../enums.json#/$defs/calibration_type" },
     "error_px": { "description": "Error medio de validación en píxeles CSS.", "type": "number", "minimum": 0 },
     "error_deg": { "description": "Error medio de validación en grados de ángulo visual, a la distancia medida (viewing_distance_cm) o, si no se midió, a la distancia de la configuración (camera.viewing_distance_cm).", "type": "number", "minimum": 0 },
     "accepted": { "description": "Si el error quedó por debajo del umbral y se aceptó la calibración.", "type": "boolean" },
     "viewing_distance_cm": { "description": "Distancia del participante a la cámara durante la validación, en centímetros: la mediana de la que estima MediaPipe en esos cuadros, con la corrección de la webcam (camera.distance_scale). Con ella se calcula error_deg. null si no se pudo medir. Opcional: los lotes de versiones anteriores de los contratos no la traen.", "type": ["number", "null"], "exclusiveMinimum": 0 },
-    "camera_delay_ms": { "description": "Retraso de la cámara respecto de los eventos, en milisegundos: desde que el sensor capta la imagen hasta la marca de tiempo de la muestra. No incluye el tiempo de análisis del cuadro, porque la marca de tiempo se toma antes de analizarlo. null si no se midió.", "type": ["number", "null"], "minimum": 0 }
+    "precision_deg": { "description": "Precisión de la mirada en la validación: raíz cuadrática media de la distancia entre muestras consecutivas mientras se mira cada punto, en grados. Mide el temblor, no el sesgo. null si no se midió. Opcional.", "type": ["number", "null"], "minimum": 0 },
+    "return_error_deg": { "description": "Error en grados del punto de validación que se mira justo después de mirar el teclado: mide cómo se recupera la mirada al volver a la pantalla. null si no se midió. Opcional.", "type": ["number", "null"], "minimum": 0 },
+    "estimator": { "description": "Estimador de mirada en uso, elegido en la calibración inicial por su error en validación cruzada. Opcional.", "$ref": "../enums.json#/$defs/gaze_estimator" },
+    "corrected": { "description": "Solo en drift_check: si la comprobación corrigió la deriva (desplazando la mirada) después de medirla. error_px y error_deg son siempre los de antes de corregir. Opcional.", "type": "boolean" },
+    "correction_x_px": { "description": "Corrección horizontal acumulada que el motor suma a la mirada desde esta comprobación, en píxeles CSS. Opcional.", "type": "number" },
+    "correction_y_px": { "description": "Corrección vertical acumulada, en píxeles CSS. Opcional.", "type": "number" },
+    "camera_delay_ms": { "description": "Retraso de la cámara respecto de los eventos, en milisegundos: desde que el sensor capta la imagen hasta la marca de tiempo de la muestra. No incluye el tiempo de análisis del cuadro, porque la marca de tiempo se toma antes de analizarlo. Se mide en la calibración inicial con el desfase que mejor alinea la mirada estimada con el punto en movimiento que se sigue con la vista. null si no se midió.", "type": ["number", "null"], "minimum": 0 }
   },
   "required": ["t", "type", "error_px", "error_deg", "accepted"],
   "additionalProperties": false

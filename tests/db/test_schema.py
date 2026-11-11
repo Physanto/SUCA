@@ -5,6 +5,7 @@ import sqlite3
 
 import pytest
 
+from server.ingestion import GAZE_FEATURE_COLUMNS
 from shared import db
 
 EXPECTED_COLUMNS = {
@@ -34,6 +35,8 @@ EXPECTED_COLUMNS = {
         "element_selector",
         "zone",
         "valid",
+        "state",
+        "confidence",
     ],
     "face_sample": ["session_id", "t", "values", "head_yaw", "head_pitch", "face_detected"],
     "calibration": [
@@ -45,6 +48,24 @@ EXPECTED_COLUMNS = {
         "accepted",
         "viewing_distance_cm",
         "camera_delay_ms",
+        "precision_deg",
+        "return_error_deg",
+        "estimator",
+        "corrected",
+        "correction_x_px",
+        "correction_y_px",
+    ],
+    "gaze_feature": ["session_id", *GAZE_FEATURE_COLUMNS],
+    "gaze_target": [
+        "session_id",
+        "t",
+        "t_end",
+        "calibration_type",
+        "phase",
+        "group",
+        "viewport_width",
+        "viewport_height",
+        "points",
     ],
     "page_layout": [
         "session_id",
@@ -101,6 +122,8 @@ HIGH_VOLUME_TABLES = [
     "gaze_sample",
     "face_sample",
     "calibration",
+    "gaze_feature",
+    "gaze_target",
     "page_layout",
     "incident",
 ]

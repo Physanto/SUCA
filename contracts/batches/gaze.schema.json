@@ -15,7 +15,17 @@
       "description": "Zona asignada al punto, o null si la muestra no es válida.",
       "anyOf": [{ "$ref": "../enums.json#/$defs/gaze_zone" }, { "type": "null" }]
     },
-    "valid": { "description": "Si la estimación es utilizable.", "type": "boolean" }
+    "valid": { "description": "Si la estimación es utilizable: estado 'on_screen' o 'low_confidence' y un punto dentro de la ventana.", "type": "boolean" },
+    "state": {
+      "description": "Estado de la muestra según el monitor de la cámara. Opcional: los lotes de versiones anteriores de los contratos no lo traen.",
+      "$ref": "../enums.json#/$defs/gaze_state"
+    },
+    "confidence": {
+      "description": "Confianza de la estimación, entre 0 (inutilizable) y 1. Baja con el iris sin refinar, con la cabeza fuera de la postura calibrada y al volver de mirar fuera. Opcional, como state.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
   },
   "required": ["t", "valid"],
   "additionalProperties": false,

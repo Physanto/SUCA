@@ -6,7 +6,7 @@
   "$defs": {
     "batch_type": {
       "description": "Tipo de lote que se envía al servidor. Cada tipo tiene su esquema de registro en contracts/batches/<tipo>.schema.json.",
-      "enum": ["events", "gaze", "face", "tasks", "calibration", "layout"]
+      "enum": ["events", "gaze", "face", "tasks", "calibration", "layout", "gaze_features", "gaze_target"]
     },
     "event_type": {
       "description": "Tipo de evento dentro de un lote 'events'. Los de interacción los produce la captura; 'camera_gap' lo produce el módulo de cámara para marcar un intervalo sin datos de cámara.",
@@ -126,8 +126,20 @@
       ]
     },
     "calibration_type": {
-      "description": "Momento de la calibración de mirada: al inicio o al final de la sesión.",
-      "enum": ["initial", "final"]
+      "description": "Tipo de calibración de mirada: 'initial' entrena el modelo al inicio y lo valida; 'final' solo valida al final de la sesión, para medir cuánto se degradó; 'drift_check' es una comprobación breve durante la sesión (por ejemplo, entre tareas) que mide la deriva y puede corregirla.",
+      "enum": ["initial", "final", "drift_check"]
+    },
+    "gaze_state": {
+      "description": "Estado de una muestra de mirada: 'on_screen' mira la pantalla; 'low_confidence' también, pero con la cabeza fuera de la postura calibrada, el iris sin refinar o justo al volver de mirar fuera; 'off_screen' mira fuera de la pantalla (el teclado, la habitación); 'blink' tiene los ojos cerrados; 'no_face' no se detecta el rostro; 'uncalibrated' todavía no hay modelo de mirada.",
+      "enum": ["on_screen", "low_confidence", "off_screen", "blink", "no_face", "uncalibrated"]
+    },
+    "gaze_estimator": {
+      "description": "Estimador de mirada elegido en la calibración: 'geometric' combina la pose de la cabeza con la posición del iris en un modelo geométrico; 'appearance' es una regresión sobre la imagen reducida de los ojos.",
+      "enum": ["geometric", "appearance"]
+    },
+    "gaze_target_phase": {
+      "description": "Parte de la calibración en que se mostró un objetivo de mirada: 'points' puntos fijos con clic; 'pursuit' un punto en movimiento que se sigue con la vista; 'head' un punto fijo mientras la cabeza se mueve; 'validation' puntos de validación; 'look_away' el punto de validación que se mira al volver de mirar el teclado; 'drift_check' puntos de una comprobación de deriva.",
+      "enum": ["points", "pursuit", "head", "validation", "look_away", "drift_check"]
     },
     "camera_status": {
       "description": "Estado de la cámara que el módulo de cámara informa al panel lateral.",

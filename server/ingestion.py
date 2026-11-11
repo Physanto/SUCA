@@ -24,6 +24,9 @@ INITIAL_CALIBRATION = "initial"
 FINAL_CALIBRATION = "final"
 """Valor de ``calibration_type`` de la validación del final."""
 
+DRIFT_CHECK = "drift_check"
+"""Valor de ``calibration_type`` de una comprobación de deriva durante la sesión."""
+
 CALIBRATION_ERROR_COLUMNS = {
     INITIAL_CALIBRATION: "calibration_error_start",
     FINAL_CALIBRATION: "calibration_error_end",
@@ -111,6 +114,8 @@ def store_gaze(writer: BatchWriter, session_id: int, records: Sequence[Mapping[s
                 "element_selector": record.get("element_selector"),
                 "zone": record.get("zone"),
                 "valid": int(record["valid"]),
+                "state": record.get("state"),
+                "confidence": record.get("confidence"),
             }
             for record in records
         ],
@@ -180,12 +185,24 @@ def store_calibration(
                 "accepted": int(record["accepted"]),
                 "viewing_distance_cm": record.get("viewing_distance_cm"),
                 "camera_delay_ms": record.get("camera_delay_ms"),
+                "precision_deg": record.get("precision_deg"),
+                "return_error_deg": record.get("return_error_deg"),
+                "estimator": record.get("estimator"),
+                "corrected": _optional_flag(record.get("corrected")),
+                "correction_x_px": record.get("correction_x_px"),
+                "correction_y_px": record.get("correction_y_px"),
             }
             for record in records
         ],
     )
-    latest = {CALIBRATION_ERROR_COLUMNS[record["type"]]: record["error_deg"] for record in records}
-    writer.update_session(session_id, latest)
+    # Las comprobaciones de deriva no resumen la sesión: solo el inicio y el final.
+    latest = {
+        CALIBRATION_ERROR_COLUMNS[record["type"]]: record["error_deg"]
+        for record in records
+        if record["type"] in CALIBRATION_ERROR_COLUMNS
+    }
+    if latest:
+        writer.update_session(session_id, latest)
 
 
 @register("layout")
@@ -211,6 +228,91 @@ def store_layout(
             for record in records
         ],
     )
+
+
+GAZE_FEATURE_COLUMNS = (
+    "t",
+    "face_detected",
+    "head_yaw",
+    "head_pitch",
+    "head_roll",
+    "head_tx",
+    "head_ty",
+    "head_tz",
+    "distance_cm",
+    "eye_u",
+    "eye_v",
+    "aspect",
+    "left_h",
+    "left_v",
+    "left_open",
+    "left_refined",
+    "right_h",
+    "right_v",
+    "right_open",
+    "right_refined",
+    "blink",
+    "state",
+    "confidence",
+    "raw_x",
+    "raw_y",
+    "viewport_width",
+    "viewport_height",
+    "scroll_x",
+    "scroll_y",
+)
+"""Campos de ``gaze_features`` que se guardan, cada uno en su columna de ``gaze_feature``."""
+
+_FLAG_COLUMNS = {"face_detected", "left_refined", "right_refined"}
+
+
+@register("gaze_features")
+def store_gaze_features(
+    writer: BatchWriter, session_id: int, records: Sequence[Mapping[str, Any]]
+) -> None:
+    """Guarda las características de mirada de cada cuadro en ``gaze_feature``."""
+    writer.insert(
+        "gaze_feature",
+        [
+            {"session_id": session_id}
+            | {
+                column: _optional_flag(record[column])
+                if column in _FLAG_COLUMNS
+                else record[column]
+                for column in GAZE_FEATURE_COLUMNS
+            }
+            for record in records
+        ],
+    )
+
+
+@register("gaze_target")
+def store_gaze_targets(
+    writer: BatchWriter, session_id: int, records: Sequence[Mapping[str, Any]]
+) -> None:
+    """Guarda los puntos que se pidió mirar en ``gaze_target``."""
+    writer.insert(
+        "gaze_target",
+        [
+            {
+                "session_id": session_id,
+                "t": record["t_start"],
+                "t_end": record["t_end"],
+                "calibration_type": record["calibration_type"],
+                "phase": record["phase"],
+                "group": record["group"],
+                "viewport_width": record["viewport_width"],
+                "viewport_height": record["viewport_height"],
+                "points": to_json(record["points"]),
+            }
+            for record in records
+        ],
+    )
+
+
+def _optional_flag(value: bool | None) -> int | None:
+    """Pasa un booleano opcional a 0/1; si falta, la columna queda en ``NULL``."""
+    return None if value is None else int(value)
 
 
 def _optional_json(value: Any) -> str | None:

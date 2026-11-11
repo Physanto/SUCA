@@ -95,7 +95,9 @@ CREATE TABLE gaze_sample (
     scroll_y         REAL,
     element_selector TEXT,
     zone             TEXT,             -- gaze_zone
-    valid            INTEGER NOT NULL  -- 0/1
+    valid            INTEGER NOT NULL, -- 0/1
+    state            TEXT,             -- gaze_state; NULL en lotes de contratos anteriores
+    confidence       REAL              -- entre 0 y 1; NULL en lotes de contratos anteriores
 );
 
 CREATE INDEX gaze_sample_session_t_idx ON gaze_sample (session_id, t);
@@ -123,10 +125,71 @@ CREATE TABLE calibration (
     error_deg       REAL    NOT NULL,
     accepted        INTEGER NOT NULL,  -- 0/1
     viewing_distance_cm REAL,          -- distancia medida en la validación; NULL si no se midió
-    camera_delay_ms REAL
+    camera_delay_ms REAL,
+    precision_deg   REAL,              -- temblor de la mirada en la validación; NULL si no se midió
+    return_error_deg REAL,             -- error al volver de mirar el teclado; NULL si no se midió
+    estimator       TEXT,              -- gaze_estimator; NULL si no se informó
+    corrected       INTEGER,           -- 0/1 en drift_check; NULL en los demás tipos
+    correction_x_px REAL,              -- corrección de deriva acumulada; NULL si no se informó
+    correction_y_px REAL
 );
 
 CREATE INDEX calibration_session_t_idx ON calibration (session_id, t);
+
+-- Características de mirada de cada cuadro (lote gaze_features): pose de la
+-- cabeza, iris y párpados, estado y punto antes del filtro. Permiten medir y
+-- volver a estimar la mirada después de la sesión. Tabla de alto volumen
+-- (~30 por segundo, también durante la calibración).
+CREATE TABLE gaze_feature (
+    session_id      INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    t               REAL    NOT NULL,
+    face_detected   INTEGER NOT NULL,  -- 0/1
+    head_yaw        REAL,              -- grados
+    head_pitch      REAL,
+    head_roll       REAL,
+    head_tx         REAL,              -- centímetros, como los da MediaPipe
+    head_ty         REAL,
+    head_tz         REAL,
+    distance_cm     REAL,              -- con camera.distance_scale
+    eye_u           REAL,              -- punto medio entre los ojos en la imagen, 0 a 1
+    eye_v           REAL,
+    aspect          REAL,              -- ancho / alto del cuadro
+    left_h          REAL,              -- iris desde el centro del ojo, en anchos de ojo
+    left_v          REAL,
+    left_open       REAL,
+    left_refined    INTEGER,           -- 0/1
+    right_h         REAL,
+    right_v         REAL,
+    right_open      REAL,
+    right_refined   INTEGER,
+    blink           REAL,
+    state           TEXT    NOT NULL,  -- gaze_state
+    confidence      REAL    NOT NULL,
+    raw_x           REAL,              -- punto antes del filtro, en la ventana
+    raw_y           REAL,
+    viewport_width  REAL    NOT NULL,
+    viewport_height REAL    NOT NULL,
+    scroll_x        REAL    NOT NULL,
+    scroll_y        REAL    NOT NULL
+);
+
+CREATE INDEX gaze_feature_session_t_idx ON gaze_feature (session_id, t);
+
+-- Punto que se pidió mirar en una calibración, validación o comprobación de
+-- deriva (lote gaze_target), con el tramo en que se toman sus muestras.
+CREATE TABLE gaze_target (
+    session_id       INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    t                REAL    NOT NULL,  -- inicio del tramo (t_start del registro)
+    t_end            REAL    NOT NULL,
+    calibration_type TEXT    NOT NULL,  -- calibration_type
+    phase            TEXT    NOT NULL,  -- gaze_target_phase
+    "group"          INTEGER NOT NULL,  -- palabra reservada: va entre comillas
+    viewport_width   REAL    NOT NULL,
+    viewport_height  REAL    NOT NULL,
+    points           TEXT    NOT NULL   -- JSON: [{ t, x, y }]
+);
+
+CREATE INDEX gaze_target_session_t_idx ON gaze_target (session_id, t);
 
 -- Disposición de la pantalla (lote layout): regiones semánticas y elementos
 -- interactivos visibles, con sus rectángulos en la ventana. Se registra con
@@ -272,4 +335,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '5');
+INSERT INTO meta (key, value) VALUES ('schema_version', '6');

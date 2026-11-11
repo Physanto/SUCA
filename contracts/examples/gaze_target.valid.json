@@ -1,0 +1,16 @@
+{
+  "t_start": 1791380123456.2,
+  "t_end": 1791380124556.2,
+  "calibration_type": "initial",
+  "phase": "points",
+  "group": 3,
+  "viewport_width": 1280,
+  "viewport_height": 720,
+  "points": [
+    {
+      "t": 1791380123456.2,
+      "x": 128,
+      "y": 72
+    }
+  ]
+}

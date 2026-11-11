@@ -51,20 +51,30 @@
     "camera": {
       "gaze_hz": 30,
       "face_hz": 15,
-      "video_width": 640,
-      "video_height": 480,
+      "video_width": 1920,
+      "video_height": 1080,
       "viewing_distance_cm": 60.0,
       "css_px_per_cm": 55.7,
       "distance_scale": 1.24,
       "min_distance_cm": 35.0,
       "max_distance_cm": 75.0,
-      "calibration_max_error_deg": 5.0
+      "calibration_max_error_deg": 5.0,
+      "lock_exposure": true,
+      "blink_threshold": 0.45,
+      "off_screen_margin_px": 120.0,
+      "head_range_margin_deg": 12.0,
+      "filter_min_cutoff_hz": 0.6,
+      "filter_beta": 0.01,
+      "drift_check_between_tasks": true,
+      "drift_correction": true,
+      "drift_correction_min_error_deg": 1.0,
+      "record_gaze_features": true
     }
   });
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.4.0",
+    "version": "1.5.0",
     "enums": {
       "batch_type": [
         "events",
@@ -72,7 +82,9 @@
         "face",
         "tasks",
         "calibration",
-        "layout"
+        "layout",
+        "gaze_features",
+        "gaze_target"
       ],
       "event_type": [
         "click",
@@ -185,7 +197,28 @@
       ],
       "calibration_type": [
         "initial",
-        "final"
+        "final",
+        "drift_check"
+      ],
+      "gaze_state": [
+        "on_screen",
+        "low_confidence",
+        "off_screen",
+        "blink",
+        "no_face",
+        "uncalibrated"
+      ],
+      "gaze_estimator": [
+        "geometric",
+        "appearance"
+      ],
+      "gaze_target_phase": [
+        "points",
+        "pursuit",
+        "head",
+        "validation",
+        "look_away",
+        "drift_check"
       ],
       "camera_status": [
         "active",

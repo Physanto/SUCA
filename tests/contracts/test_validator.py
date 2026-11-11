@@ -23,6 +23,8 @@ def test_kinds_are_derived_from_schema_files() -> None:
         "events",
         "face",
         "gaze",
+        "gaze_features",
+        "gaze_target",
         "layout",
         "new-capture",
         "new-frame",

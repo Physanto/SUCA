@@ -54,7 +54,7 @@ def test_open_database_rejects_other_schema_versions(database: Path) -> None:
     with closing(db.connect(database)) as connection:
         connection.execute("UPDATE meta SET value = '0' WHERE key = 'schema_version'")
 
-    with pytest.raises(db.SchemaVersionError, match="'0', expected '5'"):
+    with pytest.raises(db.SchemaVersionError, match="'0', expected '6'"):
         db.open_database(database)
 
 
