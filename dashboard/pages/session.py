@@ -27,6 +27,7 @@ with ui.selected_data() as data:
     gaze = data.get_gaze(session_id)
     face = data.get_face(session_id)
     calibrations = data.get_calibrations(session_id)
+    gaze_quality = data.get_gaze_quality(session_id)
     captures = data.get_screen_captures(study_id)
 
 summary = sessions.set_index("session_id").loc[session_id]
@@ -52,6 +53,11 @@ found.metric("Incidentes", len(incidents))
 sus.metric("SUS", ui.number(summary["sus_score"]))
 index.metric("IUC", ui.number(summary["bui"]))
 
+CALIBRATION_TITLES = {
+    "initial": "Calibración inicial",
+    "drift_check": "Comprobaciones de deriva",
+    "final": "Comprobación final",
+}
 if not calibrations.empty:
     columns = st.columns(len(calibrations["type"].unique()))
     for column, (kind, group) in zip(
@@ -59,8 +65,17 @@ if not calibrations.empty:
     ):
         last = group.iloc[-1]
         distance = last["viewing_distance_cm"]
+        if kind == "drift_check":
+            corrected = int(group["corrected"].fillna(False).sum())
+            column.metric(
+                CALIBRATION_TITLES[kind],
+                ui.number(group["error_deg"].mean(), 2, "°"),
+                help=f"Error medio antes de corregir; {len(group)} comprobación(es), "
+                f"{corrected} con corrección.",
+            )
+            continue
         column.metric(
-            "Calibración inicial" if kind == "initial" else "Comprobación final",
+            CALIBRATION_TITLES.get(kind, kind),
             ui.number(last["error_deg"], 2, "°"),
             help=(
                 f"{len(group)} intento(s); {'aceptada' if last['accepted'] else 'no aceptada'}; "
@@ -68,6 +83,24 @@ if not calibrations.empty:
                 f"{'sin medir' if pd.isna(distance) else ui.number(distance, 0, ' cm')}."
             ),
         )
+
+if gaze_quality is not None:
+    live, refined, fixations = st.columns(3)
+    live.metric(
+        "Mirada en vivo",
+        ui.number(gaze_quality["live_error_deg"], 2, "°"),
+        help="Error en los puntos de control (validaciones y comprobaciones de deriva).",
+    )
+    refined.metric(
+        "Mirada reprocesada",
+        ui.number(gaze_quality["refined_error_deg"], 2, "°"),
+        help=(
+            "Mismo error, medido sin usar cada punto para corregirse a sí mismo. "
+            f"Deriva {'corregida' if gaze_quality['drift_corrected'] else 'sin corregir'}; "
+            "los mapas de calor y la reproducción usan esta mirada."
+        ),
+    )
+    fixations.metric("Fijaciones", int(gaze_quality["fixations"]))
 
 # --- Línea de tiempo ------------------------------------------------------------------
 st.subheader("Línea de tiempo")

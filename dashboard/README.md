@@ -24,7 +24,7 @@ En la barra lateral se elige:
 | `data.py` | `DashboardData`: todas las consultas del panel y su única escritura. No importa Streamlit |
 | `ui.py` | Ayudas de Streamlit: selectores, base elegida (`selected_data`), estudio elegido (`selected_study`), encabezado de página y tablas en español (`show_table`) |
 | `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice) y el resumen por tarea |
-| `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla |
+| `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla. La mirada es la reprocesada si existe |
 | `findings.py` | Hallazgos de un estudio: agrupación de incidentes, gravedad propuesta, resúmenes e informe |
 | `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |
@@ -34,7 +34,7 @@ En la barra lateral se elige:
 | Archivo | Título | Qué muestra |
 |---|---|---|
 | `pages/sessions.py` | Sesiones | Lista filtrable por versión y modo; cantidad por versión, SUS e IUC medios |
-| `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
+| `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración, error medio de las comprobaciones de deriva y, si se reprocesó, error de la mirada en vivo y reprocesada y fijaciones); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
 | `pages/tasks.py` | Tareas | Tasa de éxito y duración de cada tarea por versión; resumen con duración y pasos medianos y el paso de desvío más frecuente |
 | `pages/screens.py` | Pantallas | Incidentes por pantalla (por tipo) y tiempo en cada una; mapa de calor de todas las sesiones del estudio, por versión |
 | `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
@@ -76,7 +76,8 @@ Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de es
 | `get_incidents(session_id, study_id)` | Incidentes de una sesión o de un estudio |
 | `get_episodes(session_id)` | Episodios con su duración y `metrics` |
 | `get_face(session_id)` | Muestras faciales con sus `values` |
-| `get_gaze(session_id, valid_only)` | Muestras de mirada (por defecto, solo las válidas) |
+| `get_gaze(session_id, valid_only, refined)` | Muestras de mirada (por defecto, solo las válidas). Si el análisis dejó la mirada reprocesada (`gaze_refined`), devuelve esa; la columna `source` dice cuál (`refined` o `live`) |
+| `get_gaze_quality(session_id)` | Calidad de la mirada reprocesada (`gaze_quality`): método, error en vivo y refinado en grados, deriva corregida, fijaciones; `None` sin reprocesar |
 | `get_calibrations(session_id)` | Cada intento de calibración: error en px y en grados, si se aceptó y la distancia medida |
 | `get_task_results(study_id)` | Resultados por tarea de todas las sesiones del estudio, con versión y participante |
 | `get_screen_summary(study_id)` | Por pantalla normalizada: visitas, sesiones, tiempo e incidentes |
