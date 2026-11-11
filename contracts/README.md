@@ -9,7 +9,7 @@ Formatos de datos, valores permitidos y mensajes que conectan las piezas del sis
 | `enums.json` | **Única fuente** de los valores permitidos (tipos de lote, de evento, de incidente, zonas de mirada…) |
 | `common.json` | Tipos compartidos: marca de tiempo, identificador, pantalla, datos vacíos |
 | `batch.schema.json` | Sobre de un lote: `contract_version`, `type`, `records` |
-| `batches/<tipo>.schema.json` | Un registro de cada tipo de lote: `events`, `gaze`, `face`, `tasks`, `calibration` |
+| `batches/<tipo>.schema.json` | Un registro de cada tipo de lote: `events`, `gaze`, `face`, `tasks`, `calibration`, `layout` |
 | `element.schema.json` | Descriptor de un elemento de la página |
 | `reference.schema.json` | Referencia de una tarea: pasos, condiciones candidatas, condición final y pasos obligatorios |
 | `study.schema.json` | Definición de un estudio en `studies/*.yaml`: sistema evaluado y tareas en orden |
@@ -36,6 +36,10 @@ Hay dos casos distintos:
 
 Así, la ausencia de muestras entre dos marcas de tiempo nunca es ambigua. Los detectores que cuentan eventos de interacción (por ejemplo, la pausa prolongada) deben excluir `camera_gap`.
 
+### Disposición de la pantalla
+
+El lote `layout` guarda, junto con cada captura de la pestaña evaluada, qué ocupa cada parte de la ventana: las regiones semánticas (`header`, `nav`, `main`, `aside`, `footer`, `search`) y los elementos interactivos visibles, con su rectángulo en la ventana y si tienen posición fija. La zona y el elemento de una muestra `gaze` se resuelven en vivo con la página; `layout` permite resolverlos de nuevo después de la sesión para un punto de mirada corregido, buscando el rectángulo que lo contiene en la última disposición registrada antes de ese momento. Para pasar un rectángulo que no es fijo a coordenadas de página se suma el scroll de su registro (`scroll_x`, `scroll_y`). Nunca lleva texto de la página.
+
 ## Validar en Python
 
 Toda validación pasa por `shared/contracts.py`, el único módulo que usa jsonschema:
@@ -50,7 +54,7 @@ for error in errors:
 enums()["incident_type"]  # ('rage_click', 'dead_click', ...)
 ```
 
-`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference`, `new-capture` y `new-frame`.
+`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `layout`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference`, `new-capture` y `new-frame`.
 
 ## Ejemplos
 

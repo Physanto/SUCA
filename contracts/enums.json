@@ -6,7 +6,7 @@
   "$defs": {
     "batch_type": {
       "description": "Tipo de lote que se envía al servidor. Cada tipo tiene su esquema de registro en contracts/batches/<tipo>.schema.json.",
-      "enum": ["events", "gaze", "face", "tasks", "calibration"]
+      "enum": ["events", "gaze", "face", "tasks", "calibration", "layout"]
     },
     "event_type": {
       "description": "Tipo de evento dentro de un lote 'events'. Los de interacción los produce la captura; 'camera_gap' lo produce el módulo de cámara para marcar un intervalo sin datos de cámara.",

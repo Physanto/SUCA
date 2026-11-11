@@ -22,6 +22,7 @@ BATCH_RECORD_TABLES = {
     "face": "face_sample",
     "tasks": "session_task",
     "calibration": "calibration",
+    "layout": "page_layout",
 }
 """Tabla donde termina cada tipo de registro de lote."""
 

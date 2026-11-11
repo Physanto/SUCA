@@ -64,14 +64,15 @@
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.3.0",
+    "version": "1.4.0",
     "enums": {
       "batch_type": [
         "events",
         "gaze",
         "face",
         "tasks",
-        "calibration"
+        "calibration",
+        "layout"
       ],
       "event_type": [
         "click",

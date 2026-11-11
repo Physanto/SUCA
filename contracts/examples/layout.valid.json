@@ -1,0 +1,29 @@
+{
+  "t": 1791380123456.2,
+  "screen": { "url": "http://127.0.0.1:8767/cart", "title": "Carrito" },
+  "viewport_width": 1280,
+  "viewport_height": 720,
+  "scroll_x": 0,
+  "scroll_y": 240,
+  "regions": [
+    { "zone": "header", "box": { "x": 0, "y": 0, "w": 1280, "h": 64 }, "fixed": true },
+    { "zone": "main", "box": { "x": 0, "y": -176, "w": 1280, "h": 1500 }, "fixed": false }
+  ],
+  "elements": [
+    {
+      "selector": "#logo",
+      "tag": "a",
+      "role": "link",
+      "box": { "x": 16, "y": 12, "w": 120, "h": 40 },
+      "fixed": true
+    },
+    {
+      "selector": "main > div.cart > button:nth-of-type(2)",
+      "tag": "button",
+      "role": "button",
+      "box": { "x": 900, "y": 410, "w": 160, "h": 44 },
+      "fixed": false
+    }
+  ],
+  "truncated": false
+}

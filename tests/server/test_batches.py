@@ -70,6 +70,30 @@ def test_face_values_and_flags_are_stored(
     assert row["face_detected"] == 1
 
 
+def test_layout_keeps_regions_elements_and_scroll(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    record = example("layout.valid.json")
+
+    response = client.post(f"/sessions/{session_id}/batches", json=make_batch("layout", [record]))
+
+    assert response.status_code == 200
+    row = connection.execute("SELECT * FROM page_layout").fetchone()
+    assert (row["t"], row["viewport_width"], row["scroll_y"], row["truncated"]) == (
+        record["t"],
+        record["viewport_width"],
+        record["scroll_y"],
+        0,
+    )
+    assert json.loads(row["screen"]) == record["screen"]
+    assert json.loads(row["regions"]) == record["regions"]
+    assert json.loads(row["elements"]) == record["elements"]
+
+
 def test_calibration_summarizes_the_last_error_of_each_type(
     client: TestClient,
     connection: sqlite3.Connection,

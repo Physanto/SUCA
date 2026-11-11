@@ -38,6 +38,7 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
         "greater than the maximum",
     ),
     "gaze.invalid.valid-sample-without-zone.json": (("zone",), "None is not one of"),
+    "layout.invalid.element-with-text.json": (("elements", 0), "'text' was unexpected"),
     "new-capture.invalid.not-a-data-url.json": (("image",), "does not match"),
     "new-frame.invalid.png-image.json": (("image",), "does not match"),
     "new-session.invalid.participant-name.json": (("participant_id",), "does not match"),

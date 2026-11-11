@@ -46,6 +46,18 @@ EXPECTED_COLUMNS = {
         "viewing_distance_cm",
         "camera_delay_ms",
     ],
+    "page_layout": [
+        "session_id",
+        "t",
+        "screen",
+        "viewport_width",
+        "viewport_height",
+        "scroll_x",
+        "scroll_y",
+        "regions",
+        "elements",
+        "truncated",
+    ],
     "session_task": ["session_id", "task_id", "t_start", "t_end", "ended_by"],
     "sus_response": ["session_id", "answers", "score"],
     "episode": ["session_id", "type", "t_start", "t_end", "screen", "outcome", "metrics"],
@@ -84,7 +96,14 @@ EXPECTED_COLUMNS = {
     "meta": ["key", "value"],
 }
 
-HIGH_VOLUME_TABLES = ["event", "gaze_sample", "face_sample", "calibration", "incident"]
+HIGH_VOLUME_TABLES = [
+    "event",
+    "gaze_sample",
+    "face_sample",
+    "calibration",
+    "page_layout",
+    "incident",
+]
 
 
 def columns(connection: sqlite3.Connection, table: str) -> list[str]:

@@ -128,6 +128,25 @@ CREATE TABLE calibration (
 
 CREATE INDEX calibration_session_t_idx ON calibration (session_id, t);
 
+-- Disposición de la pantalla (lote layout): regiones semánticas y elementos
+-- interactivos visibles, con sus rectángulos en la ventana. Se registra con
+-- cada captura de la pestaña y permite asignar zona y elemento a un punto de
+-- mirada después de la sesión. Nunca lleva texto de la página.
+CREATE TABLE page_layout (
+    session_id      INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    t               REAL    NOT NULL,
+    screen          TEXT    NOT NULL,  -- JSON: { url, title }
+    viewport_width  REAL    NOT NULL,  -- píxeles CSS
+    viewport_height REAL    NOT NULL,
+    scroll_x        REAL    NOT NULL,  -- scroll al medir: pasa los rectángulos no fijos a la página
+    scroll_y        REAL    NOT NULL,
+    regions         TEXT    NOT NULL,  -- JSON: [{ zone, box, fixed }]
+    elements        TEXT    NOT NULL,  -- JSON: [{ selector, tag, role, box, fixed }]
+    truncated       INTEGER NOT NULL   -- 0/1: se omitieron elementos por el máximo
+);
+
+CREATE INDEX page_layout_session_t_idx ON page_layout (session_id, t);
+
 -- Inicio y fin de cada tarea de una sesión guiada (lote tasks).
 CREATE TABLE session_task (
     session_id INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
@@ -253,4 +272,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '4');
+INSERT INTO meta (key, value) VALUES ('schema_version', '5');

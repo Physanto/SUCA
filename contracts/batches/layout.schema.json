@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/layout.schema.json",
+  "title": "Disposición de la pantalla",
+  "description": "Qué ocupa cada parte de la ventana en un momento de la sesión: las regiones semánticas y los elementos interactivos visibles, con sus rectángulos. Se registra junto con cada captura de la pestaña evaluada. Sirve para asignar zona y elemento a un punto de mirada después de la sesión, cuando la página ya no existe. Solo lleva números, selectores, etiquetas y roles: nunca texto de la página.",
+  "type": "object",
+  "properties": {
+    "t": { "description": "Momento de la medición.", "$ref": "../common.json#/$defs/timestamp" },
+    "screen": { "description": "Pantalla medida.", "$ref": "../common.json#/$defs/screen" },
+    "viewport_width": { "description": "Ancho interior de la ventana (innerWidth), en píxeles CSS.", "type": "number", "exclusiveMinimum": 0 },
+    "viewport_height": { "description": "Alto interior de la ventana (innerHeight), en píxeles CSS.", "type": "number", "exclusiveMinimum": 0 },
+    "scroll_x": { "description": "Desplazamiento horizontal de la página al medir, en píxeles CSS.", "type": "number", "minimum": 0 },
+    "scroll_y": { "description": "Desplazamiento vertical de la página al medir, en píxeles CSS.", "type": "number", "minimum": 0 },
+    "regions": {
+      "description": "Regiones semánticas de la página que se ven en la ventana, con el mismo criterio que usa la zona de la mirada. Solo valores semánticos de gaze_zone (header, nav, main, aside, footer, search), nunca los de la cuadrícula.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "zone": { "description": "Región.", "$ref": "../enums.json#/$defs/gaze_zone" },
+          "box": { "description": "Rectángulo en la ventana al medir.", "$ref": "#/$defs/box" },
+          "fixed": { "description": "Si la región (o un ancestro) tiene posición fija o pegajosa: no se mueve con el scroll.", "type": "boolean" }
+        },
+        "required": ["zone", "box", "fixed"],
+        "additionalProperties": false
+      }
+    },
+    "elements": {
+      "description": "Elementos interactivos visibles en la ventana (enlaces, botones, campos y elementos con rol interactivo), en orden del documento.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "selector": { "description": "Selector CSS del elemento, con el mismo formato que el de los eventos y la mirada.", "type": "string", "minLength": 1 },
+          "tag": { "description": "Etiqueta HTML en minúsculas.", "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "role": { "description": "Rol ARIA explícito o implícito, o null.", "type": ["string", "null"] },
+          "box": { "description": "Rectángulo en la ventana al medir.", "$ref": "#/$defs/box" },
+          "fixed": { "description": "Si el elemento (o un ancestro) tiene posición fija o pegajosa.", "type": "boolean" }
+        },
+        "required": ["selector", "tag", "role", "box", "fixed"],
+        "additionalProperties": false
+      }
+    },
+    "truncated": { "description": "Si había más elementos interactivos visibles que el máximo que se registra y se omitieron los últimos.", "type": "boolean" }
+  },
+  "required": ["t", "screen", "viewport_width", "viewport_height", "scroll_x", "scroll_y", "regions", "elements", "truncated"],
+  "additionalProperties": false,
+  "$defs": {
+    "box": {
+      "description": "Rectángulo en la ventana, en píxeles CSS (getBoundingClientRect).",
+      "type": "object",
+      "properties": {
+        "x": { "description": "Borde izquierdo.", "type": "number" },
+        "y": { "description": "Borde superior.", "type": "number" },
+        "w": { "description": "Ancho.", "type": "number", "minimum": 0 },
+        "h": { "description": "Alto.", "type": "number", "minimum": 0 }
+      },
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false
+    }
+  }
+}

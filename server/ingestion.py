@@ -188,6 +188,31 @@ def store_calibration(
     writer.update_session(session_id, latest)
 
 
+@register("layout")
+def store_layout(
+    writer: BatchWriter, session_id: int, records: Sequence[Mapping[str, Any]]
+) -> None:
+    """Guarda la disposición de cada pantalla en ``page_layout``."""
+    writer.insert(
+        "page_layout",
+        [
+            {
+                "session_id": session_id,
+                "t": record["t"],
+                "screen": to_json(record["screen"]),
+                "viewport_width": record["viewport_width"],
+                "viewport_height": record["viewport_height"],
+                "scroll_x": record["scroll_x"],
+                "scroll_y": record["scroll_y"],
+                "regions": to_json(record["regions"]),
+                "elements": to_json(record["elements"]),
+                "truncated": int(record["truncated"]),
+            }
+            for record in records
+        ],
+    )
+
+
 def _optional_json(value: Any) -> str | None:
     """Serializa un valor opcional; si falta, la columna queda en ``NULL``."""
     return None if value is None else to_json(value)
