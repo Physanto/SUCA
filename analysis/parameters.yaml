@@ -44,3 +44,11 @@ friction_i_max: null
 
 # Retraso de la cámara respecto de los eventos; la limpieza lo resta a la mirada y al rostro. Se mide en el piloto.
 camera_delay_ms: 0
+
+# Mirada: medición en grados y reprocesamiento al cerrar la sesión (analysis/gaze/).
+gaze:
+  pursuit_skip_ms: 1000          # tramo inicial descartado del punto en movimiento de la calibración
+  saccade_deg_per_s: 60          # velocidad desde la que la mirada salta: el suavizado no cruza un salto
+  fixation_dispersion_deg: 1.5   # dispersión máxima de una fijación (I-DT)
+  fixation_min_ms: 100           # duración mínima de una fijación
+  smoothing_deg_per_s: 2         # movimiento esperable dentro de una fijación, para el suavizado de Kalman

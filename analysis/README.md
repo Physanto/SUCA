@@ -51,6 +51,7 @@ loader.load_session ─► cleaning ─► screens ─► episodes ─► detect
 | `cleaning.py`, `screens.py` | Etapas 1 y 2 |
 | `episodes.py`, `detectors.py` | Etapas 3 y 4: fachadas que ejecutan los detectores registrados |
 | `reference.py`, `usability_index.py` | Etapas 5 a 7 |
+| `gaze/` | Mirada: medición en grados (banco de pruebas) y reprocesamiento al cerrar la sesión. Ver "Mirada" |
 | `ml/` | Modelo de aprendizaje automático (fase posterior) |
 
 Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
@@ -169,3 +170,26 @@ python -m analysis.run --study 1 --db data/mock.db
 ```
 
 Esto reemplaza los resultados esperados que trae la base por los del pipeline. Para recuperarlos, vuelve a generarla.
+
+## Mirada (`gaze/`)
+
+La extensión registra, además de cada muestra de mirada, los números con que se estimó (lote `gaze_features`: pose de la cabeza, posición de los iris, apertura de los párpados, estado y punto antes del filtro) y cada punto que se le pidió mirar al participante (lote `gaze_target`: calibración, validación, vuelta del teclado y comprobaciones de deriva). Con eso la mirada se mide y se vuelve a estimar sin repetir la sesión.
+
+| Archivo | Qué hace |
+|---|---|
+| `gaze/model.py` | El estimador geométrico de la extensión (`extension/camera/gaze-geometry.js`) en numpy: pose de la cabeza más giro del ojo, rayo cortado con el plano de la pantalla, 11 parámetros por persona ajustados con Levenberg-Marquardt y una ridge para el residuo. Una prueba compara sus cuentas con las de JavaScript |
+| `gaze/samples.py` | Junta cada cuadro con el punto que debía mirarse en ese momento (el punto en movimiento, desplazado por el retraso de la cámara) y descarta parpadeos y cuadros incompletos |
+| `gaze/bench.py` | Banco de pruebas: error en grados de la mirada en vivo y del modelo reajustado, por fase, región de la pantalla, cambio de postura de la cabeza y a lo largo del tiempo; vuelta del teclado, precisión y estados de la mirada |
+
+Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en la sección `gaze` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`.
+
+### Banco de pruebas
+
+```bash
+python -m scripts.gaze_bench --session 17                     # informe en la consola
+python -m scripts.gaze_bench --session 17 --json informe.json  # y en JSON
+```
+
+- **En vivo** (`live_deg`) es el punto que dio el motor de la extensión antes del filtro. **Reajustada** (`refit_deg`) es el estimador geométrico entrenado de nuevo solo con la calibración inicial y evaluado en todo lo demás: sirve para comparar variantes del modelo con los mismos datos.
+- Errores en grados de ángulo visual, a la distancia medida en cada cuadro.
+- **Sesión de desarrollo sugerida** (con consentimiento, unos 10 minutos): calibración inicial; luego "Comprobar la mirada" desde el panel después de cada cambio (leer un texto, escribir mirando el teclado, mirar a un costado, inclinarse hacia atrás, acercarse) y la calibración final. Con `camera.drift_correction` en `false` las comprobaciones solo miden, sin corregir.

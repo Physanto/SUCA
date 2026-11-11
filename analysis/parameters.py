@@ -67,6 +67,29 @@ class RepeatedSearchParams:
 
 
 @dataclass(frozen=True)
+class GazeParams:
+    """Medición y reprocesamiento de la mirada después de la sesión.
+
+    Attributes:
+        pursuit_skip_ms: Tramo inicial del punto en movimiento de la calibración
+            que se descarta: los ojos tardan en engancharse a un objetivo que
+            empieza a moverse.
+        saccade_deg_per_s: Velocidad de la mirada desde la que se considera un
+            salto (sacada): el suavizado no la cruza.
+        fixation_dispersion_deg: Dispersión máxima de una fijación (algoritmo I-DT).
+        fixation_min_ms: Duración mínima de una fijación.
+        smoothing_deg_per_s: Cuánto puede moverse la mirada por segundo dentro
+            de una fijación, en el suavizado de Kalman (ruido del proceso).
+    """
+
+    pursuit_skip_ms: float
+    saccade_deg_per_s: float
+    fixation_dispersion_deg: float
+    fixation_min_ms: float
+    smoothing_deg_per_s: float
+
+
+@dataclass(frozen=True)
 class Parameters:
     """Todos los parámetros del análisis.
 
@@ -85,6 +108,7 @@ class Parameters:
         friction_i_max: Incidentes por minuto de tarea con los que la fricción
             llega a 0, o ``None`` mientras no se fije con el piloto.
         camera_delay_ms: Retraso de la cámara respecto de los eventos (0 o más).
+        gaze: Medición y reprocesamiento de la mirada.
     """
 
     version: str
@@ -97,6 +121,7 @@ class Parameters:
     task_overtime_factor: float
     friction_i_max: float | None
     camera_delay_ms: float = field(metadata=_ALLOW_ZERO)
+    gaze: GazeParams
 
 
 def load_parameters(path: Path | str | None = None) -> Parameters:

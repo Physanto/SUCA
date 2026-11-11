@@ -93,6 +93,7 @@ _FLOAT_NULL = Column("float", nullable=True)
 _INT = Column("int")
 _INT_NULL = Column("int", nullable=True)
 _BOOL = Column("bool")
+_BOOL_NULL = Column("bool", nullable=True)
 _TEXT = Column("text")
 _TEXT_NULL = Column("text", nullable=True)
 _JSON = Column("json")
@@ -206,6 +207,91 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
         ),
         "tasks": TableSpec(
             {"task_id": _INT, "t_start": _FLOAT, "t_end": _FLOAT, "ended_by": _TEXT},
+            exact=False,
+        ),
+        # Datos de la mirada (``GazeInputs``): cuadros, objetivos y disposiciones.
+        "gaze_features": TableSpec(
+            {
+                "t": _FLOAT,
+                "face_detected": _BOOL,
+                **{
+                    name: _FLOAT_NULL
+                    for name in (
+                        "head_yaw",
+                        "head_pitch",
+                        "head_roll",
+                        "head_tx",
+                        "head_ty",
+                        "head_tz",
+                        "distance_cm",
+                        "eye_u",
+                        "eye_v",
+                        "aspect",
+                        "left_h",
+                        "left_v",
+                        "left_open",
+                        "right_h",
+                        "right_v",
+                        "right_open",
+                        "blink",
+                        "raw_x",
+                        "raw_y",
+                    )
+                },
+                "left_refined": _BOOL_NULL,
+                "right_refined": _BOOL_NULL,
+                "state": _TEXT,
+                "confidence": _FLOAT,
+                "viewport_width": _FLOAT,
+                "viewport_height": _FLOAT,
+                "scroll_x": _FLOAT,
+                "scroll_y": _FLOAT,
+            },
+            exact=False,
+            enum=("state", "gaze_state"),
+        ),
+        "gaze_targets": TableSpec(
+            {
+                "t": _FLOAT,
+                "t_end": _FLOAT,
+                "calibration_type": _TEXT,
+                "phase": _TEXT,
+                "group": _INT,
+                "viewport_width": _FLOAT,
+                "viewport_height": _FLOAT,
+                "points": _JSON,
+            },
+            exact=False,
+            enum=("phase", "gaze_target_phase"),
+        ),
+        "gaze_calibrations": TableSpec(
+            {
+                "t": _FLOAT,
+                "type": _TEXT,
+                "error_px": _FLOAT,
+                "error_deg": _FLOAT,
+                "accepted": _BOOL,
+                "camera_delay_ms": _FLOAT_NULL,
+                "estimator": _TEXT_NULL,
+                "corrected": _BOOL_NULL,
+                "correction_x_px": _FLOAT_NULL,
+                "correction_y_px": _FLOAT_NULL,
+            },
+            exact=False,
+            enum=("type", "calibration_type"),
+        ),
+        "layouts": TableSpec(
+            {
+                "t": _FLOAT,
+                "screen": _JSON,
+                "viewport_width": _FLOAT,
+                "viewport_height": _FLOAT,
+                "scroll_x": _FLOAT,
+                "scroll_y": _FLOAT,
+                "regions": _JSON,
+                "elements": _JSON,
+                "truncated": _BOOL,
+            },
             exact=False,
         ),
         "references": TableSpec(

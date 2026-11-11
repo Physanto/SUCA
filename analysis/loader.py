@@ -115,6 +115,39 @@ def validate_session_data(data: Any, *, label: str = "session data") -> None:
         columns.validate(getattr(data, name), name, label=f"{label} ({name})")
 
 
+@dataclass(frozen=True)
+class GazeInputs:
+    """Lo que necesitan la medición y el reprocesamiento de la mirada de una sesión.
+
+    Las columnas de cada DataFrame están en ``analysis/columns.py`` (tablas
+    ``gaze_features``, ``gaze_targets``, ``gaze_calibrations``, ``layouts`` y
+    ``gaze``). Los campos JSON ya son diccionarios o listas.
+
+    Attributes:
+        session: Datos generales de la sesión.
+        features: Características de mirada de cada cuadro, en orden de tiempo.
+        targets: Puntos que se pidió mirar, con su tramo de tiempo.
+        calibrations: Calibraciones, validaciones y comprobaciones de deriva.
+        layouts: Disposición de cada pantalla, en orden de tiempo.
+        gaze: Muestras de mirada registradas en vivo.
+    """
+
+    session: SessionInfo
+    features: pd.DataFrame
+    targets: pd.DataFrame
+    calibrations: pd.DataFrame
+    layouts: pd.DataFrame
+    gaze: pd.DataFrame
+
+
+class GazeRepository(Protocol):
+    """Lo que la mirada necesita de la base de datos (separado del resto del análisis)."""
+
+    def load_gaze_inputs(self, session_id: int) -> GazeInputs:
+        """Carga los datos de mirada de una sesión; falla con ``NotFoundError`` si no existe."""
+        ...
+
+
 class AnalysisRepository(Protocol):
     """Lo que el análisis necesita de la base de datos."""
 
@@ -192,6 +225,34 @@ class SqliteAnalysisRepository:
                 "references",
                 map(_reference, self._rows(_REFERENCES_SQL, session.study_id, CONFIRMED_REFERENCE)),
             ),
+        )
+
+    def load_gaze_inputs(self, session_id: int) -> GazeInputs:
+        """Carga los datos de mirada de una sesión.
+
+        Args:
+            session_id: Sesión a cargar.
+
+        Returns:
+            Cuadros, objetivos, calibraciones, disposiciones y muestras de mirada.
+
+        Raises:
+            NotFoundError: Si la sesión no existe.
+        """
+        row = self._connection.execute(_SESSION_SQL + " WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            raise NotFoundError(f"session {session_id} not found")
+        return GazeInputs(
+            session=_session_info(row),
+            features=columns.frame("gaze_features", self._rows(_GAZE_FEATURES_SQL, session_id)),
+            targets=columns.frame(
+                "gaze_targets", map(_gaze_target, self._rows(_GAZE_TARGETS_SQL, session_id))
+            ),
+            calibrations=columns.frame(
+                "gaze_calibrations", self._rows(_GAZE_CALIBRATIONS_SQL, session_id)
+            ),
+            layouts=columns.frame("layouts", map(_layout, self._rows(_LAYOUTS_SQL, session_id))),
+            gaze=columns.frame("gaze", self._rows(_GAZE_SQL, session_id)),
         )
 
     def list_sessions(self, study_id: int) -> list[SessionInfo]:
@@ -342,6 +403,20 @@ _CALIBRATIONS_SQL = (
     "SELECT t, type, error_px, error_deg, accepted, camera_delay_ms FROM calibration"
     " WHERE session_id = ? ORDER BY t"
 )
+_GAZE_FEATURES_SQL = "SELECT * FROM gaze_feature WHERE session_id = ? ORDER BY t"
+_GAZE_TARGETS_SQL = (
+    'SELECT t, t_end, calibration_type, phase, "group", viewport_width, viewport_height, points'
+    " FROM gaze_target WHERE session_id = ? ORDER BY t"
+)
+_GAZE_CALIBRATIONS_SQL = (
+    "SELECT t, type, error_px, error_deg, accepted, camera_delay_ms, viewing_distance_cm,"
+    " precision_deg, return_error_deg, estimator, corrected, correction_x_px, correction_y_px"
+    " FROM calibration WHERE session_id = ? ORDER BY t"
+)
+_LAYOUTS_SQL = (
+    "SELECT t, screen, viewport_width, viewport_height, scroll_x, scroll_y, regions, elements,"
+    " truncated FROM page_layout WHERE session_id = ? ORDER BY t"
+)
 _TASKS_SQL = (
     "SELECT task_id, t_start, t_end, ended_by FROM session_task"
     " WHERE session_id = ? ORDER BY t_start"
@@ -381,6 +456,21 @@ def _event(row: dict[str, Any]) -> dict[str, Any]:
 def _face(row: dict[str, Any]) -> dict[str, Any]:
     """Convierte una fila de ``face_sample``."""
     return {**row, "values": _json(row["values"])}
+
+
+def _gaze_target(row: dict[str, Any]) -> dict[str, Any]:
+    """Convierte una fila de ``gaze_target``."""
+    return {**row, "points": _json(row["points"])}
+
+
+def _layout(row: dict[str, Any]) -> dict[str, Any]:
+    """Convierte una fila de ``page_layout``."""
+    return {
+        **row,
+        "screen": _json(row["screen"]),
+        "regions": _json(row["regions"]),
+        "elements": _json(row["elements"]),
+    }
 
 
 def _reference(row: dict[str, Any]) -> dict[str, Any]:
