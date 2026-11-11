@@ -390,3 +390,43 @@ def _with_residual(
     return GeometricModel(
         params=params, open_ref=open_ref, css_px_per_cm=css_px_per_cm, residual=residual
     )
+
+
+def fit_with_lambda(
+    features: pd.DataFrame,
+    x: Sequence[float] | np.ndarray,
+    y: Sequence[float] | np.ndarray,
+    groups: Sequence[Hashable] | np.ndarray,
+    *,
+    viewport_width: float,
+    css_px_per_cm: float,
+    lam: float | None,
+    initial: np.ndarray | None = None,
+) -> GeometricModel:
+    """Ajusta el estimador con una penalización del residuo ya elegida, sin validación cruzada.
+
+    Sirve para los ajustes repetidos de una validación dejando fuera un objetivo,
+    después de elegir el residuo con ``fit_geometric``.
+
+    Args:
+        features: Características geométricas de cada muestra.
+        x: Coordenada horizontal mirada.
+        y: Coordenada vertical mirada.
+        groups: Objetivo de cada muestra (para pesar cada objetivo por igual).
+        viewport_width: Ancho de la ventana, para el valor previo de ``c_x``.
+        css_px_per_cm: Píxeles CSS por centímetro de la pantalla.
+        lam: Penalización del residuo; ``None`` sin residuo.
+        initial: Parámetros iniciales; por omisión, los valores previos.
+
+    Returns:
+        Modelo ajustado.
+    """
+    features = features.reset_index(drop=True)
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    groups = np.asarray([str(group) for group in groups])
+    prior = priors(viewport_width, css_px_per_cm)
+    open_ref = float(np.median(features["open"].to_numpy(float)))
+    start = prior[0] if initial is None else initial
+    params = _fit_params(features, x, y, groups, css_px_per_cm, open_ref, prior, start)
+    return _with_residual(params, features, x, y, css_px_per_cm, open_ref, lam)

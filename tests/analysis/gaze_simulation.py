@@ -28,6 +28,8 @@ TRUTH = np.array([-2.2, 0.04, -2.8, -0.05, 0.6, 1, 1, 650, -90, 1.05, 0.97])
 OPEN_REF = 0.3
 CALIBRATION_POSE = {"yaw": 0.0, "pitch": -8.0, "distance": 58.0}
 SHIFTED_POSE = {"yaw": 9.0, "pitch": -15.0, "distance": 66.0}
+EVENT_SEPARATION_MS = 61_000.0
+"""Pausa después de cada comprobación, para que la siguiente sea otro procedimiento."""
 DRIFT_PX_PER_MIN = 12.0
 """Cuánto se corre la mirada en vivo por minuto (hacia la derecha y abajo)."""
 
@@ -71,8 +73,9 @@ class Simulation:
 class _Builder:
     """Acumula cuadros y objetivos en orden de tiempo."""
 
-    def __init__(self, seed: int) -> None:
+    def __init__(self, seed: int, eye_drift_px_per_min: float = 0.0) -> None:
         self.random = np.random.default_rng(seed)
+        self.eye_drift = eye_drift_px_per_min
         self.t = T0
         self.frames: list[dict] = []
         self.truth: list[dict] = []
@@ -102,9 +105,11 @@ class _Builder:
         blink: float = 0.02,
     ) -> None:
         """Agrega un cuadro que mira un punto, y avanza el reloj."""
-        h, v = iris_for(look[0], look[1], pose)
-        noise = lambda: float(self.random.normal(0, 0.0015))  # noqa: E731
         minutes = (self.t - T0) / 60_000
+        # Con deriva de los ojos, el iris corresponde a un punto corrido respecto del mirado.
+        shift = self.eye_drift * minutes
+        h, v = iris_for(look[0] + shift, look[1] - shift, pose)
+        noise = lambda: float(self.random.normal(0, 0.0015))  # noqa: E731
         drift = DRIFT_PX_PER_MIN * minutes
         self.frames.append(
             {
@@ -200,16 +205,20 @@ def grid(fractions: tuple[float, ...]) -> list[tuple[float, float]]:
     return [(fx * VIEWPORT[0], fy * VIEWPORT[1]) for fy in fractions for fx in fractions]
 
 
-def simulate(seed: int = 7) -> Simulation:
+def simulate(seed: int = 7, *, eye_drift_px_per_min: float = 0.0, checks: int = 1) -> Simulation:
     """Arma la sesión simulada completa.
 
     Args:
         seed: Semilla del azar.
+        eye_drift_px_per_min: Deriva real de la persona: cuánto se corre por minuto
+            el punto que indican sus ojos respecto del que mira (a la derecha y arriba).
+        checks: Comprobaciones de deriva repartidas en los cinco minutos de uso; con
+            más de una, al final se agrega una validación final.
 
     Returns:
         Sesión simulada.
     """
-    b = _Builder(seed)
+    b = _Builder(seed, eye_drift_px_per_min)
     still = (2.0, 2.0, 2.0)
     for group, point in enumerate([*grid((0.1, 0.5, 0.9)), *grid((0.3, 0.7))]):
         b.fixed("initial", "points", group, point, CALIBRATION_POSE, still, 1100)
@@ -242,19 +251,22 @@ def simulate(seed: int = 7) -> Simulation:
         )
     b.fixed("initial", "look_away", 0, (640, 324), CALIBRATION_POSE, still, 1000)
     calibration_end = b.t
-    # Cinco minutos de uso con otra postura, y un parpadeo de vez en cuando.
-    while b.t < T0 + 300_000:
-        point = (float(b.random.uniform(100, 1180)), float(b.random.uniform(80, 640)))
-        blink = 0.9 if b.random.random() < 0.05 else 0.02
-        b.frame(
-            point,
-            b.pose(SHIFTED_POSE, still),
-            blink=blink,
-            state="blink" if blink > 0.5 else "on_screen",
-        )
-        b.t += 2 * FRAME_MS  # Menos cuadros fuera de los procedimientos, para que sea rápido.
-    for group, point in enumerate([(640, 360), (256, 144), (1024, 576)]):
-        b.fixed("drift_check", "drift_check", group, point, SHIFTED_POSE, still, 1100)
+    # Cinco minutos de uso con otra postura y un parpadeo de vez en cuando, cortados por
+    # las comprobaciones de deriva.
+    for check in range(1, checks + 1):
+        while b.t < T0 + 300_000 * check / checks:
+            point = (float(b.random.uniform(100, 1180)), float(b.random.uniform(80, 640)))
+            blink = 0.9 if b.random.random() < 0.05 else 0.02
+            state = "blink" if blink > 0.5 else "on_screen"
+            b.frame(point, b.pose(SHIFTED_POSE, still), blink=blink, state=state)
+            b.t += 2 * FRAME_MS  # Menos cuadros fuera de los procedimientos, para que sea rápido.
+        for group, point in enumerate([(640, 360), (256, 144), (1024, 576)]):
+            b.fixed("drift_check", "drift_check", group, point, SHIFTED_POSE, still, 1100)
+        b.t += EVENT_SEPARATION_MS
+    if checks > 1:
+        for group, (fx, fy) in enumerate(validation):
+            point = (fx * VIEWPORT[0], fy * VIEWPORT[1])
+            b.fixed("final", "validation", group, point, SHIFTED_POSE, still, 1000)
     frames = columns.frame("gaze_features", b.frames)
     calibrations = columns.frame(
         "gaze_calibrations",

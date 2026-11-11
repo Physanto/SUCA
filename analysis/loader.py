@@ -147,6 +147,12 @@ class GazeRepository(Protocol):
         """Carga los datos de mirada de una sesión; falla con ``NotFoundError`` si no existe."""
         ...
 
+    def save_gaze_refinement(
+        self, session_id: int, samples: pd.DataFrame, quality: pd.DataFrame
+    ) -> None:
+        """Reemplaza la mirada reprocesada de una sesión, todo o nada."""
+        ...
+
 
 class AnalysisRepository(Protocol):
     """Lo que el análisis necesita de la base de datos."""
@@ -254,6 +260,28 @@ class SqliteAnalysisRepository:
             layouts=columns.frame("layouts", map(_layout, self._rows(_LAYOUTS_SQL, session_id))),
             gaze=columns.frame("gaze", self._rows(_GAZE_SQL, session_id)),
         )
+
+    def save_gaze_refinement(
+        self, session_id: int, samples: pd.DataFrame, quality: pd.DataFrame
+    ) -> None:
+        """Reemplaza la mirada reprocesada de una sesión, todo o nada.
+
+        Args:
+            session_id: Sesión reprocesada.
+            samples: Una fila por cuadro (tabla ``gaze_refined``).
+            quality: Una fila o ninguna (tabla ``gaze_quality``).
+
+        Raises:
+            columns.ColumnValidationError: Si alguna tabla no cumple su especificación;
+                en ese caso no se toca la base.
+        """
+        tables = dict(zip(columns.GAZE_RESULT_TABLES, (samples, quality), strict=True))
+        for table, df in tables.items():
+            columns.validate(df, table)
+        with db.transaction(self._connection):
+            for table, df in tables.items():
+                self._connection.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
+                self._insert(table, session_id, df, {})
 
     def list_sessions(self, study_id: int) -> list[SessionInfo]:
         """Lista las sesiones de un estudio.

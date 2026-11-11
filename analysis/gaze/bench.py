@@ -25,10 +25,14 @@ import pandas as pd
 
 from analysis.gaze import GazeSettings
 from analysis.gaze.model import fit_geometric
-from analysis.gaze.samples import TRAINING_PHASES, geometric_features, px_to_deg, target_samples
-
-INITIAL = "initial"
-"""Tipo de la calibración que entrena (``calibration_type``)."""
+from analysis.gaze.samples import (
+    INITIAL,
+    TRAINING_PHASES,
+    camera_delay,
+    geometric_features,
+    px_to_deg,
+    target_samples,
+)
 
 POSE_BINS: dict[str, tuple[float, ...]] = {
     "yaw_deg": (0, 5, 10, 20, np.inf),
@@ -64,16 +68,6 @@ class BenchReport:
     by_pose: pd.DataFrame = field(default_factory=pd.DataFrame)
     over_time: pd.DataFrame = field(default_factory=pd.DataFrame)
     states: pd.DataFrame = field(default_factory=pd.DataFrame)
-
-
-def _camera_delay(calibrations: pd.DataFrame) -> float:
-    """Retraso de la cámara medido en la última calibración inicial que lo trae; 0 si ninguna."""
-    if calibrations.empty or "camera_delay_ms" not in calibrations:
-        return 0.0
-    measured = calibrations[
-        (calibrations["type"] == INITIAL) & calibrations["camera_delay_ms"].notna()
-    ]
-    return float(measured.sort_values("t")["camera_delay_ms"].iloc[-1]) if len(measured) else 0.0
 
 
 def _region(samples: pd.DataFrame) -> pd.Series:
@@ -129,7 +123,7 @@ def evaluate(
         Informe con el error en grados y sus desgloses. Sin objetivos, solo el resumen.
     """
     frames = frames.reset_index(drop=True)
-    delay = _camera_delay(calibrations)
+    delay = camera_delay(calibrations)
     samples = target_samples(
         frames,
         targets,

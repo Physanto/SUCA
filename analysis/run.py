@@ -17,6 +17,11 @@ se registra cuánto tardó. Si una etapa falla, el análisis de esa sesión se
 detiene con un mensaje que nombra la etapa y no se guarda nada. Al final, el
 repositorio reemplaza los resultados previos de la sesión.
 
+Después de guardar esos resultados, si la sesión registró características de
+mirada, reprocesa la mirada (``analysis/gaze/refine.py``) y la guarda en
+``gaze_refined`` y ``gaze_quality``. Un fallo de este paso se informa pero no
+anula el resto del análisis, que ya quedó guardado.
+
 Es el punto de composición del análisis: aquí se arman los parámetros, la
 conexión y el repositorio.
 
@@ -41,8 +46,11 @@ from typing import Any
 import pandas as pd
 
 from analysis import cleaning, columns, detectors, episodes, reference, screens, usability_index
+from analysis.gaze import GazeSettings
+from analysis.gaze.refine import refine
 from analysis.loader import (
     AnalysisRepository,
+    GazeRepository,
     NotFoundError,
     SessionData,
     SqliteAnalysisRepository,
@@ -67,6 +75,8 @@ class AnalysisResults:
         usability_index: Índice de la sesión (tabla ``usability_index``).
         reference_drafts: Pasos y candidatas de las tareas de una grabación.
         timings_ms: Duración de cada etapa ejecutada, en milisegundos y en orden.
+        gaze_quality: Calidad de la mirada reprocesada (tabla ``gaze_quality``), o
+            ``None`` si no se reprocesó.
     """
 
     data: SessionData
@@ -76,6 +86,7 @@ class AnalysisResults:
     usability_index: pd.DataFrame
     timings_ms: Mapping[str, float] = field(default_factory=lambda: MappingProxyType({}))
     reference_drafts: pd.DataFrame = field(default_factory=lambda: columns.empty("reference_draft"))
+    gaze_quality: pd.DataFrame | None = None
 
 
 @dataclass(frozen=True)
@@ -207,7 +218,11 @@ def run_pipeline(
 
 
 def analyze_session(
-    repository: AnalysisRepository, session_id: int, params: Parameters
+    repository: AnalysisRepository,
+    session_id: int,
+    params: Parameters,
+    *,
+    gaze: tuple[GazeRepository, GazeSettings] | None = None,
 ) -> AnalysisResults:
     """Analiza una sesión y reemplaza sus resultados en la base.
 
@@ -215,6 +230,8 @@ def analyze_session(
         repository: Acceso a la base del análisis.
         session_id: Sesión a analizar.
         params: Parámetros del análisis.
+        gaze: Acceso a los datos de mirada y sus ajustes; sin ellos no se
+            reprocesa la mirada.
 
     Returns:
         Resultados de la sesión.
@@ -236,7 +253,43 @@ def analyze_session(
         params.version,
         reference_drafts=results.reference_drafts,
     )
+    if gaze is not None:
+        quality = refine_gaze(*gaze, session_id)
+        results = replace(results, gaze_quality=quality)
     return results
+
+
+def refine_gaze(
+    repository: GazeRepository, settings: GazeSettings, session_id: int
+) -> pd.DataFrame | None:
+    """Reprocesa la mirada de una sesión y la guarda.
+
+    Args:
+        repository: Acceso a los datos de mirada.
+        settings: Ajustes de la mirada.
+        session_id: Sesión.
+
+    Returns:
+        Calidad de la mirada reprocesada, o ``None`` si la sesión no registró
+        características de mirada o el reprocesamiento falló (se informa en el log).
+    """
+    started = time.perf_counter()
+    try:
+        inputs = repository.load_gaze_inputs(session_id)
+        if inputs.features.empty:
+            return None
+        refined = refine(inputs, settings)
+        repository.save_gaze_refinement(session_id, refined.samples, refined.quality)
+    except Exception as error:
+        # El análisis de la sesión ya quedó guardado: la mirada sin reprocesar no lo invalida.
+        logger.warning("session %d: gaze refinement failed: %s", session_id, error)
+        return None
+    logger.info(
+        "session %d: gaze refinement took %.1f ms",
+        session_id,
+        (time.perf_counter() - started) * 1000,
+    )
+    return refined.quality
 
 
 def summary(results: AnalysisResults) -> str:
@@ -258,8 +311,20 @@ def summary(results: AnalysisResults) -> str:
     return (
         f"session {results.data.session.id}: {len(results.episodes)} episodes, "
         f"{len(results.incidents)} incidents, {len(results.task_results)} task results, "
-        f"{drafts}{bui} ({sum(results.timings_ms.values()):.1f} ms)"
+        f"{drafts}{bui}{_gaze_summary(results.gaze_quality)} "
+        f"({sum(results.timings_ms.values()):.1f} ms)"
     )
+
+
+def _gaze_summary(quality: pd.DataFrame | None) -> str:
+    """Parte del resumen sobre la mirada: error refinado y en vivo, si se midieron."""
+    if quality is None or quality.empty:
+        return ""
+    row = quality.iloc[0]
+    if pd.isna(row["refined_error_deg"]):
+        return f", gaze {row['method']}"
+    live = "" if pd.isna(row["live_error_deg"]) else f", live {row['live_error_deg']:.2f}°"
+    return f", gaze {row['refined_error_deg']:.2f}° ({row['method']}{live})"
 
 
 def _sessions_to_analyze(repository: AnalysisRepository, args: argparse.Namespace) -> list[int]:
@@ -302,7 +367,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         params = load_parameters()
-        connection = db.open_database(args.db or load_config().database.path)
+        config = load_config()
+        gaze_settings = GazeSettings.from_config(config.camera, params.gaze)
+        connection = db.open_database(args.db or config.database.path)
     except (ParametersError, ConfigError, FileNotFoundError, db.SchemaVersionError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -317,7 +384,10 @@ def main(argv: list[str] | None = None) -> int:
         failures = 0
         for session_id in session_ids:
             try:
-                print(summary(analyze_session(repository, session_id, params)))
+                results = analyze_session(
+                    repository, session_id, params, gaze=(repository, gaze_settings)
+                )
+                print(summary(results))
             except Exception as error:
                 # Una sesión que falla no impide analizar las demás del estudio.
                 print(f"error: session {session_id}: {error}", file=sys.stderr)

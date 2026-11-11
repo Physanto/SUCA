@@ -144,6 +144,39 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
             },
             max_rows=1,
         ),
+        # Mirada reprocesada al cerrar la sesión (analysis/gaze/refine.py).
+        "gaze_refined": TableSpec(
+            {
+                "t": _FLOAT,
+                "x": _FLOAT_NULL,
+                "y": _FLOAT_NULL,
+                "scroll_x": _FLOAT,
+                "scroll_y": _FLOAT,
+                "state": _TEXT,
+                "confidence": _FLOAT,
+                "valid": _BOOL,
+                "zone": _TEXT_NULL,
+                "element_selector": _TEXT_NULL,
+                "fixation": _INT_NULL,
+            },
+            enum=("state", "gaze_state"),
+        ),
+        "gaze_quality": TableSpec(
+            {
+                "method": _TEXT,
+                "fit_scope": _TEXT_NULL,
+                "frames": _INT,
+                "check_samples": _INT,
+                "camera_delay_ms": _FLOAT,
+                "live_error_deg": _FLOAT_NULL,
+                "refined_error_deg": _FLOAT_NULL,
+                "drift_corrected": _BOOL,
+                "residual_lambda": _FLOAT_NULL,
+                "noise_px": _FLOAT,
+                "fixations": _INT,
+            },
+            max_rows=1,
+        ),
         # Borradores: se actualizan por tarea y grabación, sin reemplazar confirmadas.
         "reference_draft": TableSpec(
             {
@@ -311,6 +344,9 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
 
 RESULT_TABLES = ("episode", "incident", "task_result", "usability_index")
 """Tablas de resultados, en el orden en que se guardan."""
+
+GAZE_RESULT_TABLES = ("gaze_refined", "gaze_quality")
+"""Tablas de la mirada reprocesada; se guardan aparte, con ``save_gaze_refinement``."""
 
 
 def spec(name: str) -> TableSpec:

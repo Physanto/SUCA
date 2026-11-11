@@ -14,6 +14,9 @@ import pandas as pd
 
 from analysis.gaze.model import FEATURE_COLUMNS
 
+INITIAL = "initial"
+"""Tipo de la calibración que entrena (``calibration_type``)."""
+
 PURSUIT = "pursuit"
 """Fase del punto en movimiento (``gaze_target_phase``)."""
 
@@ -206,3 +209,20 @@ def px_to_deg(error_px: np.ndarray, distance_cm: np.ndarray, css_px_per_cm: floa
     return np.degrees(
         np.arctan(np.asarray(error_px, float) / css_px_per_cm / np.asarray(distance_cm, float))
     )
+
+
+def camera_delay(calibrations: pd.DataFrame) -> float:
+    """Retraso de la cámara medido en la última calibración inicial que lo trae.
+
+    Args:
+        calibrations: Filas de ``calibration`` (``t``, ``type``, ``camera_delay_ms``).
+
+    Returns:
+        Retraso en milisegundos; 0 si ninguna calibración lo midió.
+    """
+    if calibrations.empty or "camera_delay_ms" not in calibrations:
+        return 0.0
+    measured = calibrations[
+        (calibrations["type"] == INITIAL) & calibrations["camera_delay_ms"].notna()
+    ]
+    return float(measured.sort_values("t")["camera_delay_ms"].iloc[-1]) if len(measured) else 0.0

@@ -179,6 +179,8 @@ La extensión registra, además de cada muestra de mirada, los números con que 
 |---|---|
 | `gaze/model.py` | El estimador geométrico de la extensión (`extension/camera/gaze-geometry.js`) en numpy: pose de la cabeza más giro del ojo, rayo cortado con el plano de la pantalla, 11 parámetros por persona ajustados con Levenberg-Marquardt y una ridge para el residuo. Una prueba compara sus cuentas con las de JavaScript |
 | `gaze/samples.py` | Junta cada cuadro con el punto que debía mirarse en ese momento (el punto en movimiento, desplazado por el retraso de la cámara) y descarta parpadeos y cuadros incompletos |
+| `gaze/refine.py` | Reprocesamiento al cerrar la sesión: reajuste del modelo, deriva corregida en el tiempo, suavizado de Kalman en dos pasadas, fijaciones (I-DT) y zona y elemento de cada punto. Ver "Reprocesamiento" |
+| `gaze/layout.py` | Zona y elemento de un punto con la disposición registrada de la pantalla (`page_layout`) |
 | `gaze/bench.py` | Banco de pruebas: error en grados de la mirada en vivo y del modelo reajustado, por fase, región de la pantalla, cambio de postura de la cabeza y a lo largo del tiempo; vuelta del teclado, precisión y estados de la mirada |
 
 Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en la sección `gaze` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`.
@@ -193,3 +195,15 @@ python -m scripts.gaze_bench --session 17 --json informe.json  # y en JSON
 - **En vivo** (`live_deg`) es el punto que dio el motor de la extensión antes del filtro. **Reajustada** (`refit_deg`) es el estimador geométrico entrenado de nuevo solo con la calibración inicial y evaluado en todo lo demás: sirve para comparar variantes del modelo con los mismos datos.
 - Errores en grados de ángulo visual, a la distancia medida en cada cuadro.
 - **Sesión de desarrollo sugerida** (con consentimiento, unos 10 minutos): calibración inicial; luego "Comprobar la mirada" desde el panel después de cada cambio (leer un texto, escribir mirando el teclado, mirar a un costado, inclinarse hacia atrás, acercarse) y la calibración final. Con `camera.drift_correction` en `false` las comprobaciones solo miden, sin corregir.
+
+### Reprocesamiento al cerrar la sesión
+
+`python -m analysis.run` reprocesa la mirada de cada sesión después de guardar sus demás resultados, si la sesión registró características de mirada. Lo guarda en `gaze_refined` (una fila por cuadro) y `gaze_quality` (una fila por sesión). Si falla, lo informa en el log y el resto del análisis queda guardado igual. Tarda unos segundos por sesión de 15 minutos.
+
+1. **Modelo.** Se ajusta el estimador geométrico de dos formas: solo con la calibración inicial (`fit_scope = calibration`) y con todos los puntos conocidos (`all_targets`), y se usa la de menor error honesto.
+2. **Deriva.** El desplazamiento medio de cada procedimiento de control (validación, vuelta del teclado, comprobación de deriva, validación final) se interpola en el tiempo, anclado en 0 en el momento de la calibración. Solo se aplica (`drift_corrected`) si mejora el error honesto.
+3. **Suavizado de Kalman en dos pasadas** dentro de cada tramo en que la persona mira la pantalla, cortado en los saltos de la mirada (`gaze.saccade_deg_per_s`). El ruido de medición sale de la dispersión en los puntos fijos (`noise_px`).
+4. **Fijaciones** por dispersión (I-DT: `gaze.fixation_dispersion_deg`, `gaze.fixation_min_ms`).
+5. **Zona y elemento** con la última disposición registrada antes de cada punto: la región semántica más interna que lo contiene (o la cuadrícula de 3 × 3) y el elemento interactivo más pequeño. A diferencia de la mirada en vivo, el elemento solo puede ser uno interactivo, porque son los únicos que se registran.
+
+**Error honesto** (`refined_error_deg`): cada punto de control se predice con un modelo que no lo vio y una corrección de deriva interpolada sin su procedimiento. `live_error_deg` es el error de la mirada en vivo en los mismos puntos. Sin calibración utilizable, `method = live`: se suaviza la mirada en vivo y se le asignan fijaciones y zonas, sin reajuste.

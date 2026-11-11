@@ -282,6 +282,44 @@ CREATE TABLE usability_index (
 );
 
 
+-- Mirada reprocesada al cerrar la sesión (analysis/gaze/refine.py): una fila
+-- por cuadro de gaze_feature, con el modelo reajustado, la deriva corregida,
+-- el suavizado, la fijación y la zona y el elemento según page_layout.
+CREATE TABLE gaze_refined (
+    session_id       INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    t                REAL    NOT NULL,
+    x                REAL,              -- NULL si no mira la pantalla
+    y                REAL,
+    scroll_x         REAL    NOT NULL,
+    scroll_y         REAL    NOT NULL,
+    state            TEXT    NOT NULL,  -- gaze_state que dio el monitor en vivo
+    confidence       REAL    NOT NULL,
+    valid            INTEGER NOT NULL,  -- 0/1: mira la pantalla, dentro de la ventana
+    zone             TEXT,              -- gaze_zone
+    element_selector TEXT,              -- elemento interactivo bajo el punto, o NULL
+    fixation         INTEGER            -- número de fijación (I-DT), o NULL
+);
+
+CREATE INDEX gaze_refined_session_t_idx ON gaze_refined (session_id, t);
+
+-- Calidad de la mirada de una sesión: error en vivo y refinado en los puntos de
+-- control, medido sin usar cada punto para corregirse a sí mismo.
+CREATE TABLE gaze_quality (
+    session_id        INTEGER PRIMARY KEY REFERENCES session (id) ON DELETE CASCADE,
+    method            TEXT    NOT NULL,  -- geometric (modelo reajustado) o live (solo suavizado)
+    fit_scope         TEXT,              -- calibration o all_targets: con qué se entrenó; NULL en live
+    frames            INTEGER NOT NULL,
+    check_samples     INTEGER NOT NULL,  -- muestras de validación y comprobaciones de deriva
+    camera_delay_ms   REAL    NOT NULL,
+    live_error_deg    REAL,
+    refined_error_deg REAL,
+    drift_corrected   INTEGER NOT NULL,  -- 0/1
+    residual_lambda   REAL,
+    noise_px          REAL    NOT NULL,  -- ruido de medición usado en el suavizado
+    fixations         INTEGER NOT NULL
+);
+
+
 -- =====================================================================
 -- Referencias, capturas de pantalla y metadatos
 -- =====================================================================
@@ -335,4 +373,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '6');
+INSERT INTO meta (key, value) VALUES ('schema_version', '7');
