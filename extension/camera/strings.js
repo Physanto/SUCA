@@ -24,13 +24,28 @@
 
   UX.cameraStrings = deepFreeze({
     calibration: {
-      title: { initial: 'Calibración de la mirada', final: 'Comprobación final de la mirada' },
+      title: {
+        initial: 'Calibración de la mirada',
+        final: 'Comprobación final de la mirada',
+        drift_check: 'Comprobación rápida de la mirada',
+      },
       intro: {
         initial:
-          'Van a aparecer puntos en la pantalla, uno a la vez. Mira cada punto y haz clic sobre él. Después sigue mirándolo hasta que desaparezca. Mantén la cabeza quieta durante toda la prueba.',
+          'Son tres partes cortas, de poco más de un minuto en total. Primero van a aparecer puntos, uno a la vez: mira cada punto, haz clic sobre él y sigue mirándolo hasta que desaparezca. Durante la calibración mantén la cabeza quieta salvo cuando se te pida moverla. Después podrás moverte con naturalidad.',
         final:
-          'Van a aparecer algunos puntos, uno a la vez. Solo míralos hasta que desaparezcan; no hace falta hacer clic. Mantén la cabeza quieta.',
+          'Van a aparecer algunos puntos, uno a la vez. Solo míralos hasta que desaparezcan; no hace falta hacer clic.',
+        drift_check: 'Mira cada punto y haz clic sobre él. Son tres puntos y toma unos segundos.',
       },
+      pursuitIntro:
+        'Ahora un punto se va a mover por la pantalla. Síguelo con la vista, sin mover la cabeza, hasta que se detenga.',
+      pursuitHint: 'Sigue el punto con la vista',
+      headIntro:
+        'Ahora mira el punto del centro sin dejar de mirarlo, y mueve la cabeza despacio: un poco a la izquierda, a la derecha, arriba, abajo, y acércate y aléjate de la pantalla.',
+      headHint: 'Sin dejar de mirar el punto, mueve la cabeza despacio en todas direcciones',
+      lookAwayIntro:
+        'Último punto: al hacer clic en Listo, mira tu teclado, cuenta hasta tres y vuelve a mirar el punto rojo.',
+      lookAwayHint: 'Mira tu teclado, cuenta hasta tres y vuelve a mirar este punto',
+      readyButton: 'Listo',
       startButton: 'Comenzar',
       startAnywayButton: 'Comenzar de todos modos',
       framing: {
@@ -57,6 +72,9 @@
       accepted: 'Listo. La calibración quedó bien.',
       rejected: 'La calibración no quedó suficientemente precisa. Puedes repetirla.',
       result: (errorDeg) => `Error medio: ${errorDeg.toFixed(1)}°`,
+      driftOk: 'La mirada sigue bien.',
+      driftCorrected: 'La mirada se había corrido un poco y quedó corregida.',
+      driftLarge: 'La mirada se desvió bastante. Conviene repetir la calibración inicial desde el panel.',
       continueButton: 'Continuar',
       repeatButton: 'Repetir',
       cancelButton: 'Cancelar',

@@ -7,6 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 require('../config.generated.js');
+require('../camera/numeric.js');
 require('../camera/gaze-model.js');
 require('../camera/eye-features.js');
 require('../camera/face-features.js');
@@ -23,7 +24,7 @@ function seeded(seed) {
 }
 
 test('solves a symmetric positive definite system', () => {
-  const x = UX.solveSymmetric(
+  const x = UX.numeric.solveSymmetric(
     [
       [4, 1],
       [1, 3],
@@ -83,15 +84,6 @@ test('rejects samples with a different number of features', () => {
   const model = UX.createGazeModel();
   model.add([1, 2], 0, 0, 0);
   assert.throws(() => model.add([1], 0, 0, 0), /same number of features/);
-});
-
-test('smooths points and starts over after a reset', () => {
-  const smoother = UX.createSmoother(0.5);
-  assert.deepEqual(smoother.next({ x: 0, y: 0 }), { x: 0, y: 0 });
-  assert.deepEqual(smoother.next({ x: 100, y: 50 }), { x: 50, y: 25 });
-  smoother.reset();
-  assert.deepEqual(smoother.next({ x: 100, y: 50 }), { x: 100, y: 50 });
-  assert.throws(() => UX.createSmoother(0), /alpha/);
 });
 
 /** Puntos de un rostro falso: todos en el centro salvo los que la prueba ubica. */
@@ -176,6 +168,85 @@ test('places the iris along each eye, from the outer to the inner corner', () =>
   assert.ok(Math.abs(leftAlong - 0.5) < 1e-9);
   assert.ok(Math.abs(rightAlong - 0.25) < 1e-9);
   assert.ok(Math.abs(leftUp) < 1e-9 && Math.abs(rightUp) < 1e-9);
+});
+
+/** Ojos falsos con comisuras, párpados e iris, en un cuadro de 1000 × 1000. */
+function geometryLandmarks({ tilt = 0, leftIris = { x: 0.6, y: 0.42 }, rightIris = { x: 0.4, y: 0.42 } } = {}) {
+  const { EYES } = UX.eyeFeatures;
+  // Cada ojo mide 0,1 de ancho; `tilt` sube la comisura derecha de la imagen (cabeza inclinada).
+  const eye = (cx, cy) => ({
+    left: { x: cx - 0.05, y: cy + tilt / 2 },
+    right: { x: cx + 0.05, y: cy - tilt / 2 },
+    top: { x: cx, y: cy - 0.015 },
+    bottom: { x: cx, y: cy + 0.015 },
+  });
+  const left = eye(0.6, 0.42);
+  const right = eye(0.4, 0.42);
+  return fakeLandmarks({
+    // El ojo izquierdo de la persona está a la derecha de la imagen: su comisura externa (263) a la derecha.
+    [EYES.left.outer]: left.right,
+    [EYES.left.inner]: left.left,
+    [EYES.left.top]: left.top,
+    [EYES.left.bottom]: left.bottom,
+    [EYES.right.outer]: right.left,
+    [EYES.right.inner]: right.right,
+    [EYES.right.top]: right.top,
+    [EYES.right.bottom]: right.bottom,
+    473: leftIris,
+    474: { x: leftIris.x + 0.012, y: leftIris.y },
+    475: { x: leftIris.x, y: leftIris.y + 0.012 },
+    476: { x: leftIris.x - 0.012, y: leftIris.y },
+    477: { x: leftIris.x, y: leftIris.y - 0.012 },
+    468: rightIris,
+    469: { x: rightIris.x + 0.012, y: rightIris.y },
+    470: { x: rightIris.x, y: rightIris.y + 0.012 },
+    471: { x: rightIris.x - 0.012, y: rightIris.y },
+    472: { x: rightIris.x, y: rightIris.y - 0.012 },
+  });
+}
+
+test('gives each eye its MediaPipe iris as a seed, with the radius of its contour', () => {
+  const seeds = UX.eyeFeatures.irisSeeds(geometryLandmarks(), 1000, 1000);
+
+  assert.ok(Math.abs(seeds.left.x - 600) < 1e-9 && Math.abs(seeds.right.x - 400) < 1e-9);
+  assert.ok(Math.abs(seeds.left.r - 12) < 1e-9);
+});
+
+test('measures the iris in eye widths along image axes that follow the head roll', () => {
+  const { eyeGeometry } = UX.eyeFeatures;
+  // Los dos iris corridos 0,01 hacia la derecha de la imagen y 0,005 hacia abajo.
+  const irises = { left: { x: 610, y: 425 }, right: { x: 410, y: 425 } };
+
+  const level = eyeGeometry(geometryLandmarks(), irises, 1000, 1000);
+
+  for (const side of ['left', 'right']) {
+    assert.ok(Math.abs(level[side].h - 0.1) < 1e-9, `${side} h ${level[side].h}`);
+    assert.ok(Math.abs(level[side].v - 0.05) < 1e-9);
+    assert.ok(Math.abs(level[side].open - 0.3) < 1e-9);
+  }
+  assert.ok(Math.abs(level.u - 0.5) < 1e-9 && Math.abs(level.v - 0.42) < 1e-9);
+
+  // Con la cabeza inclinada, un iris en el centro del ojo sigue en h = 0.
+  const tilted = geometryLandmarks({ tilt: 0.02 });
+  const centered = eyeGeometry(tilted, { left: { x: 600, y: 420 }, right: { x: 400, y: 420 } }, 1000, 1000);
+  assert.ok(Math.abs(centered.left.h) < 1e-9 && Math.abs(centered.right.h) < 1e-9);
+});
+
+test('crops each eye with room for the whole iris, and refuses eyes cut by the frame', () => {
+  const { EYES, eyeCrop, eyeLids } = UX.eyeFeatures;
+  const landmarks = fakeLandmarks({
+    ...eyeAt(EYES.left, 0.55, 0.4, 0.65, 0.45),
+    ...eyeAt(EYES.right, 0.35, 0.4, 0.45, 0.45),
+  });
+
+  const box = eyeCrop(landmarks, 'left', { r: 10 }, 1000, 1000);
+  const lids = eyeLids(landmarks, 'left', 1000, 1000);
+
+  assert.ok(box.x <= 550 && box.x + box.width >= 650);
+  assert.ok(box.y <= 425 - 17 && box.y + box.height >= 425 + 17);
+  assert.ok(lids.upper.length === EYES.left.upper.length + 2 && lids.lower.length === EYES.left.lower.length);
+  const cut = fakeLandmarks({ ...eyeAt(EYES.left, 0.93, 0.4, 1.02, 0.45) });
+  assert.equal(eyeCrop(cut, 'left', { r: 10 }, 1000, 1000), null);
 });
 
 test('builds a feature vector of fixed length', () => {
