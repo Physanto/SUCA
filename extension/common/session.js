@@ -19,7 +19,7 @@
 
   /** Campos del estado y si deben ser enteros. `task_id` también admite `null`. */
   const INTEGER_FIELDS = ['session_id', 'study_id', 'tab_id', 'task_id'];
-  const FIELDS = ['session_id', 'mode', 'study_id', 'tab_id', 'task_id'];
+  const FIELDS = ['session_id', 'mode', 'study_id', 'tab_id', 'task_id', 'recorded_fields'];
 
   /**
    * Comprueba que un estado tenga la forma del contrato.
@@ -43,6 +43,13 @@
     }
     if (!modes.includes(state.mode)) {
       throw new Error(`unknown session mode: ${state.mode}`);
+    }
+    const fields = state.recorded_fields;
+    const isField = (field) =>
+      field !== null && typeof field === 'object' && typeof field.name === 'string' && typeof field.selector === 'string';
+    // Un estado guardado por una versión anterior de la extensión no lo tiene.
+    if (fields !== undefined && !(Array.isArray(fields) && fields.every(isField))) {
+      throw new Error(`session field recorded_fields must be a list of {name, selector}, got ${JSON.stringify(fields)}`);
     }
   }
 
@@ -121,11 +128,13 @@
       /**
        * Inicia una sesión. Lo llama el panel después de crearla en el servidor.
        *
-       * @param {{session_id: number, mode: string, study_id: number, tab_id: number}} info -
-       *   Datos de la sesión y pestaña evaluada.
+       * @param {{session_id: number, mode: string, study_id: number, tab_id: number,
+       *   recorded_fields: ?Array<{name: string, selector: string}>}} info - Datos de la
+       *   sesión y pestaña evaluada; `recorded_fields`, los campos cuyo texto registra el
+       *   estudio (si falta, ninguno).
        * @returns {Promise<void>}
        */
-      start: (info) => write({ ...info, task_id: null }),
+      start: (info) => write({ recorded_fields: [], ...info, task_id: null }),
 
       /**
        * Cambia campos del estado, por ejemplo `{ task_id: 3 }`.

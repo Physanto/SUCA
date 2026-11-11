@@ -13,7 +13,8 @@ def test_lists_studies(client: TestClient) -> None:
     [study] = response.json()
     assert study["id"] == 1
     assert study["name"] == "Tienda de ejemplo"
-    assert set(study) == {"id", "name", "system_under_test", "description"}
+    assert set(study) == {"id", "name", "system_under_test", "description", "recorded_fields"}
+    assert {"name": "search", "selector": "#q"} in study["recorded_fields"]
 
 
 def test_lists_tasks_in_order_with_their_confirmed_references(

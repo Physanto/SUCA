@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.1.0",
+  "contract_version": "1.3.0",
   "type": "events",
   "records": [
     {
@@ -149,7 +149,39 @@
         },
         "interactive": true
       },
-      "data": {}
+      "data": {
+        "length": 15,
+        "deleted": 2
+      }
+    },
+    {
+      "t": 1791380124206.2,
+      "type": "field_change",
+      "screen": {
+        "url": "https://shop.local/cart",
+        "title": "Carrito"
+      },
+      "task_id": 3,
+      "element": {
+        "tag": "input",
+        "id": "search",
+        "role": "searchbox",
+        "text": null,
+        "selector": "header > input#search",
+        "box": {
+          "x": 400,
+          "y": 300,
+          "w": 280,
+          "h": 32
+        },
+        "interactive": true
+      },
+      "data": {
+        "length": 9,
+        "deleted": 0,
+        "field": "search",
+        "text": "audifonos"
+      }
     },
     {
       "t": 1791380124256.2,

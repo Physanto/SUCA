@@ -36,6 +36,29 @@
         "required": ["instruction"],
         "additionalProperties": false
       }
+    },
+    "recorded_fields": {
+      "description": "Campos cuyo texto se registra en los cambios de campo y queda visible en las capturas de la sesión. Por defecto ninguno. Nunca se registran contraseñas ni datos de tarjeta, aunque se declaren. Solo para sistemas donde el participante no escribe datos personales, como la app de prueba.",
+      "type": "array",
+      "items": {
+        "description": "Un campo registrable.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Nombre corto del campo, en snake_case; identifica al campo en los registros.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,49}$"
+          },
+          "selector": {
+            "description": "Selector CSS que identifica al campo en la página, por ejemplo '#search'.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["name", "selector"],
+        "additionalProperties": false
+      },
+      "default": []
     }
   },
   "required": ["name", "system_under_test", "tasks"],

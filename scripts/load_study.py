@@ -10,6 +10,7 @@ aplica en una transacción: si algo falla, la base queda como estaba. Uso::
 """
 
 import argparse
+import json
 import sqlite3
 import sys
 from collections.abc import Mapping
@@ -64,6 +65,10 @@ def read_study(path: Path) -> dict[str, Any]:
     if errors:
         details = "\n".join(f"  {error}" for error in errors)
         raise StudyFileError(f"{path}: invalid study:\n{details}")
+    names = [field["name"] for field in document.get("recorded_fields", [])]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        raise StudyFileError(f"{path}: repeated recorded field names: {', '.join(repeated)}")
     return document
 
 
@@ -88,12 +93,19 @@ def load_study(connection: sqlite3.Connection, study: Mapping[str, Any]) -> Load
     with db.transaction(connection):
         connection.execute(
             """
-            INSERT INTO study (name, system_under_test, description) VALUES (?, ?, ?)
+            INSERT INTO study (name, system_under_test, description, recorded_fields)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT (name) DO UPDATE SET
                 system_under_test = excluded.system_under_test,
-                description = excluded.description
+                description = excluded.description,
+                recorded_fields = excluded.recorded_fields
             """,
-            (name, study["system_under_test"], study.get("description")),
+            (
+                name,
+                study["system_under_test"],
+                study.get("description"),
+                json.dumps(study.get("recorded_fields", []), ensure_ascii=False),
+            ),
         )
         study_id = connection.execute("SELECT id FROM study WHERE name = ?", (name,)).fetchone()[0]
         connection.executemany(

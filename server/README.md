@@ -24,8 +24,8 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 
 | Método y ruta | Cuerpo | Respuesta | Errores |
 |---|---|---|---|
-| `GET /health` | — | `{"status": "ok", "contract_version": "1.1.0", "schema_version": "2"}` | 401 |
-| `GET /studies` | — | `[{"id", "name", "system_under_test", "description"}]` | 401 |
+| `GET /health` | — | `{"status": "ok", "contract_version": "1.3.0", "schema_version": "4"}` | 401 |
+| `GET /studies` | — | `[{"id", "name", "system_under_test", "description", "recorded_fields"}]` | 401 |
 | `GET /studies/{id}/tasks` | — | Tareas en orden: `[{"id", "position", "instruction", "references": [{"id", "end_condition"}]}]`, solo con referencias confirmadas | 401, 404 |
 | `POST /sessions` | `new-session` | 201 `{"session_id", "started_at"}` | 401, 422 |
 | `POST /sessions/{id}/batches` | Lote | `{"stored": <registros>}` | 401, 404, 409, 422 |
@@ -33,6 +33,7 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 | `POST /sessions/{id}/close` | — | `{"session_id", "ended_at"}` | 401, 404 |
 | `POST /references` | `new-reference` | 201 `{"reference_id"}` | 401, 422 |
 | `POST /captures` | `new-capture` | 201 `{"capture_id", "file_path"}` | 401, 422 |
+| `POST /sessions/{id}/frames` | `new-frame` | 201 `{"frame_id", "file_path"}`; la imagen queda en `data/frames/<sesión>/` | 401, 404, 409, 422 |
 
 Detalles de cada uno:
 
@@ -42,6 +43,7 @@ Detalles de cada uno:
 - **Reintentos:** reenviar un registro de `tasks`, el SUS o un cierre no da error. Reenviar un lote de eventos o de muestras los duplica; el análisis quita los duplicados.
 - **Referencias:** el panel lateral guarda así la grabación de una tarea hecha en una sesión de modo `reference`. La referencia nace en estado `draft` y sin pasos; el análisis agrega los pasos y las condiciones candidatas, y el evaluador confirma la condición final en el panel de resultados. Guardar dos veces la misma tarea de la misma sesión devuelve la misma referencia.
 - **Capturas:** la imagen llega como *data URL* PNG o JPEG, tal como la entrega `chrome.tabs.captureVisibleTab`, y se guarda en `captures/<study_id>/<nombre generado>` junto a la base de datos (por defecto `data/captures/`). El nombre lo genera el servidor; el tamaño máximo es 10 MB.
+- **Capturas de la sesión:** solo JPEG, de una sesión abierta, en `frames/<session_id>/`. Borrar la sesión borra sus filas; si un participante se retira, borra también esa carpeta.
 
 ### Errores
 
@@ -52,7 +54,7 @@ Todos los errores tienen la forma `{"detail": "<resumen>"}`.
 | 401 | Falta `X-Api-Token` o no coincide |
 | 404 | No existe el recurso de la ruta (`/sessions/{id}`, `/studies/{id}`) |
 | 409 | La sesión de la ruta está cerrada |
-| 422 | El cuerpo no cumple su contrato, nombra algo que no existe (por ejemplo `study_id`) o el lote es de otra versión mayor de los contratos |
+| 422 | El cuerpo no cumple su contrato, nombra algo que no existe (por ejemplo `study_id`), el lote es de otra versión mayor de los contratos o trae el texto de un campo que el estudio no declaró en `recorded_fields` |
 | 500 | Error interno; no se guardó nada del lote |
 
 Los 422 agregan `errors`, una lista con el registro (posición en el lote, o `null`), el campo y el motivo:

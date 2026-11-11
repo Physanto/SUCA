@@ -13,7 +13,7 @@ Formatos de datos, valores permitidos y mensajes que conectan las piezas del sis
 | `element.schema.json` | Descriptor de un elemento de la página |
 | `reference.schema.json` | Referencia de una tarea: pasos, condiciones candidatas, condición final y pasos obligatorios |
 | `study.schema.json` | Definición de un estudio en `studies/*.yaml`: sistema evaluado y tareas en orden |
-| `requests/<nombre>.schema.json` | Cuerpos de las peticiones al servidor: `new-session` (crear sesión), `sus-answers` (respuestas del SUS), `new-reference` (guardar una referencia), `new-capture` (captura de pantalla) |
+| `requests/<nombre>.schema.json` | Cuerpos de las peticiones al servidor: `new-session` (crear sesión), `sus-answers` (respuestas del SUS), `new-reference` (guardar una referencia), `new-capture` (captura de pantalla de referencia), `new-frame` (captura durante la sesión) |
 | `extension-messages.md` | Mensajes entre las partes de la extensión y reglas de versionado |
 | `examples/` | Un ejemplo válido por esquema y ejemplos inválidos |
 
@@ -24,7 +24,7 @@ Los esquemas usan JSON Schema draft 2020-12. Cada `$id` empieza por `https://suc
 - Claves y valores en inglés y `snake_case`, en todos los lenguajes. `description` en español en cada esquema y cada propiedad.
 - **Las enumeraciones solo se definen en `enums.json`.** Los esquemas las usan con `$ref` (`"$ref": "enums.json#/$defs/event_type"`), y el código Python las lee con `shared.contracts.enums()`. Ningún valor se escribe a mano.
 - Las marcas de tiempo son milisegundos desde 1970 (`performance.timeOrigin + performance.now()`); se rechazan valores en segundos.
-- Los registros no admiten campos que no estén en su esquema (`additionalProperties: false`). Esto también protege la privacidad: un `field_change` con un campo `value` se rechaza.
+- Los registros no admiten campos que no estén en su esquema (`additionalProperties: false`). Esto también protege la privacidad: un `field_change` con un campo `value` se rechaza, y `text` solo se admite junto con `field`, el nombre de un campo que el estudio declaró en `recorded_fields` (el servidor comprueba que lo esté).
 - Cuando un campo obligatorio admite `null`, `null` indica que el dato no existe (por ejemplo, `task_id` fuera de una tarea o `id` en un elemento sin id); el campo no se omite.
 
 ### Intervalos sin datos de cámara
@@ -50,7 +50,7 @@ for error in errors:
 enums()["incident_type"]  # ('rage_click', 'dead_click', ...)
 ```
 
-`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference` y `new-capture`.
+`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference`, `new-capture` y `new-frame`.
 
 ## Ejemplos
 

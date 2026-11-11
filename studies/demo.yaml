@@ -38,3 +38,26 @@ tasks:
 
   # 4. Edición del perfil.
   - instruction: "Cambia la dirección de envío de tu cuenta a Calle 10 # 20-30, Bogotá."
+
+# Campos cuyo texto se registra y queda visible en las capturas de la sesión
+# (opcional; por defecto ninguno). Solo campos donde el participante escribe lo
+# que pide la tarea, nunca datos personales: los demás campos se registran sin su
+# texto y se tapan en las capturas. Las contraseñas y los datos de tarjeta nunca
+# se registran, aunque se declaren. En un sistema de terceros, déjalo vacío.
+# - name: nombre corto en snake_case con que aparece en los registros.
+# - selector: selector CSS del campo en la página.
+recorded_fields:
+  # Buscador de la cabecera.
+  - name: search
+    selector: "#q"
+  # Usuario del inicio de sesión (la app de prueba da uno de prueba).
+  - name: login_email
+    selector: "#email"
+  # Cantidad en el detalle de producto.
+  - name: quantity
+    selector: "#quantity"
+  # Dirección de envío de la cuenta (tarea 4).
+  - name: account_street
+    selector: "#street"
+  - name: account_details
+    selector: "#details"

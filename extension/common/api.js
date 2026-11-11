@@ -96,6 +96,8 @@
       createReference: (body) => request('POST', '/references', body),
       /** `POST /captures`, con un cuerpo `new-capture`. */
       sendCapture: (body) => request('POST', '/captures', body),
+      /** `POST /sessions/{id}/frames`, con un cuerpo `new-frame`. */
+      sendFrame: (sessionId, body) => request('POST', `/sessions/${sessionId}/frames`, body),
     });
   }
 

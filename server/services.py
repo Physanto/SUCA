@@ -16,6 +16,7 @@ from server import ingestion
 from server.repositories import (
     BatchWriter,
     CaptureStore,
+    FrameStore,
     ReferenceStore,
     SessionInfo,
     SessionStore,
@@ -106,7 +107,9 @@ def list_studies(*, studies: StudyReader) -> list[dict[str, Any]]:
         studies: Consulta de estudios.
 
     Returns:
-        Estudios con ``id``, ``name``, ``system_under_test`` y ``description``.
+        Estudios con ``id``, ``name``, ``system_under_test``, ``description`` y
+        ``recorded_fields`` (campos cuyo texto se registra; la extensión los
+        necesita al iniciar la sesión).
     """
     return studies.list_studies()
 
@@ -319,6 +322,33 @@ def save_capture(
     return {"capture_id": capture_id, "file_path": file_path}
 
 
+def save_frame(
+    session_id: int, body: Any, *, sessions: SessionStore, frames: FrameStore
+) -> dict[str, Any]:
+    """Guarda una captura de lo que se veía durante una sesión abierta.
+
+    Args:
+        session_id: Sesión de la ruta.
+        body: Petición que cumple ``requests/new-frame.schema.json``.
+        sessions: Consulta de sesiones.
+        frames: Guardado de la imagen y de su registro.
+
+    Returns:
+        ``frame_id`` y ``file_path`` (relativa a la carpeta de datos).
+
+    Raises:
+        NotFoundError: Si la sesión no existe.
+        ConflictError: Si la sesión está cerrada.
+        InvalidRequestError: Si la petición no cumple el contrato o la imagen no
+            es un JPEG válido o es demasiado grande.
+    """
+    _open_session(sessions, session_id)
+    _validate("new-frame", body, "frame request does not match its contract")
+    image, _ = _decode_image(body["image"])
+    frame_id, file_path = frames.add_frame(session_id=session_id, image=image, t=body["t"])
+    return {"frame_id": frame_id, "file_path": file_path}
+
+
 def _decode_image(data_url: str) -> tuple[bytes, str]:
     """Decodifica una imagen en data URL y comprueba que sea lo que dice.
 
@@ -396,11 +426,36 @@ def store_batch(
     ]
     if foreign:
         raise InvalidRequestError("batch references tasks of another study", foreign)
+    undeclared = _undeclared_texts(records, studies.recorded_field_names(session.study_id))
+    if undeclared:
+        raise InvalidRequestError("batch has text of fields the study does not record", undeclared)
 
     handler = ingestion.handler_for(body["type"])
     with writer.transaction():
         handler(writer, session_id, records)
     return {"stored": len(records)}
+
+
+def _undeclared_texts(records: Sequence[Any], declared: set[str]) -> list[ErrorItem]:
+    """Errores por cada registro con texto de un campo que el estudio no declaró.
+
+    Es la segunda barrera de privacidad: la extensión solo envía el texto de los
+    campos declarados, pero si fallara, el servidor no lo guarda.
+
+    Args:
+        records: Registros del lote, ya validados con su contrato.
+        declared: Nombres de ``recorded_fields`` del estudio de la sesión.
+
+    Returns:
+        Un error por registro con ``data.text`` y un ``data.field`` no declarado.
+    """
+    errors = []
+    for index, record in enumerate(records):
+        data = record.get("data")
+        if isinstance(data, dict) and "text" in data and data.get("field") not in declared:
+            message = f"field {data.get('field')!r} is not in the study's recorded_fields"
+            errors.append(ErrorItem(record=index, field="data/field", message=message))
+    return errors
 
 
 def _open_session(sessions: SessionStore, session_id: int) -> SessionInfo:

@@ -64,7 +64,7 @@
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.1.0",
+    "version": "1.3.0",
     "enums": {
       "batch_type": [
         "events",
@@ -200,6 +200,8 @@
         "calibration.result",
         "camera.status",
         "screen_capture.request",
+        "frame.request",
+        "frame.masks",
         "batch",
         "tab.identify"
       ]

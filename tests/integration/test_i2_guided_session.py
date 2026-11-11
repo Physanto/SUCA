@@ -259,6 +259,17 @@ def test_nothing_typed_reaches_the_database(run: Run) -> None:
     assert all(event["element"]["text"] is None for event in fields)
 
 
+def test_only_the_fields_the_study_declares_keep_their_text(run: Run) -> None:
+    """El estudio de ejemplo declara el buscador: su texto queda; el de otros campos, no."""
+    declared = {"search", "login_email", "quantity", "account_street", "account_details"}
+    changes = [event for event in events(run) if event["type"] == "field_change"]
+    with_text = {event["data"]["field"] for event in changes if "text" in event["data"]}
+
+    assert "search" in with_text
+    assert with_text <= declared
+    assert all("length" in event["data"] or event["data"] == {} for event in changes)
+
+
 def test_the_search_is_redacted(run: Run) -> None:
     searches = [event["screen"] for event in events(run) if "/search" in event["screen"]["url"]]
 

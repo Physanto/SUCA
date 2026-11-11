@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/requests/new-frame.schema.json",
+  "title": "Captura de la sesión",
+  "description": "Cuerpo de POST /sessions/{id}/frames. El service worker lo envía durante la sesión del participante: es lo que se veía en la pestaña evaluada en ese momento, con los campos no declarados en 'recorded_fields' ya tapados. La reproducción del panel la usa de fondo.",
+  "type": "object",
+  "properties": {
+    "t": {
+      "description": "Momento de la captura, con el reloj de la extensión.",
+      "$ref": "../common.json#/$defs/timestamp"
+    },
+    "image": {
+      "description": "Imagen JPEG como data URL en base64.",
+      "type": "string",
+      "pattern": "^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$"
+    }
+  },
+  "required": ["t", "image"],
+  "additionalProperties": false
+}

@@ -3,43 +3,56 @@
   <head>
     <meta charset="utf-8" />
     <!--
-      Reproductor de una sesión: dibuja sobre la captura de cada pantalla el
-      cursor, los clics, el scroll y la mirada, en el tiempo en que pasaron.
-      No ejecuta nada en el sitio evaluado. Los datos los pone dashboard/replay.py
-      en lugar de la marca PAYLOAD; no carga recursos externos.
+      Reproductor de una sesión. De fondo muestra la captura de la sesión más
+      reciente (la página real de ese momento, con los campos no declarados
+      tapados); si no hay, la captura de referencia de la pantalla. Encima dibuja,
+      cada señal con su color, el cursor, los clics, el scroll, la mirada, los
+      campos, los cambios de pantalla y los incidentes, en el tiempo en que
+      pasaron. No ejecuta nada en el sitio evaluado. Los datos los pone
+      dashboard/replay.py en lugar de la marca PAYLOAD; no carga recursos externos.
     -->
     <style>
-      :root { font: 14px/1.4 system-ui, sans-serif; color: #1f2937; }
+      :root {
+        font: 14px/1.4 system-ui, sans-serif; color: #1f2937;
+        /* Un color por señal; los mismos en el dibujo, la leyenda y la franja de tiempo. */
+        --cursor: #374151; --click: #dc2626; --scroll: #16a34a; --gaze: #2563eb;
+        --field: #ea580c; --screen: #7c3aed; --incident: #db2777;
+      }
       body { margin: 0; }
       .stage { position: relative; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;
         background: #f3f4f6; }
       canvas#view { display: block; width: 100%; height: auto; }
-      .banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 4px 12px;
-        border-radius: 999px; background: #b91c1c; color: #fff; font-weight: 600; pointer-events: none; }
-      .banner[hidden] { display: none; }
+      .banners { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex;
+        flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+      .banner { padding: 3px 12px; border-radius: 999px; color: #fff; font-weight: 600; white-space: nowrap; }
       .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
       button { font: inherit; padding: 4px 14px; border: 0; border-radius: 6px; background: #1a5fb4;
         color: #fff; cursor: pointer; min-width: 92px; }
+      button.step { min-width: 0; padding: 4px 10px; background: #e5e7eb; color: #111827; }
       select { font: inherit; }
       .time { font-variant-numeric: tabular-nums; }
-      canvas#strip { display: block; width: 100%; height: 34px; margin-top: 6px; cursor: pointer;
+      canvas#strip { display: block; width: 100%; height: 40px; margin-top: 6px; cursor: pointer;
         border-radius: 4px; background: #eef0f3; }
+      .layers { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+      .layers label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+      .layers i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
       .info { margin-top: 6px; color: #4b5563; }
       .info b { color: #111827; }
-      .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
-      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
     </style>
   </head>
   <body>
     <div class="stage">
       <canvas id="view"></canvas>
-      <div class="banner" hidden></div>
+      <div class="banners" id="banners"></div>
     </div>
     <canvas id="strip" title="Haz clic para ir a ese momento"></canvas>
     <div class="controls">
       <button id="play" type="button">▶ Reproducir</button>
+      <button class="step" id="back" type="button" title="5 s atrás (←)">−5 s</button>
+      <button class="step" id="forward" type="button" title="5 s adelante (→)">+5 s</button>
       <label>Velocidad
         <select id="speed">
+          <option value="0.25">×0,25</option>
           <option value="0.5">×0,5</option>
           <option value="1" selected>×1</option>
           <option value="2">×2</option>
@@ -47,15 +60,8 @@
         </select>
       </label>
       <span class="time" id="time">0:00 / 0:00</span>
-      <label><input type="checkbox" id="show-cursor" checked /> Cursor</label>
-      <label><input type="checkbox" id="show-clicks" checked /> Clics</label>
-      <label><input type="checkbox" id="show-gaze" checked /> Mirada</label>
-      <span class="legend">
-        <span><i style="background:#111827"></i>Cursor</span>
-        <span><i style="background:#dc2626"></i>Clic</span>
-        <span><i style="background:#2563eb"></i>Mirada</span>
-      </span>
     </div>
+    <div class="layers" id="layers"></div>
     <div class="info" id="info"></div>
 
     <script>
@@ -63,34 +69,75 @@
 
       const DATA = /*PAYLOAD*/null;
 
-      /** Cuánto se ve la estela de la mirada y cuánto dura el círculo de un clic, en ms. */
+      /** Capas que se pueden mostrar u ocultar, con su color (variable CSS) y nombre. */
+      const LAYERS = [
+        ['cursor', 'Cursor'],
+        ['click', 'Clics'],
+        ['scroll', 'Scroll'],
+        ['gaze', 'Mirada'],
+        ['field', 'Campos y escritura'],
+        ['screen', 'Cambios de pantalla'],
+        ['incident', 'Incidentes'],
+      ];
+      const style = getComputedStyle(document.documentElement);
+      const COLOR = Object.fromEntries(LAYERS.map(([key]) => [key, style.getPropertyValue(`--${key}`).trim()]));
+
+      /** Duraciones en ms: estelas, cuánto se ve cada marca y cuándo una captura ya no vale. */
+      const CURSOR_TRAIL_MS = 1000;
       const GAZE_TRAIL_MS = 600;
       const CLICK_RIPPLE_MS = 700;
-      /** Un incidente se anuncia desde un poco antes hasta un rato después. */
+      const CLICK_DOT_MS = 2500;
+      const SCROLL_SHOW_MS = 900;
+      const FIELD_LABEL_MS = 1800;
+      const SCREEN_SHOW_MS = 1500;
       const INCIDENT_BEFORE_MS = 300;
       const INCIDENT_AFTER_MS = 1800;
+      /** Una captura de la sesión se usa si se tomó después del último cambio de pantalla. */
+      const FRAME_SCREEN_TOLERANCE_MS = 150;
+      const STEP_MS = 5000;
 
       const [width, height] = DATA.viewport;
       const view = document.getElementById('view');
       const strip = document.getElementById('strip');
-      const banner = document.querySelector('.banner');
       const ctx = view.getContext('2d');
       view.width = width;
       view.height = height;
 
-      const images = {};
-      for (const [screen, url] of Object.entries(DATA.images)) {
-        const image = new Image();
-        image.src = url;
-        image.onload = () => draw();
-        images[screen] = image;
+      /** Capas visibles. */
+      const shown = Object.fromEntries(LAYERS.map(([key]) => [key, true]));
+      const layers = document.getElementById('layers');
+      for (const [key, name] of LAYERS) {
+        const label = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = true;
+        box.addEventListener('change', () => {
+          shown[key] = box.checked;
+          draw();
+        });
+        const dot = document.createElement('i');
+        dot.style.background = COLOR[key];
+        label.append(box, dot, name);
+        layers.append(label);
       }
 
+      /** Imagen cargada desde una data URL; redibuja al terminar de cargar. */
+      function load(url) {
+        const image = new Image();
+        image.onload = () => draw();
+        image.src = url;
+        return image;
+      }
+      const references = Object.fromEntries(Object.entries(DATA.images).map(([screen, url]) => [screen, load(url)]));
+      const frameImages = DATA.frame_images.map(load);
+
       /** Se empieza en la primera pantalla: antes no hay nada que ver. */
-      const FIRST = DATA.screens.length ? DATA.screens[0].t : 0;
+      const FIRST = DATA.screens.length ? Math.max(0, DATA.screens[0].t) : 0;
       let now = FIRST;
+      /** Inicio de la pantalla actual: las marcas de la anterior ya no corresponden a lo que se ve. */
+      let screenStart = 0;
       let playing = false;
-      let lastFrame = null;
+      let lastTick = null;
 
       /** Índice del último elemento con t <= time en una lista ordenada por t (o -1). */
       function lastAtOrBefore(list, time, key = (item) => item[0]) {
@@ -109,6 +156,11 @@
         return found;
       }
 
+      /** Elementos con t entre `from` y `to`, de una lista ordenada. */
+      function between(list, from, to, key = (item) => item[0]) {
+        return list.slice(lastAtOrBefore(list, from, key) + 1, lastAtOrBefore(list, to, key) + 1);
+      }
+
       /** mm:ss */
       function clock(ms) {
         const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -124,6 +176,26 @@
         if (!next || next[0] - t0 > 1000) return { x: x0, y: y0 };
         const share = (time - t0) / (next[0] - t0);
         return { x: x0 + (next[1] - x0) * share, y: y0 + (next[2] - y0) * share };
+      }
+
+      /** Color con transparencia, a partir de un color #rrggbb. */
+      function alpha(color, value) {
+        const n = parseInt(color.slice(1), 16);
+        return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, value))})`;
+      }
+
+      /** Etiqueta con fondo de color, junto a un punto. */
+      function tag(text, x, y, color) {
+        ctx.font = '600 13px system-ui, sans-serif';
+        const w = ctx.measureText(text).width + 12;
+        const left = Math.min(Math.max(2, x), width - w - 2);
+        const top = Math.min(Math.max(2, y), height - 22);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(left, top, w, 20, 5);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, left + 6, top + 14);
       }
 
       function drawBlank(screen) {
@@ -144,13 +216,51 @@
         ctx.textAlign = 'start';
       }
 
+      /**
+       * Fondo: la captura de la sesión si es de la pantalla actual; si no, la de
+       * referencia desplazada por el scroll. Devuelve qué se usó, para informarlo.
+       */
+      function drawBackground(screen) {
+        const frameIndex = lastAtOrBefore(DATA.frames, now);
+        if (frameIndex >= 0) {
+          const [t, index] = DATA.frames[frameIndex];
+          const image = frameImages[index];
+          const fresh = !screen || t >= screen.t - FRAME_SCREEN_TOLERANCE_MS;
+          if (fresh && image.complete && image.naturalWidth) {
+            ctx.drawImage(image, 0, 0, width, (image.naturalHeight * width) / image.naturalWidth);
+            return `captura de la sesión de hace ${((now - t) / 1000).toFixed(1).replace('.', ',')} s`;
+          }
+        }
+        const reference = screen ? references[screen.screen] : null;
+        if (reference && reference.complete && reference.naturalWidth) {
+          const scrollIndex = lastAtOrBefore(DATA.scrolls, now);
+          const [, scrollX, scrollY] = scrollIndex >= 0 ? DATA.scrolls[scrollIndex] : [0, 0, 0];
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          // La captura de referencia muestra la página arriba de todo: el scroll la desplaza.
+          ctx.drawImage(reference, -scrollX, -scrollY, width, (reference.naturalHeight * width) / reference.naturalWidth);
+          return 'captura de referencia de la pantalla (no de esta sesión)';
+        }
+        drawBlank(screen);
+        return 'sin captura';
+      }
+
       function drawCursor(point) {
+        const trail = between(DATA.moves, Math.max(now - CURSOR_TRAIL_MS, screenStart), now);
+        if (trail.length > 1) {
+          ctx.strokeStyle = alpha(COLOR.cursor, 0.35);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          trail.forEach(([, x, y], index) => (index ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+          ctx.lineTo(point.x, point.y);
+          ctx.stroke();
+        }
         ctx.save();
         ctx.translate(point.x, point.y);
         ctx.beginPath();
         ctx.moveTo(0, 0); ctx.lineTo(0, 20); ctx.lineTo(5, 15); ctx.lineTo(9, 24);
         ctx.lineTo(12, 22); ctx.lineTo(8, 14); ctx.lineTo(15, 14); ctx.closePath();
-        ctx.fillStyle = '#111827';
+        ctx.fillStyle = COLOR.cursor;
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.5;
         ctx.fill();
@@ -158,56 +268,150 @@
         ctx.restore();
       }
 
-      function draw() {
-        const screenIndex = lastAtOrBefore(DATA.screens, now, (item) => item.t);
-        const screen = screenIndex >= 0 ? DATA.screens[screenIndex] : null;
-        const scrollIndex = lastAtOrBefore(DATA.scrolls, now);
-        const [, scrollX, scrollY] = scrollIndex >= 0 ? DATA.scrolls[scrollIndex] : [0, 0, 0];
-        const image = screen ? images[screen.screen] : null;
-        if (image && image.complete && image.naturalWidth) {
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, width, height);
-          // La captura muestra la página arriba de todo: el scroll la desplaza hacia arriba.
-          ctx.drawImage(image, -scrollX, -scrollY, width, (image.naturalHeight * width) / image.naturalWidth);
-        } else {
-          drawBlank(screen);
+      /**
+       * Dónde miraba la persona al hacer clic: anillo azul en la mirada, línea
+       * punteada hasta el clic y la distancia. Si la mirada funciona, suelen estar cerca.
+       */
+      function drawClickGaze(x, y, gazeX, gazeY, opacity) {
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = alpha(COLOR.gaze, opacity);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(gazeX, gazeY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(gazeX, gazeY, 11, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        if (opacity > 0.4) {
+          const distance = Math.round(Math.hypot(gazeX - x, gazeY - y));
+          tag(`mirada a ${distance} px del clic`, (x + gazeX) / 2 + 8, (y + gazeY) / 2 - 10, alpha(COLOR.gaze, 0.95));
         }
+      }
 
-        if (document.getElementById('show-gaze').checked) {
-          const from = lastAtOrBefore(DATA.gaze, now - GAZE_TRAIL_MS) + 1;
-          const to = lastAtOrBefore(DATA.gaze, now);
-          for (let i = from; i <= to; i += 1) {
-            const [t, x, y] = DATA.gaze[i];
-            const age = (now - t) / GAZE_TRAIL_MS;
-            ctx.beginPath();
-            ctx.arc(x, y, i === to ? 16 : 7, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(37, 99, 235, ${i === to ? 0.55 : 0.35 * (1 - age)})`;
-            ctx.fill();
+      function drawClicks() {
+        for (const [t, x, y, gazeX, gazeY] of between(DATA.clicks, Math.max(now - CLICK_DOT_MS, screenStart - 1), now)) {
+          const age = now - t;
+          if (shown.gaze && gazeX !== null && gazeX !== undefined) {
+            drawClickGaze(x, y, gazeX, gazeY, 1 - age / CLICK_DOT_MS);
           }
-        }
-        if (document.getElementById('show-clicks').checked) {
-          const from = lastAtOrBefore(DATA.clicks, now - CLICK_RIPPLE_MS) + 1;
-          const to = lastAtOrBefore(DATA.clicks, now);
-          for (let i = from; i <= to; i += 1) {
-            const [t, x, y] = DATA.clicks[i];
-            const age = (now - t) / CLICK_RIPPLE_MS;
+          // Punto que queda un rato, para ver dónde se pulsó.
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, Math.PI * 2);
+          ctx.fillStyle = alpha(COLOR.click, 0.9 * (1 - age / CLICK_DOT_MS));
+          ctx.fill();
+          if (age <= CLICK_RIPPLE_MS) {
+            const share = age / CLICK_RIPPLE_MS;
             ctx.beginPath();
-            ctx.arc(x, y, 8 + age * 26, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(220, 38, 38, ${1 - age})`;
+            ctx.arc(x, y, 8 + share * 26, 0, Math.PI * 2);
+            ctx.strokeStyle = alpha(COLOR.click, 1 - share);
             ctx.lineWidth = 3;
             ctx.stroke();
           }
         }
-        if (document.getElementById('show-cursor').checked) {
+      }
+
+      function drawGaze() {
+        const trail = between(DATA.gaze, now - GAZE_TRAIL_MS, now);
+        trail.forEach(([t, x, y], index) => {
+          const current = index === trail.length - 1;
+          ctx.beginPath();
+          ctx.arc(x, y, current ? 16 : 7, 0, Math.PI * 2);
+          ctx.fillStyle = alpha(COLOR.gaze, current ? 0.55 : 0.35 * (1 - (now - t) / GAZE_TRAIL_MS));
+          ctx.fill();
+        });
+      }
+
+      /** Barra de posición a la derecha y flecha con la dirección mientras se desplaza. */
+      function drawScroll() {
+        const index = lastAtOrBefore(DATA.scrolls, now);
+        if (index < 0) return;
+        const [t, , y] = DATA.scrolls[index];
+        const previous = index > 0 ? DATA.scrolls[index - 1][2] : 0;
+        const age = now - t;
+        if (age > SCROLL_SHOW_MS || y === previous) return;
+        const opacity = 1 - age / SCROLL_SHOW_MS;
+        const x = width - 22;
+        const down = y > previous;
+        ctx.fillStyle = alpha(COLOR.scroll, opacity);
+        ctx.beginPath();
+        ctx.moveTo(x, height / 2 + (down ? 26 : -26));
+        ctx.lineTo(x - 14, height / 2 + (down ? 6 : -6));
+        ctx.lineTo(x + 14, height / 2 + (down ? 6 : -6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(x - 4, height / 2 - (down ? 20 : -6), 8, 14);
+        if (opacity > 0.3) tag(`scroll ${Math.round(y)} px`, x - 120, height / 2 + 34, COLOR.scroll);
+      }
+
+      /** Campo enfocado (contorno), lo escrito y los errores, sobre la caja del campo. */
+      function drawFields() {
+        const past = between(DATA.fields, screenStart - 1, now, (item) => item.t);
+        // El campo enfocado es el del último foco que no tuvo salida después.
+        let focused = null;
+        for (const item of past) {
+          if (item.kind === 'focus') focused = item;
+          if (item.kind === 'blur') focused = null;
+        }
+        if (focused && focused.box) {
+          const [x, y, w, h] = focused.box;
+          ctx.strokeStyle = COLOR.field;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
+        }
+        for (const item of between(DATA.fields, Math.max(now - FIELD_LABEL_MS, screenStart), now, (field) => field.t)) {
+          if (!item.box || !item.label) continue;
+          const [x, y, w, h] = item.box;
+          if (item.kind === 'error') {
+            ctx.setLineDash([6, 4]);
+            ctx.strokeStyle = COLOR.incident;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x - 5, y - 5, w + 10, h + 10);
+            ctx.setLineDash([]);
+            tag(item.label, x, y + h + 8, COLOR.incident);
+          } else {
+            tag(`✎ ${item.label}`, x, y - 26, COLOR.field);
+          }
+        }
+      }
+
+      /** Avisos arriba: incidente y cambio de pantalla recientes. */
+      function drawBanners(screen) {
+        const banners = document.getElementById('banners');
+        banners.replaceChildren();
+        const add = (text, color) => {
+          const banner = document.createElement('div');
+          banner.className = 'banner';
+          banner.style.background = color;
+          banner.textContent = text;
+          banners.append(banner);
+        };
+        if (shown.incident) {
+          DATA.incidents
+            .filter((item) => now >= item.t - INCIDENT_BEFORE_MS && now <= item.t + INCIDENT_AFTER_MS)
+            .forEach((item) => add(`⚠ ${item.label}`, COLOR.incident));
+        }
+        if (shown.screen && screen && screen.t > 0 && now - screen.t <= SCREEN_SHOW_MS) {
+          add(`→ ${screen.screen}`, COLOR.screen);
+        }
+      }
+
+      function draw() {
+        const screenIndex = lastAtOrBefore(DATA.screens, now, (item) => item.t);
+        const screen = screenIndex >= 0 ? DATA.screens[screenIndex] : null;
+        screenStart = screen ? screen.t : 0;
+        const background = drawBackground(screen);
+        if (shown.gaze) drawGaze();
+        if (shown.field) drawFields();
+        if (shown.scroll) drawScroll();
+        if (shown.click) drawClicks();
+        if (shown.cursor) {
           const point = cursorAt(now);
           if (point) drawCursor(point);
         }
-
-        const incident = DATA.incidents.find(
-          (item) => now >= item.t - INCIDENT_BEFORE_MS && now <= item.t + INCIDENT_AFTER_MS,
-        );
-        banner.hidden = !incident;
-        if (incident) banner.textContent = `⚠ ${incident.label}`;
+        drawBanners(screen);
 
         const task = DATA.tasks.find((item) => now >= item.from && now <= item.to);
         const info = document.getElementById('info');
@@ -215,6 +419,7 @@
         const parts = [
           ['Pantalla', screen ? `${screen.screen}${screen.title ? ` · ${screen.title}` : ''}` : '—'],
           ['Tarea', task ? `${task.label}: ${task.instruction}` : 'ninguna'],
+          ['Fondo', background],
         ];
         parts.forEach(([label, value], index) => {
           if (index) info.append(' · ');
@@ -226,43 +431,53 @@
         drawStrip();
       }
 
-      /** Franja de tiempo: tareas, incidentes y la posición actual. */
+      /** Franja de tiempo: tareas, cambios de pantalla, clics, incidentes y la posición actual. */
       function drawStrip() {
         const ratio = window.devicePixelRatio || 1;
         const stripWidth = strip.clientWidth;
         strip.width = stripWidth * ratio;
-        strip.height = 34 * ratio;
+        strip.height = 40 * ratio;
         const g = strip.getContext('2d');
         g.scale(ratio, ratio);
         const x = (t) => (t / Math.max(1, DATA.duration)) * stripWidth;
         g.fillStyle = '#eef0f3';
-        g.fillRect(0, 0, stripWidth, 34);
+        g.fillRect(0, 0, stripWidth, 40);
         DATA.tasks.forEach((task, index) => {
           g.fillStyle = index % 2 ? '#bfdbfe' : '#93c5fd';
-          g.fillRect(x(task.from), 4, Math.max(2, x(task.to) - x(task.from)), 14);
+          g.fillRect(x(task.from), 3, Math.max(2, x(task.to) - x(task.from)), 13);
           g.fillStyle = '#1e3a8a';
           g.font = '11px system-ui, sans-serif';
-          g.fillText(task.label, x(task.from) + 3, 15);
+          g.fillText(task.label, x(task.from) + 3, 13);
         });
-        g.fillStyle = '#b91c1c';
-        for (const incident of DATA.incidents) {
-          g.beginPath();
-          g.moveTo(x(incident.t), 20);
-          g.lineTo(x(incident.t) - 4, 30);
-          g.lineTo(x(incident.t) + 4, 30);
-          g.closePath();
-          g.fill();
+        if (shown.screen) {
+          g.fillStyle = COLOR.screen;
+          DATA.screens.forEach((screen) => g.fillRect(x(screen.t) - 1, 18, 2, 10));
+        }
+        if (shown.click) {
+          g.fillStyle = COLOR.click;
+          DATA.clicks.forEach(([t]) => g.fillRect(x(t) - 0.5, 20, 1, 6));
+        }
+        if (shown.incident) {
+          g.fillStyle = COLOR.incident;
+          for (const incident of DATA.incidents) {
+            g.beginPath();
+            g.moveTo(x(incident.t), 28);
+            g.lineTo(x(incident.t) - 4, 38);
+            g.lineTo(x(incident.t) + 4, 38);
+            g.closePath();
+            g.fill();
+          }
         }
         g.fillStyle = '#111827';
-        g.fillRect(x(now) - 1, 0, 2, 34);
+        g.fillRect(x(now) - 1, 0, 2, 40);
       }
 
       function tick(timestamp) {
         if (!playing) return;
-        if (lastFrame !== null) {
-          now += (timestamp - lastFrame) * Number(document.getElementById('speed').value);
+        if (lastTick !== null) {
+          now += (timestamp - lastTick) * Number(document.getElementById('speed').value);
         }
-        lastFrame = timestamp;
+        lastTick = timestamp;
         if (now >= DATA.duration) {
           now = DATA.duration;
           setPlaying(false);
@@ -273,23 +488,37 @@
 
       function setPlaying(value) {
         playing = value;
-        lastFrame = null;
+        lastTick = null;
         document.getElementById('play').textContent = playing ? '❚❚ Pausa' : '▶ Reproducir';
         if (playing) requestAnimationFrame(tick);
+      }
+
+      function jump(ms) {
+        now = Math.max(0, Math.min(DATA.duration, now + ms));
+        draw();
       }
 
       document.getElementById('play').addEventListener('click', () => {
         if (!playing && now >= DATA.duration) now = FIRST;
         setPlaying(!playing);
       });
+      document.getElementById('back').addEventListener('click', () => jump(-STEP_MS));
+      document.getElementById('forward').addEventListener('click', () => jump(STEP_MS));
+      document.addEventListener('keydown', (event) => {
+        if (event.key === ' ') {
+          event.preventDefault();
+          document.getElementById('play').click();
+        } else if (event.key === 'ArrowLeft') {
+          jump(-STEP_MS);
+        } else if (event.key === 'ArrowRight') {
+          jump(STEP_MS);
+        }
+      });
       strip.addEventListener('click', (event) => {
         const box = strip.getBoundingClientRect();
         now = ((event.clientX - box.left) / box.width) * DATA.duration;
         draw();
       });
-      for (const id of ['show-cursor', 'show-clicks', 'show-gaze']) {
-        document.getElementById(id).addEventListener('change', draw);
-      }
       window.addEventListener('resize', draw);
       draw();
     </script>

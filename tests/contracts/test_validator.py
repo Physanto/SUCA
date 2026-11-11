@@ -24,6 +24,7 @@ def test_kinds_are_derived_from_schema_files() -> None:
         "face",
         "gaze",
         "new-capture",
+        "new-frame",
         "new-reference",
         "new-session",
         "reference",
@@ -80,11 +81,12 @@ def test_errors_are_sorted_by_numeric_position() -> None:
 def test_the_same_problem_is_reported_once() -> None:
     """Dos reglas del esquema revisan el elemento de un envío de formulario."""
     batch = load_example("batch.valid.json")
-    batch["records"][10]["element"]["text"] = "x" * 51
+    index = next(i for i, r in enumerate(batch["records"]) if r["type"] == "form_submit")
+    batch["records"][index]["element"]["text"] = "x" * 51
 
     errors = contracts.validate("batch", batch)
 
-    assert [error.path for error in errors] == [("records", 10, "element", "text")]
+    assert [error.path for error in errors] == [("records", index, "element", "text")]
 
 
 def test_enums_are_read_only_tuples() -> None:

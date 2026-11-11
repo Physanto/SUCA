@@ -139,6 +139,23 @@
       },
 
       /**
+       * Captura la parte visible de una pestaña como JPEG, solo si es la activa de su
+       * ventana: si no, la captura mostraría otra pestaña.
+       *
+       * @param {number} tabId - Pestaña a capturar.
+       * @param {number} quality - Calidad JPEG, de 0 a 100.
+       * @returns {Promise<(string|null)>} Imagen como data URL, o `null` si la pestaña
+       *   no es la activa.
+       */
+      async captureActiveTab(tabId, quality) {
+        const tab = await chrome.tabs.get(tabId);
+        if (!tab.active) {
+          return null;
+        }
+        return chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality });
+      },
+
+      /**
        * Registra una función para cuando Chrome se abre. Registrarla hace que
        * Chrome despierte al worker al abrirse.
        *

@@ -71,10 +71,10 @@
       "then": { "required": ["data"], "properties": { "data": { "$ref": "#/$defs/selection_data" } } }
     },
     {
-      "description": "Foco, cambio de campo y envío de formulario: el campo o formulario, nunca su valor.",
+      "description": "Foco y envío de formulario: el campo o formulario, nunca su valor.",
       "if": {
         "properties": {
-          "type": { "enum": ["focus_in", "focus_out", "field_change", "form_submit"] }
+          "type": { "enum": ["focus_in", "focus_out", "form_submit"] }
         },
         "required": ["type"]
       },
@@ -83,6 +83,17 @@
         "properties": {
           "element": { "$ref": "../element.schema.json" },
           "data": { "$ref": "../common.json#/$defs/empty_data" }
+        }
+      }
+    },
+    {
+      "description": "Cambio de campo: el campo y cuánto texto tiene; el texto solo si el estudio declaró el campo en 'recorded_fields'.",
+      "if": { "properties": { "type": { "const": "field_change" } }, "required": ["type"] },
+      "then": {
+        "required": ["element"],
+        "properties": {
+          "element": { "$ref": "../element.schema.json" },
+          "data": { "$ref": "#/$defs/field_change_data" }
         }
       }
     },
@@ -137,6 +148,18 @@
         "length": { "description": "Número de caracteres seleccionados.", "type": "integer", "minimum": 0 }
       },
       "required": ["length"],
+      "additionalProperties": false
+    },
+    "field_change_data": {
+      "description": "Cambio de un campo. 'length' y 'deleted' solo en campos donde se escribe texto (nunca en contraseñas). 'text' solo en campos declarados por el estudio en 'recorded_fields', y siempre junto con 'field'. Un campo sin texto (casilla, lista, contraseña) envía un objeto vacío.",
+      "type": "object",
+      "properties": {
+        "length": { "description": "Caracteres que tiene el campo después del cambio.", "type": "integer", "minimum": 0 },
+        "deleted": { "description": "Caracteres borrados desde el cambio anterior registrado del mismo campo.", "type": "integer", "minimum": 0 },
+        "field": { "description": "Nombre del campo declarado en 'recorded_fields' del estudio.", "type": "string", "minLength": 1, "maxLength": 50 },
+        "text": { "description": "Texto del campo declarado después del cambio, recortado a 200 caracteres.", "type": "string", "maxLength": 200 }
+      },
+      "dependentRequired": { "text": ["field"], "field": ["text"], "deleted": ["length"] },
       "additionalProperties": false
     },
     "validation_error_data": {

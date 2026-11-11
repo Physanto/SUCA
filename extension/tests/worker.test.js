@@ -210,6 +210,95 @@ test('captures the evaluated tab and sends it to the server', async () => {
   });
 });
 
+const MASKED_JPEG = `data:image/jpeg;base64,${Buffer.from('MASKED').toString('base64')}`;
+const FRAME = { viewport_width: 1200, masks: [{ x: 10, y: 20, w: 100, h: 30 }] };
+
+/** Hace que la pestaña 42 responda `frame.masks` con estas zonas (o falle con `null`). */
+function answerMasks(fake, masks = []) {
+  fake.onTabMessage(42, (message) =>
+    message.type === 'frame.masks'
+      ? masks === null
+        ? { ok: false, error: 'module stopped' }
+        : { ok: true, value: { viewport_width: 1200, masks } }
+      : undefined,
+  );
+}
+
+test('records a frame of the evaluated tab with the fields of both measurements masked', async () => {
+  const { fake } = await setup();
+  // La página cambió entre el pedido y la captura: el campo bajó 60 px.
+  answerMasks(fake, [{ x: 10, y: 80, w: 100, h: 30 }]);
+
+  assert.equal(await fake.fromTab(42, 'frame.request', FRAME), undefined);
+  await settle();
+
+  assert.deepEqual(plain(fake.calls.captured), [{ windowId: 142, options: { format: 'jpeg', quality: 60 } }]);
+  // La imagen tiene el doble de ancho que la ventana: las zonas se escalan.
+  assert.deepEqual(plain(fake.calls.masked), [
+    { x: 20, y: 40, w: 200, h: 60 },
+    { x: 20, y: 160, w: 200, h: 60 },
+  ]);
+  assert.equal(fake.requests.length, 1);
+  assert.equal(fake.requests[0].path, '/sessions/7/frames');
+  assert.equal(fake.requests[0].body.image, MASKED_JPEG);
+  assert.equal(typeof fake.requests[0].body.t, 'number');
+});
+
+test('a frame without masks is sent as captured', async () => {
+  const { fake } = await setup();
+  answerMasks(fake, []);
+
+  await fake.fromTab(42, 'frame.request', { viewport_width: 1200, masks: [] });
+  await settle();
+
+  assert.equal(fake.requests[0].body.image, 'data:image/jpeg;base64,/9j/4AAQ');
+});
+
+test('ignores frames from other tabs, of an inactive evaluated tab or too close to the last one', async () => {
+  const other = await setup();
+  await other.fake.fromTab(43, 'frame.request', FRAME);
+  await settle();
+  assert.equal(other.fake.calls.captured.length, 0);
+
+  const inactive = await setup({ inactiveTabs: [42] });
+  await inactive.fake.fromTab(42, 'frame.request', FRAME);
+  await settle();
+  assert.equal(inactive.fake.calls.captured.length, 0);
+  assert.equal(inactive.fake.requests.length, 0);
+
+  const { fake } = await setup();
+  answerMasks(fake);
+  await fake.fromTab(42, 'frame.request', FRAME);
+  await fake.fromTab(42, 'frame.request', FRAME);
+  await settle();
+  assert.equal(fake.requests.length, 1);
+});
+
+test('a frame is never sent when the tab cannot measure the masks again', async () => {
+  const { fake } = await setup();
+  answerMasks(fake, null);
+
+  await fake.fromTab(42, 'frame.request', FRAME);
+  await settle();
+
+  assert.equal(fake.calls.captured.length, 1);
+  assert.equal(fake.requests.length, 0);
+});
+
+test('a frame that cannot be masked is never sent', async () => {
+  const { fake, worker } = await setup();
+  answerMasks(fake);
+  worker.UX.maskFrame = async () => {
+    throw new Error('canvas failed');
+  };
+
+  await fake.fromTab(42, 'frame.request', FRAME);
+  await settle();
+
+  assert.equal(fake.calls.captured.length, 1);
+  assert.equal(fake.requests.length, 0);
+});
+
 test('opens the camera engine before starting the modules of the evaluated tab', async () => {
   const { fake } = await setup();
   let engineOpenWhenStarted = null;

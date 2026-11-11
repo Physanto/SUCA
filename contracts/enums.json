@@ -144,6 +144,8 @@
         "calibration.result",
         "camera.status",
         "screen_capture.request",
+        "frame.request",
+        "frame.masks",
         "batch",
         "tab.identify"
       ]

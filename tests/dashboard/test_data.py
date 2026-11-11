@@ -163,6 +163,22 @@ def test_capture_paths_are_relative_to_the_database_folder(
     assert capture["absolute_path"] == str(copy_path.parent / "captures" / "1" / "a.png")
 
 
+def test_session_frames_are_in_time_order_with_their_paths(
+    writable: DashboardData, copy_path: Path
+) -> None:
+    with open_data(copy_path) as other:
+        other._connection.executemany(
+            "INSERT INTO session_frame (session_id, t, file_path) VALUES (1, ?, ?)",
+            [(20.0, "frames/1/b.jpg"), (10.0, "frames/1/a.jpg")],
+        )
+
+    frames = writable.get_session_frames(1)
+
+    assert frames["t"].tolist() == [10.0, 20.0]
+    assert frames["absolute_path"].iloc[0] == str(copy_path.parent / "frames" / "1" / "a.jpg")
+    assert writable.get_session_frames(2).empty
+
+
 def test_accepts_ids_taken_from_a_dataframe(data: DashboardData) -> None:
     """Un id de un DataFrame es ``numpy.int64``; sin convertirlo, SQLite no encontraría nada."""
     study_id = data.get_studies()["id"].iloc[0]

@@ -28,7 +28,8 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
     "element.invalid.input-with-text.json": (("text",), "is not of type 'null'"),
     "element.invalid.text-too-long.json": (("text",), "is too long"),
     "events.invalid.click-without-coordinates.json": (("x",), "'x' is a required property"),
-    "events.invalid.field-change-with-value.json": (("data",), "is expected to be empty"),
+    "events.invalid.field-change-text-without-field.json": (("data",), "'field' is a dependency"),
+    "events.invalid.field-change-with-value.json": (("data",), "'value' was unexpected"),
     "events.invalid.timestamp-in-seconds.json": (("t",), "less than the minimum"),
     "events.invalid.unknown-event-type.json": (("type",), "'rageclick' is not one of"),
     "face.invalid.camel-case-face-value.json": (("values",), "'browDownLeft' is not one of"),
@@ -38,6 +39,7 @@ EXPECTED_ERRORS: dict[str, tuple[tuple[str | int, ...], str]] = {
     ),
     "gaze.invalid.valid-sample-without-zone.json": (("zone",), "None is not one of"),
     "new-capture.invalid.not-a-data-url.json": (("image",), "does not match"),
+    "new-frame.invalid.png-image.json": (("image",), "does not match"),
     "new-session.invalid.participant-name.json": (("participant_id",), "does not match"),
     "reference.invalid.screen-change-with-element.json": (
         ("steps", 1, "element"),

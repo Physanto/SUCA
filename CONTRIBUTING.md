@@ -261,7 +261,7 @@ Si necesitas un cambio (un campo nuevo, un permiso nuevo en el manifiesto, un pa
 - La carpeta `data/` **nunca** se sube.
 - Mientras los módulos no estén integrados, se trabaja con los **datos simulados** que genera el repositorio.
 - **Nunca** se suben datos de participantes, ni siquiera de prueba entre compañeros.
-- **Nunca** se captura el contenido escrito en campos de formulario: solo que hubo un cambio y en qué campo.
+- De lo escrito en los campos solo se guarda cuánto texto tienen y cuánto se borró. El texto se guarda **únicamente** en los campos que el estudio declara en `recorded_fields`, pensados para la app de prueba, donde el participante escribe lo que pide la tarea. **Nunca** se guardan contraseñas, códigos ni datos de tarjeta, aunque se declaren, y el servidor rechaza el texto de un campo no declarado. En un sistema de terceros, `recorded_fields` queda vacío.
 - **Nunca** se guarda ni se envía video o imágenes del rostro: solo números.
 
 ---

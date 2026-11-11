@@ -30,8 +30,8 @@ test('start writes the state with no active task', async () => {
 
   await panel.start(INFO);
 
-  assert.deepEqual(panel.get(), { ...INFO, task_id: null });
-  assert.deepEqual(world.areas.session.get('session'), { ...INFO, task_id: null });
+  assert.deepEqual(panel.get(), { ...INFO, recorded_fields: [], task_id: null });
+  assert.deepEqual(world.areas.session.get('session'), { ...INFO, recorded_fields: [], task_id: null });
   assert.ok(Object.isFrozen(panel.get()));
 });
 
@@ -81,6 +81,17 @@ test('the state must match the contract', async () => {
   await assert.rejects(panel.start({ ...INFO, mode: 'demo' }), /unknown session mode/);
   await assert.rejects(panel.start({ ...INFO, tab_id: '42' }), /tab_id must be an integer/);
   await assert.rejects(panel.start({ ...INFO, participant: 'P07' }), /unknown session field/);
+  await assert.rejects(panel.start({ ...INFO, recorded_fields: ['#q'] }), /recorded_fields must be a list/);
+});
+
+test('start keeps the fields whose text the study records', async () => {
+  const panel = sessionIn(createFakeWorld());
+  const fields = [{ name: 'search', selector: '#q' }];
+
+  await panel.start({ ...INFO, recorded_fields: fields });
+  await panel.update({ task_id: 3 });
+
+  assert.deepEqual(panel.get().recorded_fields, fields);
 });
 
 test('updating without an active session fails', async () => {

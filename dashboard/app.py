@@ -25,6 +25,7 @@ PAGES: tuple[tuple[str, str, str], ...] = (
     ("pages/index.py", "Índice", ":material/speed:"),
     ("pages/references.py", "Referencias", ":material/route:"),
     ("pages/replay.py", "Reproducción", ":material/play_circle:"),
+    ("pages/findings.py", "Hallazgos", ":material/fact_check:"),
 )
 
 st.set_page_config(page_title="SUCA · Resultados", page_icon=":material/insights:", layout="wide")

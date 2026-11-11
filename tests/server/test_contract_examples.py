@@ -30,6 +30,7 @@ REQUEST_EXAMPLES = {
     "sus-answers.valid.json": "sus_response",
     "new-reference.valid.json": "reference",
     "new-capture.valid.json": "screen_capture",
+    "new-frame.valid.json": "session_frame",
 }
 """Ejemplo de cuerpo de petición y tabla donde queda guardado."""
 
@@ -90,13 +91,14 @@ def test_example_request_is_stored(
     # Los ejemplos que nombran una sesión usan la 1: se crea como la piden.
     if name == "new-reference.valid.json":
         create_session(mode=REFERENCE_MODE)
-    elif name == "sus-answers.valid.json":
+    elif name in ("sus-answers.valid.json", "new-frame.valid.json"):
         create_session()
     path = {
         "new-session.valid.json": "/sessions",
         "sus-answers.valid.json": "/sessions/1/sus",
         "new-reference.valid.json": "/references",
         "new-capture.valid.json": "/captures",
+        "new-frame.valid.json": "/sessions/1/frames",
     }[name]
 
     response = client.post(path, json=example(name))

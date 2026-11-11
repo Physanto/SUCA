@@ -42,6 +42,7 @@
         "common/batcher.js",
         "common/modules.js",
         "content/capture.js",
+        "content/frames.js",
         "camera/strings.js",
         "content/camera/zones.js",
         "content/camera.js",
