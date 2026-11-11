@@ -337,7 +337,7 @@ function fakeUi({ answers = [], onPoint = () => {} } = {}) {
     viewport: () => ({ width: 1000, height: 600 }),
     intro: async (type, framing = null) => {
       shown.push(['intro', type, framing === null ? 'no framing' : 'framing']);
-      return answers.length ? answers.shift() : 'start';
+      return answers.length && ['start', 'startAnyway', 'cancel'].includes(answers[0]) ? answers.shift() : 'start';
     },
     point: async (x, y, mode) => {
       shown.push(['point', mode, x, y]);
@@ -346,18 +346,31 @@ function fakeUi({ answers = [], onPoint = () => {} } = {}) {
       return { clickedAt: clickAt };
     },
     hold: async () => {},
+    // El punto en movimiento recorre tres posiciones, cada una anotada con su momento.
+    pursuit: async (positionAt, durationMs) => {
+      shown.push(['pursuit', durationMs]);
+      const points = [0, 33, 66].map((elapsed) => ({ t: 50000 + elapsed, ...positionAt(elapsed) }));
+      return { points, tStart: 50000, tEnd: 50000 + durationMs };
+    },
     message: async (text, buttons) => {
       shown.push(['message', text, buttons]);
       if (buttons.length === 0) {
         return null;
       }
-      return answers.length ? answers.shift() : buttons[0];
+      // Cada respuesta va al primer mensaje que la ofrece; los demás toman su primer botón.
+      return answers.length && buttons.includes(answers[0]) ? answers.shift() : buttons[0];
     },
   };
 }
 
 /** Conexión falsa con el motor para la calibración. */
-function fakeLink({ status = 'active', fitOk = true, gazeError = 20, distance = null } = {}) {
+function fakeLink({
+  status = 'active',
+  fitOk = true,
+  gazeError = 20,
+  distance = null,
+  drift = { ok: true, samples: 30, error_px: 80, corrected: true, correction: { x: -60.04, y: 52.96 } },
+} = {}) {
   const requests = [];
   const listeners = new Set();
   let target = null;
@@ -368,10 +381,13 @@ function fakeLink({ status = 'active', fitOk = true, gazeError = 20, distance = 
     request: async (action, payload) => {
       requests.push([action, payload]);
       if (action === 'calibration.fit') {
-        return { ok: fitOk };
+        return fitOk ? { ok: true, estimator: 'geometric', camera_delay_ms: 70 } : { ok: false };
       }
       if (action === 'stats') {
-        return { delay_ms: 41.6 };
+        return { delay_ms: 41.6, estimator: 'geometric' };
+      }
+      if (action === 'calibration.drift') {
+        return drift;
       }
       return { ok: true };
     },
@@ -400,6 +416,8 @@ const CAMERA = {
   min_distance_cm: 35,
   max_distance_cm: 75,
   calibration_max_error_deg: 5,
+  drift_correction: true,
+  drift_correction_min_error_deg: 1,
 };
 const strings = UX.cameraStrings.calibration;
 
@@ -425,35 +443,129 @@ test('converts pixels to degrees of visual angle at the configured distance', ()
   assert.ok(Math.abs(UX.calibrationMath.pxToDeg(378, CAMERA) - 9.4623) < 1e-3);
 });
 
-test('initial calibration trains on 9 clicked points, validates on 5 others and reports the error', async () => {
+test('initial calibration trains on 13 clicked points, a moving point and head movement, then validates on 9', async () => {
   const link = fakeLink();
   const ui = fakeUi({ onPoint: (x, y) => link.lookAt(x, y) });
   const results = [];
+  const targets = [];
+  const run = UX.createCalibrationProcedure({
+    link,
+    ui,
+    strings,
+    clock: { now: () => 777 },
+    wait: async (ms) => ms === 1000 && link.emit(5),
+    onResult: (record) => results.push(record),
+    onTarget: (record) => targets.push(record),
+    random: () => 0,
+  });
 
-  const record = await procedure(link, ui, results).run('initial', CAMERA);
+  const record = await run.run('initial', CAMERA);
 
-  const points = link.requests.filter(([action]) => action === 'calibration.point');
-  assert.equal(link.requests[0][0], 'calibration.reset');
-  assert.equal(points.length, 9);
-  assert.deepEqual(
-    new Set(points.map(([, p]) => `${p.x},${p.y}`)).size,
-    9,
-    'every calibration point is different',
-  );
-  assert.deepEqual(points[0][1].t_end - points[0][1].t_start, 1400);
-  assert.equal(ui.shown.filter(([kind, mode]) => kind === 'point' && mode === 'look').length, 5);
+  const actions = link.requests.map(([action]) => action);
+  const points = link.requests.filter(([action, p]) => action === 'calibration.point' && p.phase === 'points');
+  assert.deepEqual(link.requests[0], ['calibration.reset', { viewport: { width: 1000, height: 600 } }]);
+  assert.equal(points.length, 13);
+  assert.equal(new Set(points.map(([, p]) => `${p.x},${p.y}`)).size, 13, 'every calibration point is different');
+  assert.equal(points[0][1].t_end - points[0][1].t_start, 1100);
+  // Después de los puntos: el punto en movimiento, la cabeza y el ajuste, en ese orden.
+  assert.deepEqual(actions.slice(14), ['calibration.pursuit', 'calibration.point', 'calibration.fit']);
+  assert.equal(link.requests[14][1].points.length, 3);
+  assert.equal(link.requests[15][1].phase, 'head');
+  // 8 puntos de validación y el del regreso del teclado, todos sin clic.
+  assert.equal(ui.shown.filter(([kind, mode]) => kind === 'point' && mode === 'look').length, 1 + 9);
+  const deg = (px) => Math.round(UX.calibrationMath.pxToDeg(px, CAMERA) * 100) / 100;
   assert.deepEqual(record, {
     t: 777,
     type: 'initial',
     error_px: 20,
-    error_deg: Math.round(UX.calibrationMath.pxToDeg(20, CAMERA) * 100) / 100,
+    error_deg: deg(20),
     accepted: true,
     // Sin encuadre en los cuadros no hay distancia medida: el error usa la de la configuración.
     viewing_distance_cm: null,
-    // El retraso del sensor todavía no se mide; el tiempo de análisis no lo es.
-    camera_delay_ms: null,
+    // Las muestras de cada punto son idénticas: no hay temblor.
+    precision_deg: 0,
+    return_error_deg: deg(20),
+    estimator: 'geometric',
+    camera_delay_ms: 70,
   });
   assert.deepEqual(results, [record]);
+  assert.deepEqual(
+    targets.map((target) => target.phase),
+    [...Array(13).fill('points'), 'pursuit', 'head', ...Array(8).fill('validation'), 'look_away'],
+  );
+  assert.ok(targets.every((target) => target.calibration_type === 'initial' && target.viewport_width === 1000));
+});
+
+test('a drift check clicks three points, lets the engine correct and records the correction', async () => {
+  const link = fakeLink();
+  const ui = fakeUi({ onPoint: (x, y) => link.lookAt(x, y) });
+  const targets = [];
+  const run = UX.createCalibrationProcedure({
+    link,
+    ui,
+    strings,
+    clock: { now: () => 777 },
+    wait: async () => {},
+    onTarget: (record) => targets.push(record),
+    random: () => 0,
+  });
+
+  const record = await run.run('drift_check', CAMERA);
+
+  const [, drift] = link.requests.find(([action]) => action === 'calibration.drift');
+  assert.equal(drift.points.length, 3);
+  assert.deepEqual([drift.points[0].x, drift.points[0].y], [500, 300]);
+  assert.equal(drift.correct, true);
+  // 1° a 60 cm con 37,8 px/cm.
+  assert.ok(Math.abs(drift.min_error_px - UX.calibrationMath.degToPx(1, CAMERA)) < 1e-9);
+  assert.deepEqual(record, {
+    t: 777,
+    type: 'drift_check',
+    error_px: 80,
+    error_deg: Math.round(UX.calibrationMath.pxToDeg(80, CAMERA) * 100) / 100,
+    accepted: true,
+    viewing_distance_cm: null,
+    precision_deg: null,
+    return_error_deg: null,
+    estimator: 'geometric',
+    corrected: true,
+    correction_x_px: -60,
+    correction_y_px: 53,
+  });
+  assert.deepEqual(targets.map((target) => [target.calibration_type, target.phase]), Array(3).fill(['drift_check', 'drift_check']));
+  assert.ok(ui.shown.some(([kind, text]) => kind === 'message' && text.startsWith(strings.driftCorrected)));
+});
+
+test('a drift check without a trained model gives no result', async () => {
+  const link = fakeLink({ drift: { ok: true, samples: 0, error_px: null, corrected: false, correction: { x: 0, y: 0 } } });
+
+  assert.equal(await procedure(link, fakeUi()).run('drift_check', CAMERA), null);
+});
+
+test('the moving point starts at the center and stays inside the window', () => {
+  const viewport = { width: 1000, height: 600 };
+  assert.deepEqual(UX.calibrationMath.pursuitAt(0, viewport), { x: 500, y: 300 });
+  for (let t = 0; t <= 12000; t += 50) {
+    const p = UX.calibrationMath.pursuitAt(t, viewport);
+    assert.ok(p.x >= 99.999 && p.x <= 900.001 && p.y >= 59.999 && p.y <= 540.001);
+  }
+});
+
+test('precision is the RMS distance between consecutive samples of each point', () => {
+  const series = [
+    [
+      { x: 0, y: 0 },
+      { x: 3, y: 4 },
+    ],
+    [{ x: 100, y: 100 }],
+    [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+    ],
+  ];
+  // Dos pares: distancias 5 y 0 → raíz de (25 + 0) / 2.
+  assert.ok(Math.abs(UX.calibrationMath.precisionPx(series) - Math.sqrt(12.5)) < 1e-9);
+  assert.equal(UX.calibrationMath.precisionPx([[{ x: 1, y: 1 }]]), null);
 });
 
 test('the error in degrees uses the distance measured during the validation, and records it', async () => {
@@ -569,7 +681,10 @@ test('final calibration only validates, without retraining', async () => {
   const record = await procedure(link, ui).run('final', CAMERA);
 
   assert.equal(record.type, 'final');
-  assert.deepEqual(link.requests.map(([action]) => action), []);
+  // Solo pregunta qué estimador está en uso: no reinicia ni entrena.
+  assert.deepEqual(link.requests.map(([action]) => action), ['stats']);
+  assert.equal(record.estimator, 'geometric');
+  assert.equal(record.camera_delay_ms, null);
 });
 
 test('waits for a camera that is still starting before calibrating', async () => {
@@ -674,8 +789,10 @@ test('the calibration module runs on request, reports the result and pauses gaze
   await settle(20);
 
   assert.deepEqual(pauses, [true, false]);
-  assert.equal(batches[0][0], 'calibration');
-  assert.deepEqual(sent, [['calibration.result', { error_px: 20, error_deg: batches[0][1].error_deg, accepted: true }]]);
+  const calibration = batches.filter(([type]) => type === 'calibration');
+  assert.equal(calibration.length, 1);
+  assert.equal(batches.filter(([type]) => type === 'gaze_target').length, 13 + 2 + 9);
+  assert.deepEqual(sent, [['calibration.result', { error_px: 20, error_deg: calibration[0][1].error_deg, accepted: true }]]);
   module.stop();
   assert.equal(handlers['calibration.request'], undefined);
 });

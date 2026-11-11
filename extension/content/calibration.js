@@ -1,21 +1,30 @@
 /**
- * @file Calibración de la mirada (M3): muestra una capa sobre la página con 9
- * puntos de calibración y 5 de validación, y mide el error resultante.
+ * @file Calibración de la mirada (M3): una capa sobre la página con puntos que el
+ * participante mira, para entrenar el estimador de mirada del motor y medir su error.
  *
- * Procedimiento:
- * - **Inicial** (`initial`): el participante mira cada uno de los 9 puntos y
- *   hace clic en él; los cuadros de alrededor del clic entrenan el modelo de
- *   mirada del motor. Después mira 5 puntos de validación, distintos de los
- *   anteriores, sin hacer clic, y se mide la distancia entre la mirada
- *   estimada y cada punto.
- * - **Final** (`final`): solo la validación, con el modelo de la calibración
- *   inicial, para estimar cuánto se degradó durante la sesión.
+ * Procedimientos (`calibration_type`):
+ * - **Inicial** (`initial`), poco más de un minuto, en tres partes:
+ *   1. 13 puntos fijos (cuadrícula de 3 × 3 y cuatro intermedios): el participante
+ *      mira cada uno y hace clic; los cuadros alrededor del clic entrenan el modelo.
+ *   2. Un punto en movimiento que sigue con la vista (12 s): da muestras por toda
+ *      la pantalla y, con el desfase que mejor alinea la mirada con el punto, el
+ *      retraso de la cámara (`camera_delay_ms`).
+ *   3. El punto central fijo mientras mueve la cabeza (8 s): separa el giro de la
+ *      cabeza del giro del ojo, para que la mirada siga sirviendo cuando se mueve.
+ *   Después, la validación.
+ * - **Final** (`final`): solo la validación, con el modelo de la inicial, para
+ *   estimar cuánto se degradó durante la sesión.
+ * - **Comprobación de deriva** (`drift_check`): tres puntos con clic, unos
+ *   segundos; el motor mide el error y, si `camera.drift_correction` lo pide y el
+ *   error supera `camera.drift_correction_min_error_deg`, corrige la mirada. El
+ *   panel la pide entre tareas.
  *
- * El error medio se informa en píxeles CSS y en grados de ángulo visual, a la
- * distancia medida durante la validación (o, si no se pudo medir, a la de
- * `camera.viewing_distance_cm`). La calibración se acepta si el error en grados
- * no supera `camera.calibration_max_error_deg`. Si no se acepta, el
- * participante puede repetirla.
+ * **Validación:** 8 puntos sin clic y un noveno al volver de mirar el teclado (la
+ * capa espera a que el monitor note la salida y la vuelta). Da el error medio
+ * (`error_px`, `error_deg`), la precisión (`precision_deg`: temblor entre muestras
+ * consecutivas) y el error al volver (`return_error_deg`). El error en grados usa
+ * la distancia medida durante la validación (o, si no se pudo medir, la de
+ * `camera.viewing_distance_cm`). Se acepta si no supera `camera.calibration_max_error_deg`.
  *
  * **Encuadre.** Antes de la calibración inicial, la pantalla de instrucciones
  * muestra si la cara se ve, a qué distancia está, si está centrada y si mira de
@@ -25,17 +34,18 @@
  * cabeza no se exige: en un portátil la persona mira un poco hacia abajo.
  *
  * Mensajes:
- * - Recibe: `calibration.request` (`type`: `initial` o `final`) del panel
- *   lateral, vía worker.
+ * - Recibe: `calibration.request` (`type`: `initial`, `final` o `drift_check`) del
+ *   panel lateral, vía worker.
  * - Envía: `calibration.result` (`error_px`, `error_deg`, `accepted`) al panel
- *   lateral, y el mismo resultado al servidor en un lote `calibration` con
- *   `ctx.batcher.add`. Si la cámara todavía arranca, se espera hasta 20 s. Si no
- *   está activa o no se detecta el rostro, no se envía resultado: la capa lo
- *   explica y el panel ve el estado de la cámara.
+ *   lateral; el registro completo en un lote `calibration` y cada punto mostrado en
+ *   un lote `gaze_target`, con `ctx.batcher.add`. Si la cámara todavía arranca, se
+ *   espera hasta 20 s. Si no está activa o no se detecta el rostro, no se envía
+ *   resultado: la capa lo explica y el panel ve el estado de la cámara.
  *
- * Durante la calibración la mirada no se registra, y los clics, el cursor, la
- * rueda y las teclas de desplazamiento sobre la capa no llegan a la captura de
- * eventos ni mueven la página (no son interacción con la aplicación).
+ * Durante la calibración la mirada no se registra (las características sí, para
+ * poder medir y reajustar después), y los clics, el cursor, la rueda y las teclas
+ * de desplazamiento sobre la capa no llegan a la captura de eventos ni mueven la
+ * página (no son interacción con la aplicación).
  */
 
 (function (root) {
@@ -43,23 +53,63 @@
 
   const UX = (root.UX = root.UX || {});
 
-  /** Puntos de calibración y de validación, en fracciones de la ventana. */
-  const CALIBRATION_POINTS = [0.1, 0.5, 0.9].flatMap((y) => [0.1, 0.5, 0.9].map((x) => ({ x, y })));
-  const VALIDATION_POINTS = [
-    { x: 0.5, y: 0.5 },
-    { x: 0.3, y: 0.3 },
-    { x: 0.7, y: 0.3 },
-    { x: 0.3, y: 0.7 },
-    { x: 0.7, y: 0.7 },
+  /**
+   * Puntos de calibración: la cuadrícula de 3 × 3 en el 10, 50 y 90 % de la ventana
+   * y cuatro intermedios en el 30 y 70 %, para cubrir también el medio de cada cuadrante.
+   */
+  const CALIBRATION_POINTS = [
+    ...[0.1, 0.5, 0.9].flatMap((y) => [0.1, 0.5, 0.9].map((x) => ({ x, y }))),
+    ...[0.3, 0.7].flatMap((y) => [0.3, 0.7].map((x) => ({ x, y }))),
   ];
-  /** Cuadros que entrenan cada punto: desde un poco antes del clic hasta un poco después. */
-  const BEFORE_CLICK_MS = 400;
-  const AFTER_CLICK_MS = 1000;
+  /** Puntos de validación: distintos de los de calibración, repartidos por toda la ventana. */
+  const VALIDATION_POINTS = [
+    { x: 0.2, y: 0.2 },
+    { x: 0.8, y: 0.2 },
+    { x: 0.2, y: 0.8 },
+    { x: 0.8, y: 0.8 },
+    { x: 0.5, y: 0.3 },
+    { x: 0.5, y: 0.7 },
+    { x: 0.3, y: 0.5 },
+    { x: 0.7, y: 0.5 },
+  ];
+  /** Punto que se mira al volver de mirar el teclado (el noveno de la validación). */
+  const LOOK_AWAY_POINT = { x: 0.5, y: 0.45 };
+  /** Puntos de la comprobación de deriva: el centro y dos esquinas al azar. */
+  const DRIFT_CENTER = { x: 0.5, y: 0.5 };
+  const DRIFT_CORNERS = [
+    { x: 0.2, y: 0.2 },
+    { x: 0.8, y: 0.2 },
+    { x: 0.2, y: 0.8 },
+    { x: 0.8, y: 0.8 },
+  ];
+  /**
+   * Cuadros que entrenan cada punto: desde un poco antes del clic (la vista ya llegó)
+   * hasta un poco después. El motor descarta además parpadeos y cuadros atípicos.
+   */
+  const BEFORE_CLICK_MS = 300;
+  const AFTER_CLICK_MS = 800;
+  /** Punto en movimiento: duración y frecuencias de su curva de Lissajous (en Hz). */
+  const PURSUIT_MS = 12000;
+  const PURSUIT_FREQUENCIES = { x: 0.15, y: 0.2 };
+  /** Amplitud del recorrido, en fracción de la ventana a cada lado del centro. */
+  const PURSUIT_AMPLITUDE = 0.4;
+  /** Recorrido que se guarda como objetivo: un punto cada este tiempo. */
+  const PURSUIT_RECORD_MS = 33;
+  /** Tiempo mirando el punto central mientras se mueve la cabeza. */
+  const HEAD_MS = 8000;
   /** En la validación: espera a que la vista llegue al punto, y tiempo que se mide. */
   const SETTLE_MS = 700;
   const MEASURE_MS = 1000;
+  /**
+   * Al volver de mirar el teclado: espera máxima a que el monitor note la salida y la
+   * vuelta, y tiempo tras la vuelta antes de medir (la sacada de regreso).
+   */
+  const LOOK_AWAY_MAX_MS = 6000;
+  const RETURN_SETTLE_MS = 300;
   /** Muestras de validación que hacen falta para dar un resultado. */
   const MIN_VALIDATION_SAMPLES = 10;
+  /** Estados de la mirada en que la persona mira la pantalla (`gaze_state`). */
+  const LOOKING = ['on_screen', 'low_confidence'];
   /**
    * Si la cámara todavía arranca (el motor carga MediaPipe y su modelo, unos segundos),
    * se espera hasta esto antes de darla por no disponible, mirando cada `STATUS_POLL_MS`.
@@ -187,6 +237,11 @@
     return Math.atan(errorPx / camera.css_px_per_cm / distanceCm) * DEG;
   }
 
+  /** Inversa de `pxToDeg`: píxeles CSS que corresponden a unos grados a una distancia. */
+  function degToPx(deg, camera, distanceCm = camera.viewing_distance_cm) {
+    return Math.tan(deg / DEG) * distanceCm * camera.css_px_per_cm;
+  }
+
   /** Mezcla una lista (Fisher-Yates), para que el participante no adivine el siguiente punto. */
   function shuffle(list, random) {
     const copy = [...list];
@@ -198,19 +253,60 @@
   }
 
   /**
+   * Posición del punto en movimiento en una fracción del recorrido (curva de Lissajous
+   * que empieza en el centro). Su velocidad máxima, ~0,4 anchos de ventana por segundo,
+   * se sigue con la vista sin saltos.
+   *
+   * @param {number} elapsedMs - Tiempo desde el inicio del recorrido.
+   * @param {{width: number, height: number}} viewport - Ventana.
+   * @returns {{x: number, y: number}} Punto en píxeles CSS.
+   */
+  function pursuitAt(elapsedMs, viewport) {
+    const s = elapsedMs / 1000;
+    return {
+      x: viewport.width * (0.5 + PURSUIT_AMPLITUDE * Math.sin(2 * Math.PI * PURSUIT_FREQUENCIES.x * s)),
+      y: viewport.height * (0.5 + PURSUIT_AMPLITUDE * Math.sin(2 * Math.PI * PURSUIT_FREQUENCIES.y * s)),
+    };
+  }
+
+  /**
+   * Raíz cuadrática media de la distancia entre muestras consecutivas: el temblor
+   * de la mirada mientras se mira un punto quieto.
+   *
+   * @param {Array<Array<{x: number, y: number}>>} series - Muestras de cada punto, en orden.
+   * @returns {(number|null)} Precisión en píxeles, o `null` sin pares de muestras.
+   */
+  function precisionPx(series) {
+    let total = 0;
+    let count = 0;
+    for (const samples of series) {
+      for (let i = 1; i < samples.length; i += 1) {
+        total += (samples[i].x - samples[i - 1].x) ** 2 + (samples[i].y - samples[i - 1].y) ** 2;
+        count += 1;
+      }
+    }
+    return count === 0 ? null : Math.sqrt(total / count);
+  }
+
+  /** Redondea a una cantidad de decimales. */
+  const round = (value, digits) => (value === null ? null : Math.round(value * 10 ** digits) / 10 ** digits);
+
+  /**
    * Crea el procedimiento de calibración, sin DOM: la capa visual se recibe.
    *
    * @param {object} deps - Dependencias.
    * @param {object} deps.link - Conexión con el motor (`UX.cameraLink`).
-   * @param {object} deps.ui - Capa visual: `intro(type)`, `point(x, y, mode)`,
-   *   `hold(ms)`, `message(text, buttons)`, `viewport()` y `close()`.
+   * @param {object} deps.ui - Capa visual: `intro(type)`, `point(x, y, mode, hint)`,
+   *   `pursuit(positionAt, durationMs)`, `hold(ms)`, `message(text, buttons)`, `viewport()` y `close()`.
    * @param {{now: function(): number}} deps.clock - Reloj común.
    * @param {function(number): Promise<void>} deps.wait - Espera unos milisegundos.
+   *   También se usa para esperar a que la cámara termine de arrancar.
    * @param {object} deps.strings - Textos (`UX.cameraStrings.calibration`).
    * @param {function(object): void} [deps.onResult] - Recibe cada resultado en cuanto se mide.
+   * @param {function(object): void} [deps.onTarget] - Recibe cada objetivo mostrado, con la
+   *   forma de `gaze_target.schema.json`.
    * @param {function(): number} [deps.random] - Azar entre 0 y 1.
    * @returns {{run: function(string, object): Promise<(object|null)>}} Procedimiento.
-   *   `wait` también se usa para esperar a que la cámara termine de arrancar.
    */
   function createCalibrationProcedure({
     link,
@@ -219,71 +315,247 @@
     wait,
     strings,
     onResult = () => {},
+    onTarget = () => {},
     random = Math.random,
   }) {
-    /** Entrena el modelo con los 9 puntos. Devuelve si el motor pudo entrenar. */
-    async function train() {
+    /** Avisa un objetivo mostrado. */
+    function target(type, phase, group, tStart, tEnd, points) {
       const { width, height } = ui.viewport();
-      await link.request('calibration.reset');
-      const points = shuffle(CALIBRATION_POINTS, random);
-      for (let group = 0; group < points.length; group += 1) {
-        const x = points[group].x * width;
-        const y = points[group].y * height;
-        const { clickedAt } = await ui.point(x, y, 'click');
-        await ui.hold(AFTER_CLICK_MS);
-        await link.request('calibration.point', {
-          x,
-          y,
-          t_start: clickedAt - BEFORE_CLICK_MS,
-          t_end: clickedAt + AFTER_CLICK_MS,
-          group,
-        });
-      }
-      await ui.message(strings.fitting, []);
-      const fit = await link.request('calibration.fit');
-      return fit.ok === true;
+      onTarget({
+        t_start: tStart,
+        t_end: tEnd,
+        calibration_type: type,
+        phase,
+        group,
+        viewport_width: width,
+        viewport_height: height,
+        points: points.map((p) => ({ t: p.t, x: round(p.x, 1), y: round(p.y, 1) })),
+      });
     }
 
     /**
-     * Mide el error de la mirada en los 5 puntos de validación, y la distancia de la
-     * persona a la cámara mientras tanto.
+     * Muestra puntos fijos con clic y avisa al motor el tramo de cada uno.
      *
-     * @returns {Promise<({errorPx: number, distanceCm: (number|null)}|null)>} Error medio
-     *   y mediana de la distancia, o `null` si no hubo muestras suficientes.
+     * @param {string} type - Tipo de calibración.
+     * @param {string} phase - `points` o `drift_check`.
+     * @param {Array<{x: number, y: number}>} fractions - Puntos en fracciones de la ventana.
+     * @param {?string} action - Pedido al motor por cada punto (`calibration.point`), o `null`.
+     * @returns {Promise<Array<{x: number, y: number, t_start: number, t_end: number}>>} Tramos.
      */
-    async function validate() {
+    async function clickPoints(type, phase, fractions, action) {
       const { width, height } = ui.viewport();
-      const errors = [];
-      const distances = [];
-      let target = null;
-      const off = link.onFrame((frame) => {
-        if (target !== null && frame.gaze) {
-          errors.push(Math.hypot(frame.gaze.x - target.x, frame.gaze.y - target.y));
+      const windows = [];
+      for (let group = 0; group < fractions.length; group += 1) {
+        const x = fractions[group].x * width;
+        const y = fractions[group].y * height;
+        const { clickedAt } = await ui.point(x, y, 'click');
+        await ui.hold(AFTER_CLICK_MS);
+        const window = { x, y, t_start: clickedAt - BEFORE_CLICK_MS, t_end: clickedAt + AFTER_CLICK_MS };
+        windows.push(window);
+        if (action) {
+          await link.request(action, { ...window, group, phase });
         }
-        if (target !== null && frame.framing) {
+        target(type, phase, group, window.t_start, window.t_end, [{ t: window.t_start, x, y }]);
+      }
+      return windows;
+    }
+
+    /** Punto en movimiento: lo sigue la vista; el motor mide el retraso y lo usa para entrenar. */
+    async function pursue(type) {
+      if ((await ui.message(strings.pursuitIntro, ['ready'])) !== 'ready') {
+        return false;
+      }
+      const viewport = ui.viewport();
+      const { points, tStart, tEnd } = await ui.pursuit((elapsed) => pursuitAt(elapsed, viewport), PURSUIT_MS);
+      if (points.length < 2) {
+        return true;
+      }
+      await link.request('calibration.pursuit', { points, t_start: tStart, t_end: tEnd });
+      // Como objetivo se guarda el recorrido a la frecuencia de la cámara: basta para interpolar.
+      const sampled = points.filter((p, i) => i === 0 || p.t - points[i - 1].t >= PURSUIT_RECORD_MS - 1);
+      target(type, 'pursuit', 0, tStart, tEnd, sampled);
+      return true;
+    }
+
+    /** Punto central fijo mientras la cabeza se mueve: separa la cabeza del ojo. */
+    async function moveHead(type) {
+      if ((await ui.message(strings.headIntro, ['ready'])) !== 'ready') {
+        return false;
+      }
+      const { width, height } = ui.viewport();
+      const x = width / 2;
+      const y = height / 2;
+      await ui.point(x, y, 'look', strings.headHint);
+      await wait(SETTLE_MS);
+      const tStart = clock.now();
+      await wait(HEAD_MS);
+      const tEnd = clock.now();
+      await link.request('calibration.point', { x, y, t_start: tStart, t_end: tEnd, group: 0, phase: 'head' });
+      target(type, 'head', 0, tStart, tEnd, [{ t: tStart, x, y }]);
+      return true;
+    }
+
+    /**
+     * Entrena el estimador: puntos fijos, punto en movimiento y movimiento de cabeza.
+     *
+     * @returns {Promise<(object|null)>} Resultado del ajuste del motor si pudo entrenar, si no `null`.
+     */
+    async function train() {
+      const viewport = ui.viewport();
+      await link.request('calibration.reset', { viewport });
+      await clickPoints('initial', 'points', shuffle(CALIBRATION_POINTS, random), 'calibration.point');
+      if (!(await pursue('initial')) || !(await moveHead('initial'))) {
+        return null;
+      }
+      await ui.message(strings.fitting, []);
+      const fit = await link.request('calibration.fit');
+      return fit.ok === true ? fit : null;
+    }
+
+    /**
+     * Junta las muestras de mirada mientras se mira un punto.
+     *
+     * @returns {{start: function({x: number, y: number}): void, stop: function(): Array,
+     *   close: function(): void, distances: number[]}} Colector.
+     */
+    function collector() {
+      let current = null;
+      let samples = [];
+      const distances = [];
+      const off = link.onFrame((frame) => {
+        if (current !== null && frame.gaze) {
+          samples.push({ x: frame.gaze.x, y: frame.gaze.y, error: Math.hypot(frame.gaze.x - current.x, frame.gaze.y - current.y) });
+        }
+        if (current !== null && frame.framing) {
           distances.push(frame.framing.distance_cm);
         }
       });
+      return {
+        distances,
+        start(point) {
+          current = point;
+          samples = [];
+        },
+        stop() {
+          current = null;
+          return samples;
+        },
+        close: off,
+      };
+    }
+
+    /**
+     * Espera a que la persona mire fuera de la pantalla y vuelva, según el estado
+     * que da el monitor del motor. Si el monitor no lo nota, se rinde a tiempo.
+     */
+    async function awayAndBack() {
+      let away = false;
+      let back = false;
+      const off = link.onFrame((frame) => {
+        if (!LOOKING.includes(frame.gaze_state) && frame.gaze_state !== 'blink') {
+          away = true;
+        } else if (away && LOOKING.includes(frame.gaze_state)) {
+          back = true;
+        }
+      });
       try {
-        for (const point of VALIDATION_POINTS) {
-          const x = point.x * width;
-          const y = point.y * height;
-          ui.point(x, y, 'look');
-          await wait(SETTLE_MS);
-          target = { x, y };
-          await wait(MEASURE_MS);
-          target = null;
+        let waited = 0;
+        while (!back && waited < LOOK_AWAY_MAX_MS) {
+          await wait(100);
+          waited += 100;
         }
       } finally {
         off();
       }
+    }
+
+    /**
+     * Mide el error de la mirada en los puntos de validación y, al final, al volver
+     * de mirar el teclado; también la precisión y la distancia a la cámara.
+     *
+     * @param {string} type - Tipo de calibración.
+     * @returns {Promise<(object|null)>} `errorPx`, `precisionPx`, `returnErrorPx` y
+     *   `distanceCm`, o `null` si no hubo muestras suficientes.
+     */
+    async function validate(type) {
+      const { width, height } = ui.viewport();
+      const collect = collector();
+      const errors = [];
+      const series = [];
+      let returnErrors = [];
+      try {
+        for (let group = 0; group < VALIDATION_POINTS.length; group += 1) {
+          const x = VALIDATION_POINTS[group].x * width;
+          const y = VALIDATION_POINTS[group].y * height;
+          ui.point(x, y, 'look');
+          await wait(SETTLE_MS);
+          const tStart = clock.now();
+          collect.start({ x, y });
+          await wait(MEASURE_MS);
+          const samples = collect.stop();
+          series.push(samples);
+          errors.push(...samples.map((sample) => sample.error));
+          target(type, 'validation', group, tStart, clock.now(), [{ t: tStart, x, y }]);
+        }
+        if ((await ui.message(strings.lookAwayIntro, ['ready'])) === 'ready') {
+          const x = LOOK_AWAY_POINT.x * width;
+          const y = LOOK_AWAY_POINT.y * height;
+          ui.point(x, y, 'look', strings.lookAwayHint);
+          await awayAndBack();
+          await wait(RETURN_SETTLE_MS);
+          const tStart = clock.now();
+          collect.start({ x, y });
+          await wait(MEASURE_MS);
+          const samples = collect.stop();
+          returnErrors = samples.map((sample) => sample.error);
+          errors.push(...returnErrors);
+          target(type, 'look_away', 0, tStart, clock.now(), [{ t: tStart, x, y }]);
+        }
+      } finally {
+        collect.close();
+      }
       if (errors.length < MIN_VALIDATION_SAMPLES) {
         return null;
       }
-      const distance = median(distances);
+      const distance = median(collect.distances);
+      const average = (values) => values.reduce((sum, e) => sum + e, 0) / values.length;
       return {
-        errorPx: errors.reduce((sum, e) => sum + e, 0) / errors.length,
+        errorPx: average(errors),
+        precisionPx: precisionPx(series),
+        returnErrorPx: returnErrors.length > 0 ? average(returnErrors) : null,
         distanceCm: distance === null ? null : Math.round(distance * 10) / 10,
+      };
+    }
+
+    /**
+     * Comprobación de deriva: tres puntos con clic; el motor mide el error y, si la
+     * configuración lo pide y el error lo justifica, corrige la mirada.
+     */
+    async function driftCheck(camera) {
+      const distances = [];
+      const off = link.onFrame((frame) => frame.framing && distances.push(frame.framing.distance_cm));
+      let windows;
+      try {
+        const corners = shuffle(DRIFT_CORNERS, random).slice(0, 2);
+        windows = await clickPoints('drift_check', 'drift_check', [DRIFT_CENTER, ...corners], null);
+      } finally {
+        off();
+      }
+      const distance = median(distances);
+      const distanceCm = distance === null ? camera.viewing_distance_cm : distance;
+      const reply = await link.request('calibration.drift', {
+        points: windows,
+        correct: camera.drift_correction,
+        min_error_px: degToPx(camera.drift_correction_min_error_deg, camera, distanceCm),
+      });
+      if (!reply.ok || reply.error_px === null) {
+        return null;
+      }
+      return {
+        errorPx: reply.error_px,
+        distanceCm: distance === null ? null : Math.round(distance * 10) / 10,
+        corrected: reply.corrected,
+        correction: reply.correction,
       };
     }
 
@@ -303,13 +575,41 @@
       return link.status() === 'active';
     }
 
+    /** Estimador en uso según el motor, o `null` si no lo informa. */
+    async function currentEstimator() {
+      try {
+        const stats = await link.request('stats');
+        return stats.estimator || null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    /** Registro del lote `calibration` de una medición. */
+    function recordOf(type, measured, camera, extra) {
+      const distanceCm = measured.distanceCm ?? camera.viewing_distance_cm;
+      const toDeg = (px) => (px === null || px === undefined ? null : round(pxToDeg(px, camera, distanceCm), 2));
+      const errorDeg = pxToDeg(measured.errorPx, camera, distanceCm);
+      const record = {
+        t: clock.now(),
+        type,
+        error_px: round(measured.errorPx, 1),
+        error_deg: round(errorDeg, 2),
+        accepted: errorDeg <= camera.calibration_max_error_deg,
+        viewing_distance_cm: measured.distanceCm,
+        precision_deg: toDeg(measured.precisionPx),
+        return_error_deg: toDeg(measured.returnErrorPx),
+        ...extra,
+      };
+      return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+    }
+
     return Object.freeze({
       /**
-       * Hace una calibración completa con la capa.
+       * Hace una calibración, una validación final o una comprobación de deriva con la capa.
        *
-       * @param {string} type - `initial` o `final`.
-       * @param {{viewing_distance_cm: number, css_px_per_cm: number,
-       *   calibration_max_error_deg: number}} camera - Configuración de la cámara.
+       * @param {string} type - `initial`, `final` o `drift_check`.
+       * @param {object} camera - Sección `camera` de la configuración.
        * @returns {Promise<(object|null)>} Registro del lote `calibration` del último
        *   intento, o `null` si no hubo resultado (cámara inactiva, sin rostro o cancelada).
        */
@@ -318,16 +618,35 @@
           await ui.message(strings.cameraUnavailable, ['continue']);
           return null;
         }
-        // El encuadre se comprueba antes de la calibración inicial. En la final no: debe
-        // medir cuánto se degradó la mirada con la postura que la persona tenga, sin corregirla.
+        // El encuadre se comprueba antes de la calibración inicial. En las demás no: deben
+        // medir la mirada con la postura que la persona tenga, sin corregirla.
         const framing = type === 'initial' ? (listener) => watchFraming(link, camera, listener) : null;
         if (!['start', 'startAnyway'].includes(await ui.intro(type, framing, camera))) {
           return null;
         }
+        if (type === 'drift_check') {
+          const measured = await driftCheck(camera);
+          if (measured === null) {
+            await ui.message(strings.notCalibrated, ['continue']);
+            return null;
+          }
+          const record = recordOf(type, measured, camera, {
+            estimator: (await currentEstimator()) ?? undefined,
+            corrected: measured.corrected,
+            correction_x_px: round(measured.correction.x, 1),
+            correction_y_px: round(measured.correction.y, 1),
+          });
+          onResult(record);
+          const verdict = !record.accepted ? strings.driftLarge : measured.corrected ? strings.driftCorrected : strings.driftOk;
+          await ui.message(`${verdict} ${strings.result(record.error_deg)}`, ['continue']);
+          return record;
+        }
         let last = null;
         for (;;) {
+          let fit = null;
           if (type === 'initial') {
-            if (!(await train())) {
+            fit = await train();
+            if (fit === null) {
               if ((await ui.message(strings.noFace, ['repeat', 'cancel'])) === 'repeat') {
                 continue;
               }
@@ -336,7 +655,7 @@
             await ui.message(strings.validating, []);
             await wait(SETTLE_MS);
           }
-          const measured = await validate();
+          const measured = await validate(type);
           if (measured === null) {
             const message = type === 'final' && last === null ? strings.notCalibrated : strings.noFace;
             if ((await ui.message(message, ['repeat', 'cancel'])) === 'repeat') {
@@ -344,22 +663,15 @@
             }
             return last;
           }
-          const { errorPx, distanceCm } = measured;
-          const errorDeg = pxToDeg(errorPx, camera, distanceCm ?? camera.viewing_distance_cm);
-          last = {
-            t: clock.now(),
-            type,
-            error_px: Math.round(errorPx * 10) / 10,
-            error_deg: Math.round(errorDeg * 100) / 100,
-            accepted: errorDeg <= camera.calibration_max_error_deg,
-            viewing_distance_cm: distanceCm,
-            // Retraso del sensor hasta la marca de tiempo de cada muestra: todavía no se
-            // mide. No es el tiempo de análisis (`stats.delay_ms`), porque la marca de
-            // tiempo se toma antes de analizar el cuadro y ya no lo incluye.
-            camera_delay_ms: null,
-          };
+          last = recordOf(type, measured, camera, {
+            estimator: (fit ? fit.estimator : await currentEstimator()) ?? undefined,
+            // Retraso del sensor hasta la marca de tiempo de cada muestra: lo mide el motor
+            // con el punto en movimiento de la calibración inicial. No es el tiempo de análisis
+            // (`stats.delay_ms`): la marca de tiempo se toma antes de analizar el cuadro.
+            camera_delay_ms: fit && Number.isFinite(fit.camera_delay_ms) ? fit.camera_delay_ms : null,
+          });
           onResult(last);
-          const text = `${last.accepted ? strings.accepted : strings.rejected} ${strings.result(errorDeg)}`;
+          const text = `${last.accepted ? strings.accepted : strings.rejected} ${strings.result(last.error_deg)}`;
           const buttons = last.accepted ? ['continue'] : ['repeat', 'continue'];
           if ((await ui.message(text, buttons)) !== 'repeat') {
             return last;
@@ -700,16 +1012,16 @@
       /**
        * Muestra un punto. En modo `click` se cumple cuando el participante hace
        * clic en él (y se rechaza con `CalibrationCancelled` si presiona Escape);
-       * en modo `look` se cumple enseguida.
+       * en modo `look` se cumple enseguida. `hintText` reemplaza la indicación de abajo.
        */
-      async point(x, y, mode) {
+      async point(x, y, mode, hintText = null) {
         card.hidden = true;
         dot.classList.remove('shrink');
         dot.style.left = `${x}px`;
         dot.style.top = `${y}px`;
         dot.hidden = false;
         hint.hidden = false;
-        hint.textContent = mode === 'click' ? strings.clickHint : strings.lookHint;
+        hint.textContent = hintText || (mode === 'click' ? strings.clickHint : strings.lookHint);
         if (mode !== 'click') {
           return { clickedAt: clock.now() };
         }
@@ -725,6 +1037,41 @@
         } finally {
           onCancel = null;
         }
+      },
+
+      /**
+       * Mueve el punto por un recorrido, cuadro a cuadro de la pantalla, y anota dónde
+       * estuvo en cada momento. Termina al cumplirse la duración o si se quita la capa.
+       *
+       * @param {function(number): {x: number, y: number}} positionAt - Posición según el
+       *   tiempo transcurrido, en milisegundos.
+       * @param {number} durationMs - Duración del recorrido.
+       * @returns {Promise<{points: Array<{t: number, x: number, y: number}>, tStart: number,
+       *   tEnd: number}>} Recorrido mostrado.
+       */
+      pursuit(positionAt, durationMs) {
+        card.hidden = true;
+        dot.classList.remove('shrink');
+        dot.hidden = false;
+        hint.hidden = false;
+        hint.textContent = strings.pursuitHint;
+        const points = [];
+        const tStart = clock.now();
+        return new Promise((resolve) => {
+          const step = () => {
+            const t = clock.now();
+            if (closed || t - tStart >= durationMs) {
+              resolve({ points, tStart, tEnd: t });
+              return;
+            }
+            const position = positionAt(t - tStart);
+            dot.style.left = `${position.x}px`;
+            dot.style.top = `${position.y}px`;
+            points.push({ t, x: position.x, y: position.y });
+            page.requestAnimationFrame(step);
+          };
+          step();
+        });
       },
 
       /** Achica el punto mientras se toman los cuadros. */
@@ -806,6 +1153,11 @@
           .send(context.messages.types.CALIBRATION_RESULT, { error_px, error_deg, accepted })
           .catch(() => {});
       };
+      const onTarget = (record) => {
+        if (stillRunning()) {
+          context.batcher.add('gaze_target', record);
+        }
+      };
       const procedure = createCalibrationProcedure({
         link,
         ui: ownUi,
@@ -813,6 +1165,7 @@
         wait,
         strings,
         onResult,
+        onTarget,
       });
       link.pauseGaze(true);
       ownUi.open();
@@ -880,7 +1233,10 @@
   UX.createCalibrationModule = createCalibrationModule;
   UX.calibrationMath = Object.freeze({
     pxToDeg,
+    degToPx,
     assessFraming,
+    pursuitAt,
+    precisionPx,
     FRAMING_LIMITS,
     CALIBRATION_POINTS,
     VALIDATION_POINTS,

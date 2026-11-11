@@ -34,7 +34,9 @@ def generated() -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-@pytest.mark.parametrize("batch_type", ["gaze", "face", "events", "calibration"])
+@pytest.mark.parametrize(
+    "batch_type", ["gaze", "face", "gaze_features", "events", "calibration", "gaze_target"]
+)
 def test_camera_records_satisfy_their_contract(generated: dict[str, Any], batch_type: str) -> None:
     records = generated["batches"][batch_type]
     batch = {
@@ -51,14 +53,37 @@ def test_face_and_gaze_samples_hold_only_numbers_and_contract_names(
     generated: dict[str, Any],
 ) -> None:
     """Fuera de la zona y del selector, todo valor es un número, un booleano o null."""
-    textual = {"zone", "element_selector"}
-    for batch_type in ("gaze", "face"):
+    textual = {"zone", "element_selector", "state"}
+    for batch_type in ("gaze", "face", "gaze_features"):
         for record in generated["batches"][batch_type]:
             for key, value in record.items():
                 if key == "values" and value is not None:
                     assert all(isinstance(v, int | float) for v in value.values())
                 elif key not in textual:
                     assert value is None or isinstance(value, int | float | bool), (key, value)
+
+
+def test_gaze_features_drop_what_the_engine_should_not_send(
+    generated: dict[str, Any],
+) -> None:
+    """Un valor que no es del tipo del contrato queda en null y un campo extra no llega."""
+    record = next(r for r in generated["batches"]["gaze_features"] if r["face_detected"])
+
+    assert "iris_pixels" not in record
+    assert record["right_h"] is None
+    assert record["right_refined"] is None
+    assert record["blink"] == 1
+
+
+def test_calibrations_carry_the_estimator_and_the_drift_correction(
+    generated: dict[str, Any],
+) -> None:
+    records = {r["type"]: r for r in generated["batches"]["calibration"]}
+
+    assert records["initial"]["estimator"] == "geometric"
+    assert records["initial"]["camera_delay_ms"] == 70
+    assert records["drift_check"]["corrected"] is True
+    assert records["drift_check"]["correction_x_px"] == -20
 
 
 def test_every_kind_of_camera_gap_is_generated(generated: dict[str, Any]) -> None:
