@@ -214,7 +214,7 @@
     byId('camera-status').textContent = strings.cameraStatus[status];
     // Solo se bloquea cuando se sabe que la cámara no sirve; la sesión sigue igual.
     const blocked = !['unknown', 'active'].includes(status) || state.phase === 'closing';
-    for (const type of ['initial', 'final']) {
+    for (const type of ['initial', 'drift_check', 'final']) {
       const button = byId(`calibrate-${type}`);
       button.textContent = strings.calibrationButtons[type];
       button.disabled = blocked;
@@ -364,6 +364,7 @@
       devicePixelRatio: root.devicePixelRatio,
       chromeVersion,
     },
+    camera: UX.config.camera,
   });
 
   fillStrings();

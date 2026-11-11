@@ -165,7 +165,7 @@ El panel lateral pide una calibración de mirada.
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `type` | string | `calibration_type`: `initial` o `final` |
+| `type` | string | `calibration_type`: `initial`, `final` o `drift_check` |
 
 ```json
 { "type": "calibration.request", "payload": { "type": "initial" } }
@@ -245,7 +245,7 @@ Registros para el servidor. Normalmente no se envía a mano: lo envía `UX.batch
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `session_id` | integer | Sesión a la que pertenecen los registros, anotada al acumularlos. Así un lote llega a su sesión aunque el estado ya se haya borrado |
-| `type` | string | `batch_type`: `events`, `gaze`, `face`, `tasks` o `calibration` |
+| `type` | string | `batch_type`: `events`, `gaze`, `face`, `tasks`, `calibration`, `layout`, `gaze_features` o `gaze_target` |
 | `records` | array | Registros que cumplen `batches/<type>.schema.json` |
 
 ```json

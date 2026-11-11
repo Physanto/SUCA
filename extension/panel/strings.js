@@ -74,7 +74,11 @@
       no_permission: 'Sin permiso de cámara. La sesión puede seguir sin ella.',
       error: 'Con error. La sesión puede seguir sin ella.',
     },
-    calibrationButtons: { initial: 'Calibración inicial', final: 'Calibración final' },
+    calibrationButtons: {
+      initial: 'Calibración inicial',
+      drift_check: 'Comprobar la mirada',
+      final: 'Calibración final',
+    },
     calibrationWaiting: 'Esperando el resultado en la pestaña…',
     calibrationResult: (result) => {
       const number = (value) => value.toFixed(1).replace('.', ',');

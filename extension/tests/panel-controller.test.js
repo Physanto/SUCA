@@ -553,7 +553,7 @@ test('shows no camera information until the camera reports', async () => {
   const { controller } = await startFree();
 
   assert.equal(controller.getState().camera, null);
-  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null });
+  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null, drift_check: null });
 });
 
 test('follows the camera status and the session goes on without a camera', async () => {
@@ -617,7 +617,7 @@ test('ignores a calibration result that nobody asked for', async () => {
 
   calibrated({ error_px: 100, error_deg: 2.5, accepted: true });
 
-  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null });
+  assert.deepEqual(controller.getState().calibration, { pending: null, initial: null, final: null, drift_check: null });
 });
 
 test('does not ask for a calibration when the camera is known not to work', async () => {
@@ -675,7 +675,7 @@ test('closing the session forgets the camera and the calibration', async () => {
 
   const state = controller.getState();
   assert.equal(state.camera, null);
-  assert.deepEqual(state.calibration, { pending: null, initial: null, final: null });
+  assert.deepEqual(state.calibration, { pending: null, initial: null, final: null, drift_check: null });
 });
 
 test('ignores camera messages that arrive while there is no session', async () => {

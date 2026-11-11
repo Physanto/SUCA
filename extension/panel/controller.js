@@ -27,8 +27,12 @@
  *   `capturing` (hay una captura en curso);
  * - `camera`: estado que informa la cámara (`active`, `no_permission` o `error`), o
  *   `null` si no ha informado (el aviso llega al abrirla y al cambiar, no al abrir el panel);
- * - `calibration`: `pending` (tipo pedido, `initial` o `final`, o `null`) y el último
- *   resultado de cada tipo, `{ error_px, error_deg, accepted }` o `null`.
+ * - `calibration`: `pending` (tipo pedido, `initial`, `final` o `drift_check`, o `null`)
+ *   y el último resultado de cada tipo, `{ error_px, error_deg, accepted }` o `null`.
+ *
+ * En el modo guiado, si `camera.drift_check_between_tasks` lo pide y ya hubo una
+ * calibración inicial, al terminar cada tarea (salvo la última) el panel pide una
+ * comprobación de deriva: unos segundos en la pestaña que miden y corrigen la mirada.
  *
  * Los códigos de error y de aviso son claves de `strings.js`.
  */
@@ -51,10 +55,10 @@
   const EVALUABLE_URL = /^https?:\/\//;
 
   /** Calibración sin pedir y sin resultados. */
-  const NO_CALIBRATION = Object.freeze({ pending: null, initial: null, final: null });
+  const NO_CALIBRATION = Object.freeze({ pending: null, initial: null, final: null, drift_check: null });
 
   /** Tipos de calibración del contrato. */
-  const CALIBRATION_TYPES = Object.freeze(['initial', 'final']);
+  const CALIBRATION_TYPES = Object.freeze(['initial', 'final', 'drift_check']);
 
   /** Valor que reemplaza a los parámetros sensibles de una URL. */
   const REDACTED = 'redacted';
@@ -201,6 +205,8 @@
    * @param {{screen: {width: number, height: number}, devicePixelRatio: number,
    *   chromeVersion: function(): Promise<string>}} deps.environment - Datos de
    *   la pantalla y del navegador para `screen_info`.
+   * @param {{drift_check_between_tasks: boolean}} [deps.camera] - Sección `camera` de la
+   *   configuración; sin ella no se piden comprobaciones de deriva entre tareas.
    * @returns {object} Controlador con `init`, `loadStudies`, `loadTasks`, `retry`,
    *   `startSession`, `startTask`, `endTask`, `startRecording`, `stopRecording`, `retrySave`,
    *   `captureScreen`, `answerSus`, `submitSus`, `requestCalibration`, `closeSession`, `getState` y `subscribe`.
@@ -213,6 +219,7 @@
     clock,
     platform,
     environment,
+    camera = { drift_check_between_tasks: false },
   }) {
     const { types } = messages;
     const listeners = new Set();
@@ -435,9 +442,14 @@
       } catch (error) {
         setState({ error: describeError(error) });
       }
+      // Entre tareas, una comprobación breve mantiene la mirada calibrada durante la sesión.
+      const remaining = guided.index + 1 < guided.tasks.length;
+      if (camera.drift_check_between_tasks && remaining && state.calibration.initial !== null) {
+        await controller.requestCalibration('drift_check');
+      }
     }
 
-    return Object.freeze({
+    const controller = Object.freeze({
       /**
        * Prepara el panel: estudios y, si la hay, la sesión en curso.
        *
@@ -867,6 +879,7 @@
         return () => listeners.delete(listener);
       },
     });
+    return controller;
   }
 
   UX.PANEL_PHASES = PHASES;
