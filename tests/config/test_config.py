@@ -48,6 +48,8 @@ def test_default_configuration_loads(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.capture.mousemove_hz == 50
     assert config.capture.scroll_hz == 10
     assert config.capture.click_response_wait_ms == 1500
+    assert config.camera.record_gaze_features is True
+    assert (config.camera.video_width, config.camera.video_height) == (1920, 1080)
 
 
 def test_camera_numbers_accept_integers_and_decimals(tmp_path: Path) -> None:
@@ -147,6 +149,10 @@ def test_invalid_json_is_reported(tmp_path: Path) -> None:
         ({"camera__css_px_per_cm": "37.8"}, "camera.css_px_per_cm: expected a number"),
         ({"camera__viewing_distance_cm": True}, "camera.viewing_distance_cm: expected a number"),
         ({"camera__calibration_max_error_deg": 0}, "must be positive"),
+        ({"camera__lock_exposure": 1}, "camera.lock_exposure: expected true or false"),
+        ({"camera__record_gaze_features": "yes"}, "expected true or false"),
+        ({"camera__blink_threshold": 1}, "camera.blink_threshold must be less than 1"),
+        ({"camera__filter_beta": 0}, "camera.filter_beta: must be positive"),
     ],
 )
 def test_invalid_values_are_reported_by_key(

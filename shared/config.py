@@ -126,6 +126,31 @@ class CameraConfig:
         max_distance_cm: Distancia máxima aceptable a la cámara antes de calibrar.
         calibration_max_error_deg: Error medio máximo, en grados, para aceptar
             una calibración. Provisional hasta el piloto.
+        lock_exposure: Si se fijan la exposición, el foco y el balance de
+            blancos de la webcam unos segundos después de abrirla, para que la
+            imagen de los ojos no cambie con la luz de la pantalla. Solo en las
+            webcams que lo permiten.
+        blink_threshold: Valor de parpadeo de MediaPipe (entre 0 y 1) a partir
+            del cual el cuadro se considera un parpadeo.
+        off_screen_margin_px: Distancia fuera de la ventana, en píxeles CSS, a
+            partir de la cual la mirada se considera fuera de la pantalla y no
+            un error de estimación cerca del borde.
+        head_range_margin_deg: Grados que la cabeza puede salir del rango de
+            giro visto en la calibración antes de considerar que mira fuera de
+            la pantalla. Dentro del margen, la muestra tiene confianza baja.
+        filter_min_cutoff_hz: Frecuencia de corte mínima del filtro One Euro:
+            más baja suaviza más las fijaciones.
+        filter_beta: Cuánto sube el corte con la velocidad de la mirada en el
+            filtro One Euro: más alta sigue antes los saltos de mirada.
+        drift_check_between_tasks: Si el panel pide una comprobación de deriva
+            al terminar cada tarea del modo guiado (salvo la última).
+        drift_correction: Si una comprobación de deriva corrige la mirada. Sin
+            corrección solo mide, como en las sesiones del banco de pruebas.
+        drift_correction_min_error_deg: Error mínimo, en grados, para que una
+            comprobación de deriva corrija.
+        record_gaze_features: Si se registran las características de mirada de
+            cada cuadro (lote ``gaze_features``), que permiten medir y
+            reprocesar la mirada después de la sesión.
     """
 
     gaze_hz: int
@@ -138,13 +163,27 @@ class CameraConfig:
     min_distance_cm: float
     max_distance_cm: float
     calibration_max_error_deg: float
+    lock_exposure: bool
+    blink_threshold: float
+    off_screen_margin_px: float
+    head_range_margin_deg: float
+    filter_min_cutoff_hz: float
+    filter_beta: float
+    drift_check_between_tasks: bool
+    drift_correction: bool
+    drift_correction_min_error_deg: float
+    record_gaze_features: bool
 
     def __post_init__(self) -> None:
-        """Valida que el rango de distancias no esté vacío."""
+        """Valida el rango de distancias y que el umbral de parpadeo sea una fracción."""
         if self.min_distance_cm >= self.max_distance_cm:
             raise ConfigError(
                 "camera.min_distance_cm must be less than camera.max_distance_cm, got "
                 f"{self.min_distance_cm} and {self.max_distance_cm}"
+            )
+        if self.blink_threshold >= 1:
+            raise ConfigError(
+                f"camera.blink_threshold must be less than 1, got {self.blink_threshold}"
             )
 
 
@@ -285,6 +324,10 @@ def _convert(key: str, value: Any, field_type: Any) -> Any:
     """
     if is_dataclass(field_type):
         return _build(field_type, value, key)
+    if field_type is bool:
+        if not isinstance(value, bool):
+            raise ConfigError(f"{key}: expected true or false, got {value!r}")
+        return value
     if field_type is int:
         # bool es subclase de int en Python; true no es un número válido aquí.
         if not isinstance(value, int) or isinstance(value, bool):
