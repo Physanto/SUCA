@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
@@ -319,3 +320,14 @@ def test_each_task_is_a_window_with_a_margin() -> None:
         ("Tarea 1: A", (1000.0, 10000.0)),
         ("Tarea 2: B", (7000.0, 14000.0)),
     ]
+
+
+def test_the_face_chart_stays_under_the_altair_row_limit() -> None:
+    """Diez minutos de rostro a 15 Hz no superan las 5000 filas de Altair."""
+    t = 1_000_000.0 + np.arange(0, 600_000, 1000 / 15)
+    values = {"brow_down_left": 0.2, "brow_down_right": 0.2, "mouth_press_left": 0.1}
+    face = pd.DataFrame({"t": t, "face_detected": True, "values": [values] * len(t)})
+    chart = charts.face_signals(1_000_000.0, face)
+    assert len(chart.data) <= 3 * charts.FACE_MAX_POINTS
+    assert chart.data["second"].max() > 590
+    chart.to_dict()

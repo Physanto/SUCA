@@ -164,8 +164,16 @@ def timeline(
     )
 
 
+FACE_MAX_POINTS = 1500
+"""Puntos máximos por señal facial: Altair rechaza más de 5000 filas por gráfica."""
+
+
 def face_signals(start: float, face: pd.DataFrame, window_s: float = 1.0) -> alt.Chart:
     """Señales faciales de una sesión, suavizadas con una media móvil.
+
+    Después de suavizar, la señal se promedia por tramos para no pasar de
+    ``FACE_MAX_POINTS`` puntos: a 15 muestras por segundo una sesión de diez
+    minutos tiene 9000 por señal.
 
     Args:
         start: Inicio de la sesión (ms desde 1970).
@@ -186,15 +194,13 @@ def face_signals(start: float, face: pd.DataFrame, window_s: float = 1.0) -> alt
         ]
         series = pd.Series(values, index=pd.to_datetime(detected["t"], unit="ms"), dtype=float)
         smooth = series.rolling(f"{int(window_s * 1000)}ms").mean()
-        rows.append(
-            pd.DataFrame(
-                {
-                    "second": _seconds(detected["t"], start).to_numpy(),
-                    "value": smooth.to_numpy(),
-                    "signal": name,
-                }
-            )
-        )
+        seconds = _seconds(detected["t"], start).to_numpy()
+        span = float(seconds.max() - seconds.min()) if len(seconds) else 0.0
+        # Tramos de al menos un cuarto de la media móvil: no se pierde lo que ella deja ver.
+        step = max(window_s / 4, span / FACE_MAX_POINTS)
+        points = pd.DataFrame({"second": seconds, "value": smooth.to_numpy()})
+        points = points.groupby((points["second"] // step) if step > 0 else points.index).mean()
+        rows.append(points.assign(signal=name))
     frame = (
         pd.concat(rows, ignore_index=True)
         if rows
