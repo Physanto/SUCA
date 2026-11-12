@@ -319,6 +319,52 @@ class SqliteAnalysisRepository:
                 self._connection.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
                 self._insert(table, session_id, df, {})
 
+    def load_gaze_attention(self, session_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Carga fijaciones y candidatos ya analizados para medirlos sin recalcularlos.
+
+        Args:
+            session_id: Sesión existente; su existencia se verifica al cargar sus entradas.
+
+        Returns:
+            Tablas gaze_fixation y gaze_attribution, sin session_id.
+        """
+        return tuple(
+            columns.frame(
+                table,
+                self._rows(
+                    f"SELECT {', '.join(columns.spec(table).columns)} FROM {table}"
+                    " WHERE session_id = ? ORDER BY fixation",
+                    session_id,
+                ),
+            )
+            for table in columns.GAZE_ATTENTION_TABLES
+        )
+
+    def load_gaze_states(self, session_id: int) -> pd.DataFrame:
+        """Carga estados de mirada, incluidas las muestras que no forman fijación."""
+        return pd.DataFrame(
+            self._rows(
+                "SELECT t, state FROM gaze_sample WHERE session_id = ?"
+                " AND state IS NOT NULL ORDER BY t",
+                session_id,
+            ),
+            columns=["t", "state"],
+        )
+
+    def load_facial_labels(self, session_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Carga incidentes y resultados como etiquetas débiles, sin usarlos como rasgos."""
+        return tuple(
+            columns.frame(
+                table,
+                self._rows(
+                    f"SELECT {', '.join(columns.spec(table).columns)} FROM {table}"
+                    " WHERE session_id = ?",
+                    session_id,
+                ),
+            )
+            for table in ("incident", "task_result")
+        )
+
     def list_sessions(self, study_id: int) -> list[SessionInfo]:
         """Lista las sesiones de un estudio.
 
