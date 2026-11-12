@@ -104,6 +104,20 @@ def test_corrects_a_real_drift_of_the_person_measured_without_cheating(
     assert steady.quality.iloc[0]["fit_scope"] == "calibration"
 
 
+def test_keeps_the_live_gaze_when_the_refit_does_not_beat_it(settings: GazeSettings) -> None:
+    """Con una mirada en vivo exacta, ningún reajuste puede mejorarla."""
+    simulation = sim.simulate()
+    frames = simulation.frames.assign(
+        raw_x=simulation.truth["x"].to_numpy(), raw_y=simulation.truth["y"].to_numpy()
+    )
+    exact = GazeInputs(**{**inputs_of(simulation).__dict__, "features": frames})
+
+    quality = refine(exact, settings).quality.iloc[0]
+
+    assert quality["method"] == LIVE
+    assert quality["refined_error_deg"] == quality["live_error_deg"]
+
+
 def test_blinks_and_looking_away_have_no_refined_point(settings: GazeSettings) -> None:
     simulation = sim.simulate()
 

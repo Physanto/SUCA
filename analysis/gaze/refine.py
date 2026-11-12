@@ -6,7 +6,8 @@ comprobaciones de deriva y la validación final. Con eso:
 
 1. **Reajuste.** El estimador geométrico se ajusta de nuevo
    (``analysis/gaze/model.py``) de dos formas: solo con la calibración inicial y
-   con todos los puntos conocidos. Se usa la que menos se equivoca.
+   con todos los puntos conocidos. Se usa la que menos se equivoca, y solo
+   si se equivoca menos que la mirada en vivo; si no, se conserva la de vivo.
 2. **Deriva en el tiempo.** El error de cada procedimiento de control
    (validación, vuelta del teclado, comprobación de deriva) da un
    desplazamiento en su momento; en el momento de la calibración vale 0, y
@@ -212,7 +213,8 @@ def _estimate(
     """Reajusta el modelo, mide su error de forma honesta y decide la corrección de deriva.
 
     Compara dos modelos y, para cada uno, con y sin corrección de deriva, y se queda
-    con la combinación de menor error honesto en los puntos de control:
+    con la combinación de menor error honesto en los puntos de control. Si ninguna
+    mejora el error de la mirada en vivo, se queda con la mirada en vivo:
 
     - ``calibration``: entrenado solo con la calibración inicial. Los controles no
       lo entrenan, así que su error es honesto sin más.
@@ -316,6 +318,11 @@ def _estimate(
             if best is None or score < best[0]:
                 best = (score, scope, model, lam, px, py, drift, table, error)
     _, scope, model, lam, px, py, drift, table, error = best
+    # El reajuste solo vale si mejora lo que ya se midió en vivo; si no, reemplazaría
+    # una mirada mejor por una peor (con otra cámara o persona el modelo geométrico
+    # puede ajustar peor que el estimador que ganó en vivo).
+    if live_error is not None and (error is None or error >= live_error):
+        return live
     x = np.full(len(frames), np.nan)
     y = np.full(len(frames), np.nan)
     x[ok], y[ok] = model.predict(features[ok])
