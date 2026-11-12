@@ -8,7 +8,9 @@ Sesiones falsas pero realistas, con problemas conocidos y la **verdad de referen
 | `camera.py` | Cámara simulada: ojos con un modelo geométrico conocido, calibración completa con línea base facial y valores del rostro |
 | `scenarios.py` | La tienda simulada (pantallas, elementos, rutas de las 4 tareas de `studies/example.yaml`) y las sesiones de la base simulada |
 | `store.py` | Guarda las sesiones por el mismo camino que los datos reales y ayuda a las pruebas |
+| `experiment.py` | Experimento simulado: participantes entre sujetos en V0, V1 y V2, con problemas que les afectan o no |
 | `../generate_mock_data.py` | Genera la base simulada completa y su verdad de referencia |
+| `../simulate_experiment.py` | Genera la base de un experimento simulado y su verdad |
 
 ## Generar la base simulada
 
@@ -42,6 +44,25 @@ Las sesiones con cámara (todas menos la de referencia) tienen **ojos simulados*
 Así `python -m analysis.run --db data/mock.db --study 1` reprocesa la mirada (error cercano a 0,4°), atribuye las fijaciones a los elementos y el panel muestra los movimientos faciales junto a los incidentes. La mirada va a 10 Hz y el rostro a 15 Hz (la línea base facial exige al menos 80 muestras en sus 10 s).
 
 Las **tablas de resultados** (`episode`, `incident`, `task_result`, `usability_index`) quedan llenas con la verdad de referencia, para que el panel de resultados tenga qué mostrar antes de que existan los detectores. El índice se guarda con la versión `mock`. Ejecutar `python -m analysis.run --db data/mock.db …` reemplaza esos resultados por los del pipeline; para recuperarlos, vuelve a generar la base.
+
+## Experimento simulado
+
+Para probar el análisis y la evaluación del experimento con muchos participantes:
+
+```bash
+python -m scripts.simulate_experiment --db data/experiment.db              # 10 por versión, semilla 7
+python -m scripts.simulate_experiment --db data/exp.db --per-version 4 --seed 3 --affected 0.6
+python -m analysis.run --db data/experiment.db --study 1
+```
+
+- Diseño **entre sujetos**, como el experimento: cada participante usa una sola versión, con asignación balanceada en orden aleatorio, y hace las 4 tareas guiadas con calibración, SUS y ojos simulados.
+- Cada problema de su versión le **afecta** con probabilidad `--affected` (0,8 por defecto): a quien no le afecta, no deja ningún patrón. Pasa por todos, porque la ruta de las tareas los atraviesa.
+- Con probabilidad `--false-alarm` (0,25) se detiene a pensar en la tarea 1 sin que haya un problema: una pausa que los detectores ven y que ningún problema sembrado explica.
+- En V2, quien sufre los problemas 3 y 5 abandona la tarea 4 con probabilidad 0,3.
+- El SUS baja con la versión (medias 80, 66 y 52, con variación entre personas).
+- A diferencia de la base simulada, las tablas de resultados quedan **vacías**: se llenan con `analysis.run`.
+- `experiment_ground_truth.json` tiene por sesión, además de lo de la base simulada, `exposed_problems`, `affected_problems`, `false_alarm` y `gave_up`.
+- Con 10 por versión tarda unos 3 minutos en generarse y otros tantos en analizarse.
 
 ## La verdad de referencia
 
