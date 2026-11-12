@@ -60,6 +60,7 @@ class BenchReport:
         by_pose: Error según cuánto cambió la cabeza respecto de la calibración.
         over_time: Error de cada procedimiento, en minutos desde la calibración.
         states: Proporción de cada estado de la mirada fuera de los procedimientos.
+        natural_clicks: Distancia a clics de uso natural, fuera de los objetivos de calibración.
     """
 
     summary: dict[str, Any]
@@ -68,6 +69,7 @@ class BenchReport:
     by_pose: pd.DataFrame = field(default_factory=pd.DataFrame)
     over_time: pd.DataFrame = field(default_factory=pd.DataFrame)
     states: pd.DataFrame = field(default_factory=pd.DataFrame)
+    natural_clicks: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _region(samples: pd.DataFrame) -> pd.Series:
@@ -110,6 +112,9 @@ def evaluate(
     targets: pd.DataFrame,
     calibrations: pd.DataFrame,
     settings: GazeSettings,
+    *,
+    interaction_events: pd.DataFrame | None = None,
+    live_gaze: pd.DataFrame | None = None,
 ) -> BenchReport:
     """Mide la mirada de una sesión.
 
@@ -118,6 +123,8 @@ def evaluate(
         targets: Filas de ``gaze_target`` (``points`` ya es una lista).
         calibrations: Filas de ``calibration`` (``t``, ``type``, ``camera_delay_ms``).
         settings: Ajustes de la mirada.
+        interaction_events: Eventos completos para medir clics naturales, si se aportan.
+        live_gaze: Muestras registradas en vivo, incluidas las inválidas.
 
     Returns:
         Informe con el error en grados y sus desgloses. Sin objetivos, solo el resumen.
@@ -137,8 +144,16 @@ def evaluate(
         "samples": len(samples),
         "camera_delay_ms": delay,
     }
+    clicks = natural_click_agreement(interaction_events, live_gaze, targets, settings)
+    summary.update(
+        {
+            "natural_clicks_with_gaze": len(clicks),
+            "natural_click_median_px": clicks["distance_px"].median() if len(clicks) else None,
+            "natural_click_median_deg": clicks["distance_deg"].median() if len(clicks) else None,
+        }
+    )
     if samples.empty:
-        return BenchReport(summary=summary)
+        return BenchReport(summary=summary, natural_clicks=clicks)
     features = geometric_features(frames)
     distance = frames["distance_cm"].astype(float).fillna(settings.viewing_distance_cm)
     samples = samples.assign(distance_cm=distance.to_numpy()[samples["frame"].to_numpy(int)])
@@ -212,7 +227,46 @@ def evaluate(
         by_pose=_by_pose(evaluated),
         over_time=_over_time(samples, evaluated),
         states=_states(frames, targets),
+        natural_clicks=clicks,
     )
+
+
+def natural_click_agreement(
+    events: pd.DataFrame | None,
+    gaze: pd.DataFrame | None,
+    targets: pd.DataFrame,
+    settings: GazeSettings,
+) -> pd.DataFrame:
+    """Distancia mirada–clic en uso natural, excluyendo clics del procedimiento.
+
+    Usa la mediana entre 500 ms antes y 100 ms después. Descarta coordenadas
+    ausentes y (0, 0), sin descartar clics válidos en los ejes. El resultado es
+    coherencia con interacción; no una medición independiente de precisión.
+    """
+    names = ["t", "x", "y", "gaze_x", "gaze_y", "distance_px", "distance_deg"]
+    if events is None or gaze is None or events.empty or gaze.empty:
+        return pd.DataFrame(columns=names)
+    clicks = events[
+        (events["type"] == "click")
+        & events["x"].notna()
+        & events["y"].notna()
+        & ~((events["x"] == 0) & (events["y"] == 0))
+    ]
+    for target in targets.itertuples():
+        clicks = clicks[~clicks["t"].between(target.t, target.t_end)]
+    valid = gaze[gaze["x"].notna() & gaze["y"].notna()]
+    if "valid" in valid:
+        valid = valid[valid["valid"].fillna(False).astype(bool)]
+    rows = []
+    for click in clicks.itertuples():
+        near = valid[valid["t"].between(click.t - 500, click.t + 100)]
+        if near.empty:
+            continue
+        x, y = float(near["x"].median()), float(near["y"].median())
+        distance = float(np.hypot(x - click.x, y - click.y))
+        degrees = float(px_to_deg(distance, settings.viewing_distance_cm, settings.css_px_per_cm))
+        rows.append([click.t, click.x, click.y, x, y, distance, degrees])
+    return pd.DataFrame(rows, columns=names)
 
 
 def _summary(
@@ -311,6 +365,10 @@ def render(report: BenchReport) -> str:
         ("Por cambio de postura respecto de la calibración", report.by_pose),
         ("A lo largo del tiempo", report.over_time),
         ("Estados fuera de los procedimientos", report.states),
+        (
+            "Mirada frente a clics naturales (coherencia, no precisión independiente)",
+            report.natural_clicks,
+        ),
     )
     for title, table in tables:
         if len(table):

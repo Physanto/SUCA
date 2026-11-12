@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from analysis.gaze import GazeSettings
-from analysis.gaze.bench import evaluate, render
+from analysis.gaze.bench import evaluate, natural_click_agreement, render
 from analysis.gaze.model import FEATURE_COLUMNS, fit_geometric, project
 from analysis.gaze.samples import events, geometric_features, px_to_deg, target_samples
 from analysis.loader import SqliteAnalysisRepository
@@ -260,3 +260,32 @@ def test_the_command_line_explains_a_session_without_gaze_features(
 ) -> None:
     assert gaze_bench.main(["--session", "1", "--db", str(analysis_db)]) == 1
     assert "no gaze features" in capsys.readouterr().err
+
+
+def test_natural_click_agreement_excludes_calibration_and_zero_coordinates(
+    settings: GazeSettings,
+) -> None:
+    events = pd.DataFrame(
+        [
+            {"t": t, "type": "click", "x": x, "y": y}
+            for t, x, y in [(1000, 10, 20), (2000, 0, 0), (3000, 0, 20), (4000, 5, None)]
+        ]
+    )
+    gaze = pd.DataFrame({"t": [1000, 3000], "x": [10, 0], "y": [20, 60], "valid": [True] * 2})
+    targets = pd.DataFrame({"t": [900], "t_end": [1100]})
+    report = natural_click_agreement(events, gaze, targets, settings)
+    assert report["t"].tolist() == [3000]
+    assert report["distance_px"].tolist() == [40]
+    assert report["distance_deg"].iloc[0] == pytest.approx(np.degrees(np.arctan(1 / 60)))
+
+
+def test_neutral_baseline_samples_neither_train_nor_validate_gaze(
+    simulation: sim.Simulation,
+) -> None:
+    selected = target_samples(
+        simulation.frames,
+        simulation.targets.assign(phase="neutral_baseline"),
+        blink_threshold=0.45,
+        pursuit_skip_ms=1000,
+    )
+    assert selected.empty

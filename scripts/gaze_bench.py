@@ -41,7 +41,7 @@ def report_to_json(report: BenchReport) -> dict:
     Returns:
         Resumen y una lista de filas por tabla.
     """
-    tables = ("by_phase", "by_region", "by_pose", "over_time", "states")
+    tables = ("by_phase", "by_region", "by_pose", "over_time", "states", "natural_clicks")
     return {
         "summary": report.summary,
         **{name: json.loads(getattr(report, name).to_json(orient="records")) for name in tables},
@@ -77,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     with closing(connection):
         try:
             inputs = SqliteAnalysisRepository(connection).load_gaze_inputs(args.session)
+            events = SqliteAnalysisRepository(connection).load_session(args.session).events
         except NotFoundError as error:
             print(f"error: {error}", file=sys.stderr)
             return 1
@@ -88,7 +89,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     settings = settings.for_session(inputs.calibrations)
-    report = evaluate(inputs.features, inputs.targets, inputs.calibrations, settings)
+    report = evaluate(
+        inputs.features,
+        inputs.targets,
+        inputs.calibrations,
+        settings,
+        interaction_events=events,
+        live_gaze=inputs.gaze,
+    )
     print(render(report))
     if args.json is not None:
         args.json.write_text(
