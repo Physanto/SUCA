@@ -25,6 +25,7 @@ INCIDENT_LABELS: Mapping[str, str] = {
     "field_reentry": "Campo corregido",
     "form_abandonment": "Formulario abandonado",
     "task_overtime": "Tarea demasiado larga",
+    "silent_failure": "Fallo sin aviso",
 }
 
 #: Etiquetas de los tipos de episodio (``episode_type``).

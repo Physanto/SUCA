@@ -3,7 +3,8 @@
 import pandas as pd
 import pytest
 
-from dashboard import findings
+from dashboard import charts, findings
+from shared import contracts
 
 BUTTON = {"text": "Agregar al carrito", "selector": "#add"}
 IMAGE = {"text": None, "selector": "#zoom-badge"}
@@ -129,3 +130,12 @@ def test_the_report_has_every_part_and_the_evaluator_text() -> None:
     assert "- **Recomendación:** Por definir." in report
     assert "posible falsa alarma" in report
     assert report.rstrip().endswith("Corregir primero el botón.")
+
+
+def test_every_incident_type_of_the_contract_has_a_label_and_an_explanation() -> None:
+    """Un tipo nuevo del contrato no puede aparecer en el panel sin nombre ni explicación."""
+    types = set(contracts.enums()["incident_type"])
+
+    assert set(findings.INCIDENT_ADVICE) == types
+    assert set(charts.INCIDENT_LABELS) == types
+    assert charts.incident_label("silent_failure") == "Fallo sin aviso"
