@@ -357,6 +357,9 @@ Las convenciones de código, la propiedad de carpetas y el flujo de trabajo est�
 - [Preparar estudios del piloto](studies/README.md): URL real y 2–4 tareas por app.
 - [Página de objetivos conocidos](extension/test-page/README.md): guion de un
   minuto para medir atribución con `scripts.attention_bench`.
+- [Evaluación del experimento](scripts/evaluation/README.md): preguntas P1 a P4
+  sobre una base analizada, con `scripts.evaluate_study`; se prueba con un
+  experimento simulado (`scripts.simulate_experiment`).
 - [Movimientos faciales](analysis/ml/README.md): línea base marcada, ventanas
   y comparación opcional de señales con validación por persona, sin emociones.
 - Para conservar una base del esquema 7, usa `scripts.migrate_db`; crea respaldo

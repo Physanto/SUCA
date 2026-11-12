@@ -51,3 +51,8 @@ python -m scripts.gaze_bench --session ID --json data/gaze-ID.json
 El guion dura un minuto. No ajustes las probabilidades hasta medirlas con
 cámara real y comprobar la reproducción. Una sesión de 15 minutos con giros
 naturales de cabeza sigue siendo necesaria para revisar estabilidad y deriva.
+
+`example-problems.yaml` es el catálogo de problemas sembrados de la app de
+prueba, en el formato que usa la evaluación del experimento
+(`scripts/evaluation/README.md`). Si cambia un problema de la app, cámbialo
+también ahí.
