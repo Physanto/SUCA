@@ -1,6 +1,6 @@
 /**
  * @file Pruebas de `content/layout.js`: qué regiones y elementos registra la
- * disposición de la pantalla, con un documento falso.
+ * disposición de la pantalla, y cómo arma su árbol, con un documento falso.
  */
 
 const test = require('node:test');
@@ -16,12 +16,13 @@ const { UX } = globalThis;
  *
  * @param {string} tag - Etiqueta.
  * @param {object} [options] - Atributos, caja `{left, top, width, height}`, `position`,
- *   `visibility` y padre.
+ *   `visibility`, padre y texto propio.
  * @returns {object} Nodo.
  */
-function node(tag, { attributes = {}, box = { left: 0, top: 0, width: 100, height: 40 }, position = 'static', visibility = 'visible', parent = null } = {}) {
+function node(tag, { attributes = {}, box = { left: 0, top: 0, width: 100, height: 40 }, position = 'static', visibility = 'visible', parent = null, text = null } = {}) {
   return {
     nodeType: 1,
+    childNodes: text === null ? [] : [{ nodeType: 3, nodeValue: text }],
     tagName: tag.toUpperCase(),
     id: attributes.id || '',
     parentElement: parent,
@@ -92,11 +93,84 @@ test('records visible interactive elements with selector, role and box, never th
 
   const record = meter().measure(page([link, hidden, outside, empty, paragraph]), 1);
 
-  assert.deepEqual(record.elements, [
-    { selector: '#home', tag: 'a', role: 'link', box: { x: 10, y: 5.1, w: 80, h: 30 }, fixed: true },
+  assert.deepEqual(record.elements.filter((element) => element.interactive), [
+    {
+      selector: '#home',
+      tag: 'a',
+      role: 'link',
+      box: { x: 10, y: 5.1, w: 80, h: 30 },
+      fixed: true,
+      interactive: true,
+      parent: null,
+    },
   ]);
   assert.equal(record.truncated, false);
   assert.ok(!('text' in record.elements[0]));
+});
+
+test('records the content people look at without interacting, never its text', () => {
+  const title = node('h1', { attributes: { id: 'title' }, box: { left: 0, top: 0, width: 400, height: 50 } });
+  const error = node('div', { attributes: { id: 'error', role: 'alert' } });
+  const live = node('div', { attributes: { id: 'live', 'aria-live': 'polite' } });
+  const textBlock = node('div', { attributes: { id: 'price' }, text: ' $ 120.000 ' });
+  const wrapper = node('div', { attributes: { id: 'wrapper' }, text: '   ' });
+  const tiny = node('img', { attributes: { id: 'pixel' }, box: { left: 0, top: 0, width: 1, height: 1 } });
+
+  const record = meter().measure(page([title, error, live, textBlock, wrapper, tiny]), 1);
+
+  assert.deepEqual(
+    record.elements.map((element) => [element.selector, element.tag, element.interactive]),
+    [
+      ['#title', 'h1', false],
+      ['#error', 'div', false],
+      ['#live', 'div', false],
+      ['#price', 'div', false],
+    ],
+  );
+  assert.ok(record.elements.every((element) => !('text' in element)));
+});
+
+test('what is inside a button, a link or an image is not recorded apart', () => {
+  const button = node('button', { attributes: { id: 'buy' } });
+  const icon = node('svg', { attributes: { id: 'icon' }, parent: button });
+  const label = node('span', { attributes: { id: 'label' }, parent: button, text: 'Comprar' });
+  const picture = node('svg', { attributes: { id: 'chart' } });
+  const path = node('g', { attributes: { id: 'bars', role: 'img' }, parent: picture });
+
+  const record = meter().measure(page([button, icon, label, picture, path]), 1);
+
+  assert.deepEqual(record.elements.map((element) => element.selector), ['#buy', '#chart']);
+});
+
+test('each element points to its nearest recorded ancestor', () => {
+  const card = node('article', { attributes: { id: 'card' }, box: { left: 0, top: 0, width: 300, height: 200 } });
+  const plain = node('div', { attributes: { id: 'plain' }, parent: card });
+  const heading = node('h2', { attributes: { id: 'name' }, parent: plain });
+  const link = node('a', { attributes: { id: 'more', href: '/p/1' }, parent: plain });
+  const loose = node('p', { attributes: { id: 'loose' } });
+
+  const record = meter().measure(page([card, plain, heading, link, loose]), 1);
+  const bySelector = Object.fromEntries(record.elements.map((element, index) => [element.selector, index]));
+
+  assert.deepEqual(
+    record.elements.map((element) => [element.selector, element.parent]),
+    [
+      ['#more', bySelector['#card']],
+      ['#card', null],
+      ['#name', bySelector['#card']],
+      ['#loose', null],
+    ],
+  );
+});
+
+test('content has its own maximum, apart from the interactive elements', () => {
+  const buttons = [1, 2].map((n) => node('button', { attributes: { id: `b${n}` } }));
+  const paragraphs = [1, 2, 3].map((n) => node('p', { attributes: { id: `p${n}` } }));
+
+  const record = meter({ maxContent: 2 }).measure(page([...buttons, ...paragraphs]), 1);
+
+  assert.deepEqual(record.elements.map((element) => element.selector), ['#b1', '#b2', '#p1', '#p2']);
+  assert.equal(record.truncated, true);
 });
 
 test('stops at the maximum number of elements and says so', () => {
