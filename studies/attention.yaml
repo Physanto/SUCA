@@ -1,0 +1,12 @@
+# Estudio local para medir atribución; ajusta la URL si test_page.port difiere.
+name: Atribución de mirada con objetivos conocidos
+system_under_test: http://127.0.0.1:8766/attention.html
+description: >-
+  Sigue el guion de 20 objetivos durante un minuto. La verdad supone que la
+  persona sigue las instrucciones. Descarta ejecuciones interrumpidas.
+tasks:
+  - instruction: >-
+      Pulsa Empezar una sola vez y mira el objetivo indicado hasta que cambie.
+      Cuando se pida, mira el vacío o el teclado. No pulses ni escribas durante
+      el guion. Al ver Listo, termina la tarea.
+recorded_fields: []

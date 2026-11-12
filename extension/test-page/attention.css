@@ -1,0 +1,22 @@
+/* El borde es una capa sin contenido y no altera las cajas de los objetivos. */
+* { box-sizing: border-box; }
+body { margin: 0; background: #fafafa; color: #18283a; font: 16px/1.5 system-ui, sans-serif; }
+.instructions { padding: 10px 28px; background: #18283a; color: white; }
+.instructions button { margin: 8px 16px 0 0; }
+button, input { font: inherit; padding: 8px 12px; }
+.scene { margin: 16px 36px; }
+.title-search { display: flex; align-items: center; gap: 20px; }
+h1 { margin: 0; font-size: 30px; }
+#attention-search { width: 240px; }
+.content { display: grid; grid-template-columns: 310px minmax(250px, 430px) 300px; gap: 28px; margin-top: 24px; }
+article { padding: 16px; border: 1px solid #a4b0be; border-radius: 8px; }
+h2 { font-size: 20px; margin-top: 0; }
+.links { display: flex; gap: 10px; }
+.links a { display: block; width: 60px; height: 16px; font-size: 13px; line-height: 16px; }
+#attention-alert { display: inline-block; margin-top: 0; color: #8a290e; background: #fff0d7; font-size: 13px; }
+#attention-paragraph { margin-bottom: 0; }
+#attention-empty { height: 160px; margin-top: 20px; }
+#attention-marker { position: fixed; pointer-events: none; border: 3px solid #d02690; outline: 2px solid white; border-radius: 5px; z-index: 1000; }
+#attention-marker::before { content: 'Mira esto'; position: absolute; top: -27px; left: 0; color: #8b0059; background: white; font: bold 14px/22px system-ui, sans-serif; white-space: nowrap; }
+/* Se impide empezar si el montaje no cabe; no se mueve la página durante el guion. */
+body.running { overflow: hidden; }
