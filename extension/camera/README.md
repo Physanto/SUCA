@@ -245,3 +245,26 @@ Cada pedido espera la respuesta hasta 3 s. El `flush` del cierre espera solo 1,5
 12. **Mirar fuera y volver:** con la sesión en curso, mira el teclado unos segundos: en la base, las muestras `gaze` quedan `off_screen` y sin `x`; al volver, las primeras salen `low_confidence`. Parpadea: `blink`.
 13. **Deriva:** en modo guiado, al terminar una tarea aparece la comprobación rápida; en la base queda un registro `calibration` de tipo `drift_check`. También desde el botón "Comprobar la mirada".
 14. Cierra la sesión: el indicador de cámara de Chrome se apaga. Corre `python -m analysis.run --session <id>`: el resumen incluye `gaze …°`; y `python -m scripts.gaze_bench --session <id>` muestra el error en grados por fase, región, postura y tiempo.
+
+### Línea base facial y combinación según postura
+
+La calibración inicial comienza con 10 s de rostro relajado mirando el centro.
+El tramo se marca `neutral_baseline` (contratos 1.7.0), mientras la captura
+facial continúa. No se añade al entrenamiento ni a la evaluación de mirada.
+El análisis facial exige esa marca y no inventa una para sesiones anteriores.
+
+Si entrenaron tanto apariencia como geometría y se registró la pose, el motor
+informa `hybrid`. Cerca de la mediana de la postura calibrada combina ambos
+puntos con pesos inversos al cuadrado de sus errores de validación cruzada.
+El peso de apariencia decrece de forma gaussiana según el cambio de yaw,
+pitch y distancia normalizado por la dispersión central de la calibración.
+Fuera de esa postura predomina el geométrico. Sus ángulos de entrada se limitan
+al rango calibrado más `head_range_margin_deg`; el monitor conserva la pose
+original para decidir si mira fuera de pantalla. Sin pose o con un solo modelo
+se conserva la selección por menor error de validación cruzada.
+
+El error de cada candidato se informa separado. El modo híbrido deja su propio
+`cv_error_px` en null: los errores de sus componentes no miden la combinación.
+La validación de puntos posterior sigue determinando si se acepta calibración.
+La mejora en uso natural requiere cámara real, una sesión de 15 minutos con
+giros de cabeza y revisión de los bancos; no se supone a partir de la simulación.

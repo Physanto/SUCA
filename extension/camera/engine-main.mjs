@@ -60,7 +60,7 @@ const engine = UX.createCameraEngine({
   estimator: UX.createGazeEstimator({
     geometric: UX.createGeometricModel({ cssPxPerCm: camera.css_px_per_cm }),
     appearance: UX.createGazeModel(),
-  }),
+  }, { headMarginDeg: camera.head_range_margin_deg }),
   monitor: UX.createGazeMonitor({
     blinkThreshold: camera.blink_threshold,
     headMarginDeg: camera.head_range_margin_deg,

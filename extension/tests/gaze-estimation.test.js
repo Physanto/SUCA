@@ -178,6 +178,35 @@ test('the combined estimator reports no model when no candidate could train', ()
   assert.equal(estimator.predict({ geometric: {} }), null);
 });
 
+test('the hybrid estimator weights appearance near the calibrated pose and geometry away', () => {
+  let geometricInput = null;
+  const candidate = (error, point) => ({
+    add() {}, clear() {}, fit: () => ({ ok: true, cv_error_px: error }),
+    predict: features => { geometricInput = features; return point; },
+  });
+  const estimator = UX.createGazeEstimator({
+    geometric: candidate(20, { x: 100, y: 100 }),
+    appearance: { ...candidate(10, { x: 200, y: 200 }), predict: () => ({ x: 200, y: 200 }) },
+  });
+  const features = { geometric: { yaw: 0, pitch: 0, distance: 60 }, appearance: [1] };
+  estimator.add(features, 100, 100, 0);
+  const result = estimator.fit({});
+  assert.equal(result.estimator, 'hybrid');
+  assert.equal(estimator.chosen(), 'hybrid');
+  assert.equal(result.cv_error_px, null);
+  assert.deepEqual(estimator.predict(features), { x: 180, y: 180 });
+  assert.ok(estimator.predict({ ...features, geometric: { ...features.geometric, yaw: 8 } }).x < 101);
+  const extreme = { ...features, geometric: { ...features.geometric, yaw: 200, pitch: -200 } };
+  estimator.predict(extreme);
+  assert.equal(geometricInput.yaw, 12);
+  assert.equal(geometricInput.pitch, -12);
+  assert.equal(extreme.geometric.yaw, 200);
+  assert.deepEqual(estimator.predict({ ...features, appearance: null }), { x: 100, y: 100 });
+  estimator.clear();
+  assert.equal(estimator.chosen(), null);
+  assert.equal(estimator.predict(features), null);
+});
+
 test('Levenberg-Marquardt fits a nonlinear curve', () => {
   const xs = [0, 0.5, 1, 1.5, 2, 2.5, 3];
   const ys = xs.map((x) => 2.5 * Math.exp(-1.3 * x) + 0.4);
