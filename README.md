@@ -351,3 +351,13 @@ Para trabajar sin sesiones reales, usa los datos simulados (paso 3).
 ## Contribuir
 
 Las convenciones de código, la propiedad de carpetas y el flujo de trabajo están en [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Piloto y mediciones adicionales
+
+- [Preparar estudios del piloto](studies/README.md): URL real y 2–4 tareas por app.
+- [Página de objetivos conocidos](extension/test-page/README.md): guion de un
+  minuto para medir atribución con `scripts.attention_bench`.
+- [Movimientos faciales](analysis/ml/README.md): línea base marcada, ventanas
+  y comparación opcional de señales con validación por persona, sin emociones.
+- Para conservar una base del esquema 7, usa `scripts.migrate_db`; crea respaldo
+  y migra en una transacción. No uses `init_db --reset` sobre datos reales.
