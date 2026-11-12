@@ -357,6 +357,9 @@ Las convenciones de código, la propiedad de carpetas y el flujo de trabajo est�
 - [Preparar estudios del piloto](studies/README.md): URL real y 2–4 tareas por app.
 - [Página de objetivos conocidos](extension/test-page/README.md): guion de un
   minuto para medir atribución con `scripts.attention_bench`.
+- [Informe de resultados](dashboard/README.md#informe-reportpy-scriptsstudy_reportpy): HTML redactado con
+  SUS interpretado, hallazgos, mapas de calor y heurísticas de Nielsen (como
+  indicios), desde la página **Informe** o con `scripts.study_report`.
 - [Evaluación del experimento](scripts/evaluation/README.md): preguntas P1 a P4
   sobre una base analizada, con `scripts.evaluate_study`; se prueba con un
   experimento simulado (`scripts.simulate_experiment`).

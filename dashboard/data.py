@@ -551,6 +551,25 @@ class DashboardData:
             ],
         )  # fmt: skip
 
+    def get_sus_answers(self, study_id: int) -> pd.DataFrame:
+        """Respuestas del SUS de las sesiones de un estudio.
+
+        Args:
+            study_id: Estudio.
+
+        Returns:
+            ``session_id``, ``participant_id``, ``version``, ``mode``, ``answers``
+            (lista de las 10 respuestas, de 1 a 5) y ``score`` (puntaje de 0 a 100).
+        """
+        return self._frame(
+            "SELECT sus_response.session_id, participant_id, version, mode, answers, score"
+            " FROM sus_response JOIN session ON session.id = sus_response.session_id"
+            " WHERE session.study_id = ? ORDER BY sus_response.session_id",
+            study_id,
+            columns=["session_id", "participant_id", "version", "mode", "answers", "score"],
+            json_columns=("answers",),
+        )
+
     # --- Referencias y capturas --------------------------------------------------
 
     def get_references(self, study_id: int, status: str | None = None) -> pd.DataFrame:
