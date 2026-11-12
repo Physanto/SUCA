@@ -1,0 +1,3 @@
+# Dependencias opcionales para entrenar la comparación de señales tras el piloto.
+-r requirements.txt
+scikit-learn>=1.3

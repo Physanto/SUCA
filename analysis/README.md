@@ -233,3 +233,35 @@ La mirada por webcam se equivoca varios grados: una fijación entre un título y
 **¿Vio el elemento?** `analysis.gaze.attention.probability_seen` da la probabilidad de que un elemento se haya mirado al menos una vez en un tramo (por ejemplo, el botón del paso siguiente antes de un error), combinando las fijaciones del tramo como independientes: `1 − Π (1 − pᵢ)`.
 
 **Disposiciones anteriores a la versión 1.6.0 de los contratos:** solo tienen elementos interactivos y no tienen árbol. Se atribuyen igual, pero lo que no es interactivo (títulos, textos) no existe para el modelo y cae en sin asignar.
+
+### Banco de atribución con verdad conocida
+
+Sirve `extension/test-page/attention.html` con `scripts.serve_test_page`, calibra
+y sigue su guion. Después de analizar la sesión:
+
+```bash
+python -m scripts.attention_bench --session ID --json data/attention-ID.json
+```
+
+Acepta `--script`, `--db` y `--start-index` (desde cero, obligatorio si hubo
+varios clics de inicio). Usa fijaciones completamente dentro de cada tramo
+estable, descartando los primeros 500 ms y los cruces de objetivo. Informa
+acierto del elemento, resolución por ancestros, base ingenua por cajas,
+calibración por intervalos 0,4/0,6/0,8/0,95, vacío y estados al mirar el teclado.
+`p_attention` se informa aparte como referencia. La cobertura aparece incluso
+si faltan fijaciones: no se interpreta captura ausente como fallo ni como acierto.
+La verdad supone que la persona siguió las instrucciones; una interrupción del
+guion exige descartar esa ejecución. Los parámetros de atribución se mantienen
+hasta medir sesiones reales independientes.
+
+El banco `scripts.gaze_bench` añade distancia mirada–clic en uso natural,
+excluyendo los clics de calibración y las coordenadas ausentes o (0, 0).
+Eso mide coherencia con interacción, no precisión independiente de la mirada.
+
+### Movimientos faciales
+
+`analysis/ml/` prepara rasgos relativos a los 10 s de rostro relajado marcados
+en la calibración inicial y una comparación por persona con regresión logística.
+La ejecución es explícita con `scripts.facial_bench`; requiere nuevas sesiones
+con línea base y datos suficientes. No infiere emociones ni cambia los incidentes
+o el IUC existentes. El README de ese módulo describe etiquetas, límites y uso.
