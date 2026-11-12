@@ -125,6 +125,7 @@ CREATE TABLE calibration (
     error_deg       REAL    NOT NULL,
     accepted        INTEGER NOT NULL,  -- 0/1
     viewing_distance_cm REAL,          -- distancia medida en la validación; NULL si no se midió
+    css_px_per_cm   REAL,              -- pantalla del equipo (opciones de la extensión); NULL si no se informó
     camera_delay_ms REAL,
     precision_deg   REAL,              -- temblor de la mirada en la validación; NULL si no se midió
     return_error_deg REAL,             -- error al volver de mirar el teclado; NULL si no se midió

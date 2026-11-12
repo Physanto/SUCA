@@ -47,6 +47,7 @@ EXPECTED_COLUMNS = {
         "error_deg",
         "accepted",
         "viewing_distance_cm",
+        "css_px_per_cm",
         "camera_delay_ms",
         "precision_deg",
         "return_error_deg",

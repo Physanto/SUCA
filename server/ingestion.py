@@ -184,6 +184,7 @@ def store_calibration(
                 "error_deg": record["error_deg"],
                 "accepted": int(record["accepted"]),
                 "viewing_distance_cm": record.get("viewing_distance_cm"),
+                "css_px_per_cm": record.get("css_px_per_cm"),
                 "camera_delay_ms": record.get("camera_delay_ms"),
                 "precision_deg": record.get("precision_deg"),
                 "return_error_deg": record.get("return_error_deg"),
