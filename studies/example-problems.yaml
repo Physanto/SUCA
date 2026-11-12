@@ -1,0 +1,80 @@
+# Problemas sembrados de la app de prueba, para evaluar los detectores (pregunta P3).
+#
+# Resume test-app/PROBLEMS.md en un formato que lee scripts.evaluate_study:
+#   python -m scripts.evaluate_study --study 1 --catalog studies/example-problems.yaml
+#
+# Un incidente detecta un problema si su tipo está en "detectors", ocurrió en la
+# tarea "task" (posición en studies/example.yaml; null = fuera de las tareas) y,
+# si "screens" no está vacío, en una de esas pantallas normalizadas.
+# Si se cambia un problema en la app de prueba, se cambia también aquí.
+
+# Nombre del estudio al que corresponde el catálogo (el de studies/example.yaml).
+study: Tienda de ejemplo
+
+problems:
+  - number: 1
+    key: button_like_image
+    name: Imagen que parece botón pero no lo es
+    versions: [V1, V2]
+    task: 2
+    screens: ["/product/{id}"]
+    detectors: [dead_click, rage_click]
+
+  - number: 2
+    key: slow_add_to_cart
+    name: Botón que tarda 3 s en responder sin indicador de carga
+    versions: [V1, V2]
+    task: 2
+    screens: ["/product/{id}"]
+    detectors: [rage_click, dead_click]
+
+  - number: 3
+    key: illogical_account_menu
+    name: Opción importante dentro de un menú poco lógico
+    versions: [V1, V2]
+    task: 4
+    # El menú está en el encabezado de todas las pantallas.
+    screens: []
+    detectors: [navigation_loop, long_pause]
+
+  - number: 4
+    key: form_clears_on_error
+    name: Formulario que borra los datos al mostrar un error
+    versions: [V1, V2]
+    task: 3
+    # Comparte tarea y detectores con el 6: en V2 sus evidencias no se distinguen.
+    screens: []
+    detectors: [form_error, field_reentry]
+
+  - number: 5
+    key: low_contrast_link
+    name: Enlace con bajo contraste
+    versions: [V2]
+    task: 4
+    screens: ["/account"]
+    detectors: [hesitation, long_pause]
+
+  - number: 6
+    key: ambiguous_error
+    name: Mensaje de error ambiguo
+    versions: [V2]
+    task: 3
+    screens: []
+    detectors: [form_error, field_reentry, long_pause]
+
+  - number: 7
+    key: slow_login
+    name: Inicio de sesión lento y sin retroalimentación
+    versions: [V2]
+    # Antes de la tarea 1.
+    task: null
+    screens: ["/login"]
+    detectors: [rage_click, dead_click]
+
+  - number: 8
+    key: strict_search
+    name: Buscador que no tolera errores de escritura
+    versions: [V2]
+    task: 1
+    screens: []
+    detectors: [repeated_search]

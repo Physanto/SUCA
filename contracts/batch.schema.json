@@ -9,7 +9,7 @@
       "description": "Versión semántica de los contratos con la que se armó el lote. Se aceptan todas las versiones de la misma versión mayor; 'default' es la versión actual de los contratos.",
       "type": "string",
       "pattern": "^1\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
-      "default": "1.3.0"
+      "default": "1.7.0"
     },
     "type": {
       "description": "Tipo de los registros del lote.",
@@ -43,6 +43,18 @@
     {
       "if": { "properties": { "type": { "const": "calibration" } }, "required": ["type"] },
       "then": { "properties": { "records": { "items": { "$ref": "batches/calibration.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "layout" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/layout.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "gaze_features" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/gaze_features.schema.json" } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "gaze_target" } }, "required": ["type"] },
+      "then": { "properties": { "records": { "items": { "$ref": "batches/gaze_target.schema.json" } } } }
     }
   ]
 }

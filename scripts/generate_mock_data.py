@@ -150,7 +150,7 @@ def generate(
             }
             for item in recording.references
         ],
-        "sessions": [_session_truth(key, built, session_id) for key, built, session_id in sessions],
+        "sessions": [session_truth(key, built, session_id) for key, built, session_id in sessions],
     }
     path = ground_truth_path(database)
     # Saltos de línea fijos para que el archivo sea idéntico byte a byte en Windows.
@@ -159,7 +159,7 @@ def generate(
     return truth
 
 
-def _session_truth(key: str, session: SimulatedSession, session_id: int) -> dict[str, Any]:
+def session_truth(key: str, session: SimulatedSession, session_id: int) -> dict[str, Any]:
     """Verdad de referencia de una sesión, para el archivo JSON."""
     truth = session.truth
     return {

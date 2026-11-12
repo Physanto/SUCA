@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from analysis.parameters import Parameters, load_parameters
+from scripts.simulation.camera import SESSION_POSE, SimulatedEyes, face_values
 from shared.config import load_config
 
 DEFAULT_START = 1_791_208_800_000.0
@@ -63,6 +64,9 @@ DEFAULT_SCREEN_INFO: Mapping[str, Any] = {
     "chrome_version": "146.0.7680.153",
 }
 """Pantalla de las sesiones simuladas."""
+
+EYE_LEAD_MS = 300.0
+"""Cuánto se adelanta la mirada al cursor en las sesiones con ojos simulados."""
 
 #: Tipos de episodio que produce un formulario.
 FORM_KINDS = ("form", "search", "login")
@@ -393,6 +397,13 @@ class SessionBuilder:
         gaze_hz: Frecuencia de la mirada; por defecto, la de la configuración.
         face_hz: Frecuencia del rostro; por defecto, la de la configuración.
         camera: Si genera mirada y rostro; por defecto, salvo en modo ``reference``.
+        eyes: Si además simula los ojos con un modelo geométrico conocido: las
+            características de cada cuadro (``gaze_features``), la calibración
+            completa con sus objetivos y la línea base de rostro relajado
+            (``gaze_target``), la disposición de cada pantalla (``layout``) y
+            todos los valores faciales. Con ellos corren el reprocesamiento de
+            la mirada, la atribución a elementos y el análisis facial. Las
+            calibraciones ocupan su tiempo real (más de un minuto la inicial).
     """
 
     def __init__(
@@ -410,6 +421,7 @@ class SessionBuilder:
         gaze_hz: float | None = None,
         face_hz: float | None = None,
         camera: bool | None = None,
+        eyes: bool = False,
     ) -> None:
         """Prepara una sesión vacía."""
         config = load_config()
@@ -419,6 +431,15 @@ class SessionBuilder:
         self._gaze_hz = gaze_hz or config.camera.gaze_hz
         self._face_hz = face_hz or config.camera.face_hz
         self._camera = mode != "reference" if camera is None else camera
+        if eyes and not self._camera:
+            raise BuilderError("eyes=True needs the camera")
+        viewport = (DEFAULT_SCREEN_INFO["window_width"], DEFAULT_SCREEN_INFO["window_height"])
+        # Azar propio de los ojos: no altera los tiempos ni los eventos de la sesión.
+        self._eyes = SimulatedEyes(seed, viewport) if eyes else None
+        self._eye_frames: list[dict[str, Any]] = []
+        self._gaze_targets: list[dict[str, Any]] = []
+        self._gaze_paused: list[tuple[float, float]] = []
+        self._relaxed: list[tuple[float, float]] = []
         self._request = {
             "study_id": study_id,
             "participant_id": participant_id,
@@ -783,6 +804,13 @@ class SessionBuilder:
         if duration > self._params.long_pause_ms:
             if not self._events:
                 raise BuilderError("with_long_pause() needs an event before it")
+            task_id = self._task.task_id if self._task else None
+            if self._events[-1]["task_id"] != task_id:
+                # El detector mide la pausa entre dos eventos de la misma tarea.
+                raise BuilderError(
+                    "with_long_pause() needs an event of the same task before it; "
+                    "do an action of the task first"
+                )
             self._open_pause = {
                 "t_start": self._events[-1]["t"],
                 "problem": problem,
@@ -896,6 +924,9 @@ class SessionBuilder:
                 f"with_overtime() needs the reference duration of task {task.task_id}"
             )
         limit = task.t_start + reference * self._params.task_overtime_factor
+        if not self._events or self._events[-1]["task_id"] != task.task_id:
+            # Cada pausa larga va entre dos eventos de la tarea, como la mide el detector.
+            self._move_by(40, 25)
         while self._t <= limit + 500:
             self.with_long_pause()
             self._move_by(40, 25)
@@ -920,6 +951,20 @@ class SessionBuilder:
         Returns:
             El constructor.
         """
+        if self._eyes is not None:
+            # La calibración ocupa su tiempo; la mirada queda en pausa y el rostro sigue.
+            run = self._eyes.calibration(type, self._t, error_deg, accepted)
+            self._eye_frames.extend(run.frames)
+            self._gaze_targets.extend(run.targets)
+            self._gaze_paused.append((run.start, run.end))
+            self._relaxed.extend(
+                (target["t_start"], target["t_end"])
+                for target in run.targets
+                if target["phase"] == "neutral_baseline"
+            )
+            self._calibrations.append(run.record)
+            self._t = run.end
+            return self
         self._calibrations.append(
             {
                 "t": _round(self._t),
@@ -970,6 +1015,10 @@ class SessionBuilder:
         batches: dict[str, tuple[Mapping[str, Any], ...]] = {"events": tuple(self._events)}
         if self._camera:
             batches["gaze"], batches["face"] = self._camera_samples(ended_at, incidents)
+        if self._eyes is not None:
+            batches["gaze_features"] = tuple(sorted(self._eye_frames, key=lambda f: f["t"]))
+            batches["gaze_target"] = tuple(self._gaze_targets)
+            batches["layout"] = self._layouts()
         if self._task_records:
             batches["tasks"] = tuple(self._task_records)
         if self._calibrations:
@@ -1532,7 +1581,9 @@ class SessionBuilder:
         """Muestras de mirada y rostro a lo largo de la sesión.
 
         La mirada sigue al cursor con ruido; el rostro muestra más tensión
-        (cejas y labios) cerca de los incidentes.
+        (cejas y labios) cerca de los incidentes. Con ojos simulados, la
+        persona mira adonde irá el cursor ``EYE_LEAD_MS`` después, sin pasar a
+        la pantalla siguiente: los ojos se adelantan a la mano.
         """
         positions = [
             (
@@ -1548,6 +1599,8 @@ class SessionBuilder:
         tense = [(item.t_start - 500, item.t_end + 2000) for item in incidents]
         gaze, face = [], []
         index, x, y, scroll = 0, width / 2, height / 2, 0.0
+        ahead, ax, ay = 0, x, y
+        changes = [event["t"] for event in self._events if event["type"] == "screen_change"]
         step_gaze = 1000 / self._gaze_hz
         t = self._started_at + step_gaze
         while t < ended_at:
@@ -1558,7 +1611,20 @@ class SessionBuilder:
                 if ps is not None:
                     scroll = ps
                 index += 1
-            if self._rng.random() < 0.03:
+            if any(start <= t <= end for start, end in self._gaze_paused):
+                t += step_gaze
+                continue
+            if self._eyes is not None:
+                upcoming = [change for change in changes if change > t]
+                horizon = min([t + EYE_LEAD_MS, *upcoming[:1]])
+                ahead = max(ahead, index)
+                ax, ay = (x, y) if ahead == index else (ax, ay)
+                while ahead < len(positions) and positions[ahead][0] < horizon:
+                    if positions[ahead][1] is not None:
+                        ax, ay = positions[ahead][1], positions[ahead][2]
+                    ahead += 1
+                gaze.append(self._eye_sample(t, ax, ay, scroll))
+            elif self._rng.random() < 0.03:
                 gaze.append({"t": _round(t), "valid": False})
             else:
                 gx = min(max(x + self._rng.gauss(0, 30), 0), width)
@@ -1580,6 +1646,19 @@ class SessionBuilder:
         t = self._started_at + step_face
         while t < ended_at:
             tension = 0.45 if any(start <= t <= end for start, end in tense) else 0.0
+            if self._eyes is not None:
+                relaxed = any(start <= t <= end for start, end in self._relaxed)
+                face.append(
+                    {
+                        "t": _round(t),
+                        "values": face_values(self._rng, 0.0 if relaxed else tension),
+                        "head_yaw": _round(self._rng.gauss(0, 4)),
+                        "head_pitch": _round(self._rng.gauss(-3, 3)),
+                        "face_detected": True,
+                    }
+                )
+                t += step_face
+                continue
             values = {
                 "brow_down_left": tension + self._rng.uniform(0, 0.15),
                 "brow_down_right": tension + self._rng.uniform(0, 0.15),
@@ -1604,6 +1683,88 @@ class SessionBuilder:
             )
             t += step_face
         return tuple(gaze), tuple(face)
+
+    def _eye_sample(self, t: float, x: float, y: float, scroll: float) -> dict[str, Any]:
+        """Cuadro de los ojos mirando el cursor y la muestra en vivo que da.
+
+        La persona mira donde está el cursor. El cuadro va a ``gaze_features``;
+        la mirada en vivo es la estimación ruidosa de ese cuadro.
+        """
+        assert self._eyes is not None
+        width, height = self._eyes.viewport
+        look = (min(max(x, 0.0), width), min(max(y, 0.0), height))
+        blinking = self._rng.random() < 0.03
+        frame = self._eyes.frame(
+            t,
+            look,
+            self._eyes.pose(SESSION_POSE),
+            state="blink" if blinking else "on_screen",
+            blink=0.9 if blinking else 0.02,
+            scroll_y=float(scroll),
+        )
+        self._eye_frames.append(frame)
+        if blinking:
+            return {"t": _round(t), "valid": False}
+        gx = min(max(frame["raw_x"], 0.0), width)
+        gy = min(max(frame["raw_y"], 0.0), height)
+        return {
+            "t": _round(t),
+            "x": _round(gx),
+            "y": _round(gy),
+            "scroll_x": 0,
+            "scroll_y": scroll,
+            "element_selector": None,
+            "zone": _zone(gx, gy, width, height),
+            "valid": True,
+        }
+
+    def _layouts(self) -> tuple[dict[str, Any], ...]:
+        """Disposición de cada pantalla al abrirla y tras cada scroll.
+
+        Los elementos de una pantalla son los que aparecen en los eventos de la
+        sesión en esa URL, con su caja en la ventana. En la tienda simulada las
+        cajas no se mueven con el scroll, así que cada disposición lleva el
+        scroll de su momento y la atribución no las desplaza.
+        """
+        elements: dict[str, dict[str, dict[str, Any]]] = {}
+        for event in self._events:
+            element = event.get("element")
+            if element:
+                elements.setdefault(event["screen"]["url"], {}).setdefault(
+                    element["selector"],
+                    {
+                        "selector": element["selector"],
+                        "tag": element["tag"],
+                        "role": element["role"],
+                        "box": dict(element["box"]),
+                        "fixed": False,
+                        "interactive": bool(element["interactive"]),
+                        "parent": None,
+                    },
+                )
+        width = DEFAULT_SCREEN_INFO["window_width"]
+        height = DEFAULT_SCREEN_INFO["window_height"]
+        layouts = []
+        for event in self._events:
+            if event["type"] not in ("screen_change", "scroll"):
+                continue
+            scroll_y = (
+                event.get("data", {}).get("scroll_y", 0.0) if event["type"] == "scroll" else 0.0
+            )
+            layouts.append(
+                {
+                    "t": event["t"],
+                    "screen": dict(event["screen"]),
+                    "viewport_width": width,
+                    "viewport_height": height,
+                    "scroll_x": 0,
+                    "scroll_y": scroll_y,
+                    "regions": [],
+                    "elements": list(elements.get(event["screen"]["url"], {}).values()),
+                    "truncated": False,
+                }
+            )
+        return tuple(layouts)
 
     # --- Validaciones ------------------------------------------------------------
 

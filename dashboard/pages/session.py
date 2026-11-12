@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-from dashboard import charts, heatmap, replay, ui
+from dashboard import charts, heatmap, heatmap_insights, heatmap_view, replay, ui
 
 ui.page_header(
     "Sesión",
@@ -27,6 +27,10 @@ with ui.selected_data() as data:
     gaze = data.get_gaze(session_id)
     face = data.get_face(session_id)
     calibrations = data.get_calibrations(session_id)
+    gaze_quality = data.get_gaze_quality(session_id)
+    gaze_fixations = data.get_gaze_fixations(session_id)
+    gaze_attribution = data.get_gaze_attribution(session_id)
+    gaze_states = data.get_gaze_states(session_id)
     captures = data.get_screen_captures(study_id)
 
 summary = sessions.set_index("session_id").loc[session_id]
@@ -52,6 +56,11 @@ found.metric("Incidentes", len(incidents))
 sus.metric("SUS", ui.number(summary["sus_score"]))
 index.metric("IUC", ui.number(summary["bui"]))
 
+CALIBRATION_TITLES = {
+    "initial": "Calibración inicial",
+    "drift_check": "Comprobaciones de deriva",
+    "final": "Comprobación final",
+}
 if not calibrations.empty:
     columns = st.columns(len(calibrations["type"].unique()))
     for column, (kind, group) in zip(
@@ -59,8 +68,17 @@ if not calibrations.empty:
     ):
         last = group.iloc[-1]
         distance = last["viewing_distance_cm"]
+        if kind == "drift_check":
+            corrected = int(group["corrected"].fillna(False).sum())
+            column.metric(
+                CALIBRATION_TITLES[kind],
+                ui.number(group["error_deg"].mean(), 2, "°"),
+                help=f"Error medio antes de corregir; {len(group)} comprobación(es), "
+                f"{corrected} con corrección.",
+            )
+            continue
         column.metric(
-            "Calibración inicial" if kind == "initial" else "Comprobación final",
+            CALIBRATION_TITLES.get(kind, kind),
             ui.number(last["error_deg"], 2, "°"),
             help=(
                 f"{len(group)} intento(s); {'aceptada' if last['accepted'] else 'no aceptada'}; "
@@ -68,6 +86,24 @@ if not calibrations.empty:
                 f"{'sin medir' if pd.isna(distance) else ui.number(distance, 0, ' cm')}."
             ),
         )
+
+if gaze_quality is not None:
+    live, refined, fixations = st.columns(3)
+    live.metric(
+        "Mirada en vivo",
+        ui.number(gaze_quality["live_error_deg"], 2, "°"),
+        help="Error en los puntos de control (validaciones y comprobaciones de deriva).",
+    )
+    refined.metric(
+        "Mirada reprocesada",
+        ui.number(gaze_quality["refined_error_deg"], 2, "°"),
+        help=(
+            "Mismo error, medido sin usar cada punto para corregirse a sí mismo. "
+            f"Deriva {'corregida' if gaze_quality['drift_corrected'] else 'sin corregir'}; "
+            "los mapas de calor y la reproducción usan esta mirada."
+        ),
+    )
+    fixations.metric("Fijaciones", int(gaze_quality["fixations"]))
 
 # --- Línea de tiempo ------------------------------------------------------------------
 st.subheader("Línea de tiempo")
@@ -100,9 +136,8 @@ else:
     shots = captures[[heatmap.screen_key(url) == screen for url in captures["url"]]]
     background = Image.open(shots.iloc[-1]["absolute_path"]) if not shots.empty else None
     chosen = located[located["screen"] == screen][["x", "y"]].to_numpy()
-    drawn = heatmap.render(
-        chosen, layer=layer or "click", background=background, viewport=replay.viewport_of(session)
-    )
+    viewport = replay.viewport_of(session)
+    drawn = heatmap.render(chosen, layer=layer or "click", background=background, viewport=viewport)
     st.image(drawn.image, width="stretch")
     st.caption(
         f"{drawn.drawn} puntos dibujados"
@@ -116,6 +151,17 @@ else:
             if background is not None
             else ". Sin captura de esta pantalla: se dibuja sobre un fondo neutro."
         )
+    )
+    heatmap_view.show_details(
+        layer or "click",
+        screen,
+        chosen,
+        viewport,
+        events=events,
+        fixations=gaze_fixations,
+        attribution=gaze_attribution,
+        states=gaze_states,
+        labels=heatmap_insights.labels_by_selector(events),
     )
 
 # --- Datos ------------------------------------------------------------------------------

@@ -1,0 +1,9 @@
+<!-- Paisaje de referencia local, sin recursos externos. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180">
+  <rect width="300" height="180" fill="#b9e0ef"/>
+  <circle cx="245" cy="38" r="20" fill="#ffe09a"/>
+  <path d="M0 125 80 25 155 125 215 52 300 125Z" fill="#608477"/>
+  <path d="m57 54 23-29 25 34-25-12Z" fill="#eff5f3"/>
+  <path d="M0 125H300V180H0Z" fill="#498da9"/>
+  <path d="M40 145H170M130 163H270" stroke="#b9e0ef" stroke-width="3"/>
+</svg>

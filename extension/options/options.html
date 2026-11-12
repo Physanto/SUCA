@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  Opciones de la extensión: pantalla y distancias de este equipo. Las usa el
+  evaluador antes de las sesiones; se guardan en chrome.storage.local y la
+  calibración las toma desde la próxima vez. Se abre con clic derecho en el
+  ícono de la extensión → Opciones.
+-->
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SUCA · Pantalla y distancia</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Pantalla y distancia de este equipo</h1>
+      <p class="muted">
+        La mirada se mide en grados: para eso hay que saber cuánto mide la pantalla y a qué distancia se sienta la
+        persona. Ajusta esto <strong>en la pantalla donde se hará la prueba</strong> (si hay dos monitores, abre esta
+        página en ese). Se usa desde la próxima calibración y queda registrado en cada sesión.
+      </p>
+      <p id="detected" class="muted"></p>
+      <p id="source" class="notice"></p>
+
+      <form id="form" novalidate>
+        <!-- Tamaño de la pantalla: con la diagonal basta; el ancho medido con regla es más exacto. -->
+        <fieldset>
+          <legend>Tamaño de la pantalla</legend>
+          <label class="choice"><input type="radio" name="mode" value="diagonal" checked /> Diagonal en pulgadas</label>
+          <label class="choice"><input type="radio" name="mode" value="width" /> Ancho visible en centímetros (medido con regla)</label>
+          <div class="row" id="diagonal-row">
+            <input id="diagonal" type="number" min="7" max="60" step="0.1" inputmode="decimal" aria-label="Diagonal en pulgadas" />
+            <span>pulgadas</span>
+          </div>
+          <div class="presets" id="diagonal-presets" aria-label="Tamaños comunes">
+            <button type="button" data-diagonal="13.3">13,3″</button>
+            <button type="button" data-diagonal="14">14″</button>
+            <button type="button" data-diagonal="15.6">15,6″</button>
+            <button type="button" data-diagonal="17.3">17,3″</button>
+            <button type="button" data-diagonal="21.5">21,5″</button>
+            <button type="button" data-diagonal="24">24″</button>
+            <button type="button" data-diagonal="27">27″</button>
+          </div>
+          <div class="row" id="width-row" hidden>
+            <input id="width" type="number" min="15" max="150" step="0.1" inputmode="decimal" aria-label="Ancho visible en centímetros" />
+            <span>cm de ancho visible (solo la imagen, sin el marco)</span>
+          </div>
+          <p><strong id="density">—</strong></p>
+          <p class="muted">Comprueba con una regla: esta barra debe medir 10 cm. Si no, corrige el tamaño.</p>
+          <div id="ruler" class="ruler" aria-hidden="true"></div>
+        </fieldset>
+
+        <!-- Distancias: la habitual es la referencia; fuera del rango, la calibración pide acomodarse. -->
+        <fieldset>
+          <legend>Distancia de la persona a la pantalla</legend>
+          <div class="presets">
+            <button type="button" data-distances="50,35,65">Portátil (habitual 50 cm, de 35 a 65)</button>
+            <button type="button" data-distances="60,45,80">Monitor (habitual 60 cm, de 45 a 80)</button>
+          </div>
+          <div class="grid">
+            <label>Habitual <input id="usual" type="number" min="20" max="150" step="1" /> cm</label>
+            <label>Mínima <input id="min" type="number" min="20" max="150" step="1" /> cm</label>
+            <label>Máxima <input id="max" type="number" min="20" max="150" step="1" /> cm</label>
+          </div>
+          <p class="muted">
+            La cámara mide la distancia real en cada momento; estos valores son la referencia y el rango que la
+            calibración acepta al encuadrar.
+          </p>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" class="primary">Guardar</button>
+          <button type="button" id="reset">Volver a los valores por defecto</button>
+        </div>
+        <p id="status" role="status"></p>
+      </form>
+    </main>
+    <script src="../config.generated.js"></script>
+    <script src="../common/platform.js"></script>
+    <script src="../common/screen-setup.js"></script>
+    <script src="../camera/strings.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

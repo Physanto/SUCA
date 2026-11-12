@@ -17,6 +17,10 @@
  * capturar y tapa las de las dos mediciones: si la página cambió entre el pedido
  * y la captura, alguna de las dos coincide con la imagen.
  *
+ * Con cada pedido registra también la disposición de la pantalla (lote `layout`,
+ * `content/layout.js`): las regiones y los elementos interactivos visibles con sus
+ * rectángulos, para asignar zona y elemento a la mirada después de la sesión.
+ *
  * Limitaciones: no ve campos dentro de iframes ni de shadow DOM, que quedan sin tapar.
  */
 
@@ -59,9 +63,11 @@
    * @param {object} deps - Dependencias.
    * @param {object} deps.page - Ventana de la página (`window`): documento, tamaño,
    *   dirección, temporizadores y `MutationObserver`.
+   * @param {{measure: function(object, number): object}} [deps.layout] - Medidor de la
+   *   disposición (`UX.createLayoutMeter`); sin él no se registra el lote `layout`.
    * @returns {{name: string, start: function(object): void, stop: function(): void}} Módulo.
    */
-  function createFramesModule({ page }) {
+  function createFramesModule({ page, layout = null }) {
     let ctx = null;
     let timer = null;
     let pending = null;
@@ -147,6 +153,19 @@
       lastSent = ctx.clock.now();
       changed = false;
       Promise.resolve(ctx.messages.send(ctx.messages.types.FRAME_REQUEST, measure())).catch(() => {});
+      recordLayout();
+    }
+
+    /** Registra la disposición de la pantalla. Un fallo de medición no detiene las capturas. */
+    function recordLayout() {
+      if (layout === null) {
+        return;
+      }
+      try {
+        ctx.batcher.add('layout', layout.measure(page, ctx.clock.now()));
+      } catch (error) {
+        console.warn(`layout not recorded: ${error.message}`);
+      }
     }
 
     /**
@@ -252,6 +271,14 @@
 
   UX.createFramesModule = createFramesModule;
   if (UX.platform && UX.modules) {
-    UX.modules.register(createFramesModule({ page: root }));
+    const { gazeZones, captureCriteria } = UX;
+    const layout = UX.createLayoutMeter({
+      regionOf: gazeZones.regionOf,
+      selectorOf: (element) => gazeZones.selectorOf(element),
+      roleOf: captureCriteria.roleOf,
+      isInteractive: captureCriteria.isInteractive,
+      screen: captureCriteria.currentScreen,
+    });
+    UX.modules.register(createFramesModule({ page: root, layout }));
   }
 })(globalThis);

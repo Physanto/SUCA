@@ -63,6 +63,7 @@
     </div>
     <div class="layers" id="layers"></div>
     <div class="info" id="info"></div>
+    <div class="info" id="fixation-info" aria-live="polite"></div>
 
     <script>
       'use strict';
@@ -324,6 +325,32 @@
         });
       }
 
+      /** Atribución vigente: sin asignar y ambigüedad se muestran como incertidumbre. */
+      function drawFixation(screen) {
+        const info = document.getElementById('fixation-info');
+        info.replaceChildren();
+        if (!shown.gaze) return;
+        const marks = DATA.fixations || [];
+        const index = lastAtOrBefore(marks, now, item => item.t);
+        const item = index >= 0 ? marks[index] : null;
+        if (!item || now > item.end || (item.screen && screen && item.screen !== screen.screen)) return;
+        const unassigned = !item.selector;
+        const color = unassigned ? '#6b7280' : item.ambiguous ? '#b45309' : COLOR.gaze;
+        const name = item.selector || 'Sin resolver';
+        const probability = item.probability === null ? '' : ` · ${(100 * item.probability).toFixed(0)} %`;
+        const flags = [item.ambiguous ? 'Ambigua: se muestra un ancestro' : '',
+          item.long_stare ? 'Mirada fija prolongada' : ''].filter(Boolean);
+        info.style.color = color;
+        info.textContent = `Fijación: ${name}${probability} · Sin asignar: ${(100 * item.unassigned_p).toFixed(0)} %${flags.length ? ' · ' + flags.join(' · ') : ''}`;
+        if (unassigned || item.long_stare) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = item.long_stare ? 5 : 3;
+          ctx.setLineDash(unassigned ? [7, 5] : []);
+          ctx.beginPath(); ctx.arc(item.x, item.y, 23, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
       /** Barra de posición a la derecha y flecha con la dirección mientras se desplaza. */
       function drawScroll() {
         const index = lastAtOrBefore(DATA.scrolls, now);
@@ -404,6 +431,7 @@
         screenStart = screen ? screen.t : 0;
         const background = drawBackground(screen);
         if (shown.gaze) drawGaze();
+        drawFixation(screen);
         if (shown.field) drawFields();
         if (shown.scroll) drawScroll();
         if (shown.click) drawClicks();

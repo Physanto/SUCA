@@ -8,6 +8,7 @@ Captura lo que hace el participante en la aplicación evaluada, muestra las tare
 |---|---|---|
 | Content scripts | `content/`: los módulos (`capture.js`, `frames.js`, `camera.js`, `calibration.js`, `task-end.js`) y `bootstrap.js` | En la pestaña evaluada. Solo arrancan sus módulos si su pestaña es la de la sesión |
 | Panel lateral | `panel/` | Panel lateral de Chrome; persiste al navegar |
+| Opciones | `options/` | Página de opciones de la extensión (clic derecho en el ícono → Opciones): tamaño de la pantalla y distancias de este equipo. Detalle en `camera/README.md`, "Pantalla y distancia de cada equipo" |
 | Service worker | `worker.js` | Segundo plano: mediador entre panel y pestaña, y envío al servidor |
 | Motor de la cámara | `camera/`: `engine.html` (documento *offscreen*), `permission.html` y sus scripts | Documento oculto de la extensión que abre la webcam y persiste al navegar; detalle en `camera/README.md` |
 | Librerías de la cámara | `lib/` | MediaPipe Face Landmarker y su modelo; versiones y licencias en `lib/README.md` |
@@ -31,9 +32,10 @@ JSON no admite comentarios, así que el manifiesto se explica aquí.
 | `background.service_worker` | `worker.js` | Worker clásico: carga sus utilidades con `importScripts` |
 | `action` + `side_panel` | `panel/panel.html` | El ícono abre el panel lateral |
 | `content_scripts` | En `<all_urls>`, solo el marco principal, al terminar de cargar la página | Los iframes de otros dominios quedan fuera del alcance |
-| | Orden: configuración, utilidades comunes (con `common/modules.js` al final), módulos (`capture`; `camera/strings.js` y `content/camera/zones.js`, que usan los dos siguientes; `camera`, `calibration`, `task-end`) y al final `bootstrap.js` | Cada archivo usa lo que cargaron los anteriores: los módulos se registran en `UX.modules` y `bootstrap.js` los arranca |
+| | Orden: configuración, utilidades comunes (con `common/modules.js` al final), módulos (`capture`; `content/camera/zones.js` y `content/layout.js`, que usan `frames` y la cámara; `frames`; `camera/strings.js`; `camera`, `calibration`, `task-end`) y al final `bootstrap.js` | Cada archivo usa lo que cargaron los anteriores: los módulos se registran en `UX.modules` y `bootstrap.js` los arranca |
 | `web_accessible_resources` | — (no se declara) | Las librerías de `lib/` solo las carga el motor de la cámara, que es una página de la extensión. Ninguna página web necesita leerlas |
 | `minimum_chrome_version` | `116` | Primera versión con `sidePanel.setPanelBehavior` |
+| `options_ui` | `options/options.html`, en una pestaña | Pantalla y distancias de cada equipo |
 
 ## Utilidades comunes (`UX`)
 
@@ -50,6 +52,7 @@ Cada archivo de `common/` agrega una pieza al espacio de nombres global `UX`. De
 | `UX.createSendQueue` | Cola de envío pura con reintentos | Worker |
 | `UX.api` | Una función por endpoint del servidor, con el token | Worker y panel |
 | `UX.config`, `UX.contracts` | Configuración (`server`, `sending`, `capture`, `camera`) y enumeraciones del contrato | Todos |
+| `UX.screenSetup` | Pantalla y distancias de este equipo (`chrome.storage.local`, clave `screen_setup`): `cssPxPerCm(tamaño, pantalla)`, `problems(ajustes)`, `apply(camera, ajustes)` y `load(storage)` | Content scripts y opciones |
 
 Reglas:
 
@@ -140,9 +143,9 @@ El nombre del módulo usa `snake_case`, porque viaja en la respuesta de `session
 | Archivo | Nombre | Estado |
 |---|---|---|
 | `content/capture.js` | `capture` | Completo: clics, cursor, scroll, selección, formularios, errores de validación, respuesta tras un clic y cambios de pantalla, con filtros de privacidad. Detalle en `content/capture/README.md` |
-| `content/frames.js` | `frames` | Completo: pide al worker una captura de lo que se ve (`frame.request`) al cargar o cambiar de pantalla, tras un clic, al detenerse el scroll o la escritura, al salir de un campo y cuando la página cambia sola; como máximo una por segundo. Envía las zonas que se tapan: los campos donde se escribe que el estudio no declaró en `recorded_fields`, y siempre contraseñas, códigos y datos de tarjeta. El worker captura solo si la pestaña es la activa, tapa las zonas (`common/frame-mask.js`) y la envía a `POST /sessions/{id}/frames`. No ve campos dentro de iframes ni de shadow DOM |
-| `content/camera.js` | `camera` | Completo: registra mirada (con elemento y zona), rostro e intervalos sin datos que llegan del motor de la cámara. Detalle en `camera/README.md` |
-| `content/calibration.js` | `calibration` | Completo: capa de 9 puntos de calibración y 5 de validación, con error en píxeles y grados. Detalle en `camera/README.md` |
+| `content/frames.js` | `frames` | Completo: pide al worker una captura de lo que se ve (`frame.request`) al cargar o cambiar de pantalla, tras un clic, al detenerse el scroll o la escritura, al salir de un campo y cuando la página cambia sola; como máximo una por segundo. Envía las zonas que se tapan: los campos donde se escribe que el estudio no declaró en `recorded_fields`, y siempre contraseñas, códigos y datos de tarjeta. El worker captura solo si la pestaña es la activa, tapa las zonas (`common/frame-mask.js`) y la envía a `POST /sessions/{id}/frames`. Con cada pedido registra la disposición de la pantalla (lote `layout`, `content/layout.js`): regiones semánticas, elementos interactivos visibles (hasta 300) y elementos de contenido visibles (títulos, párrafos, imágenes, etiquetas, mensajes `role="alert"`, tarjetas, bloques con texto propio; hasta 300), con su rectángulo, su selector, si tienen posición fija y su ancestro registrado más cercano (el árbol de la pantalla), sin texto, para atribuir la mirada a los elementos después de la sesión. No ve campos dentro de iframes ni de shadow DOM |
+| `content/camera.js` | `camera` | Completo: registra mirada (con elemento, zona, estado y confianza), sus características por cuadro, rostro e intervalos sin datos que llegan del motor de la cámara. Detalle en `camera/README.md` |
+| `content/calibration.js` | `calibration` | Completo: calibración inicial (13 puntos, punto en movimiento y movimiento de cabeza), validación de 9 puntos con vuelta del teclado y comprobación de deriva, con error, precisión y retraso de la cámara. Detalle en `camera/README.md` |
 | `content/task-end.js` | `task_end` | Esqueleto, sin lógica |
 
 ## Panel lateral

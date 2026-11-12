@@ -5,6 +5,7 @@ import sqlite3
 
 import pytest
 
+from server.ingestion import GAZE_FEATURE_COLUMNS
 from shared import db
 
 EXPECTED_COLUMNS = {
@@ -34,6 +35,8 @@ EXPECTED_COLUMNS = {
         "element_selector",
         "zone",
         "valid",
+        "state",
+        "confidence",
     ],
     "face_sample": ["session_id", "t", "values", "head_yaw", "head_pitch", "face_detected"],
     "calibration": [
@@ -44,7 +47,38 @@ EXPECTED_COLUMNS = {
         "error_deg",
         "accepted",
         "viewing_distance_cm",
+        "css_px_per_cm",
         "camera_delay_ms",
+        "precision_deg",
+        "return_error_deg",
+        "estimator",
+        "corrected",
+        "correction_x_px",
+        "correction_y_px",
+    ],
+    "gaze_feature": ["session_id", *GAZE_FEATURE_COLUMNS],
+    "gaze_target": [
+        "session_id",
+        "t",
+        "t_end",
+        "calibration_type",
+        "phase",
+        "group",
+        "viewport_width",
+        "viewport_height",
+        "points",
+    ],
+    "page_layout": [
+        "session_id",
+        "t",
+        "screen",
+        "viewport_width",
+        "viewport_height",
+        "scroll_x",
+        "scroll_y",
+        "regions",
+        "elements",
+        "truncated",
     ],
     "session_task": ["session_id", "task_id", "t_start", "t_end", "ended_by"],
     "sus_response": ["session_id", "answers", "score"],
@@ -68,6 +102,64 @@ EXPECTED_COLUMNS = {
         "bui",
         "params_version",
     ],
+    "gaze_refined": [
+        "session_id",
+        "t",
+        "x",
+        "y",
+        "scroll_x",
+        "scroll_y",
+        "state",
+        "confidence",
+        "valid",
+        "zone",
+        "element_selector",
+        "fixation",
+    ],
+    "gaze_quality": [
+        "session_id",
+        "method",
+        "fit_scope",
+        "frames",
+        "check_samples",
+        "camera_delay_ms",
+        "live_error_deg",
+        "refined_error_deg",
+        "drift_corrected",
+        "residual_lambda",
+        "noise_px",
+        "fixations",
+    ],
+    "gaze_fixation": [
+        "session_id",
+        "fixation",
+        "t_start",
+        "t_end",
+        "x",
+        "y",
+        "scroll_x",
+        "scroll_y",
+        "screen",
+        "sigma_px",
+        "element_selector",
+        "element_p",
+        "resolved_selector",
+        "resolved_p",
+        "ambiguous",
+        "unassigned_p",
+        "attention_selector",
+        "attention_p",
+        "long_stare",
+    ],
+    "gaze_attribution": [
+        "session_id",
+        "fixation",
+        "selector",
+        "tag",
+        "interactive",
+        "p_gaze",
+        "p_attention",
+    ],
     "reference": [
         "id",
         "task_id",
@@ -84,7 +176,17 @@ EXPECTED_COLUMNS = {
     "meta": ["key", "value"],
 }
 
-HIGH_VOLUME_TABLES = ["event", "gaze_sample", "face_sample", "calibration", "incident"]
+HIGH_VOLUME_TABLES = [
+    "event",
+    "gaze_sample",
+    "face_sample",
+    "calibration",
+    "gaze_feature",
+    "gaze_target",
+    "page_layout",
+    "gaze_refined",
+    "incident",
+]
 
 
 def columns(connection: sqlite3.Connection, table: str) -> list[str]:

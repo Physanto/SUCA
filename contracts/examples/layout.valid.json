@@ -1,0 +1,51 @@
+{
+  "t": 1791380123456.2,
+  "screen": { "url": "http://127.0.0.1:8767/cart", "title": "Carrito" },
+  "viewport_width": 1280,
+  "viewport_height": 720,
+  "scroll_x": 0,
+  "scroll_y": 240,
+  "regions": [
+    { "zone": "header", "box": { "x": 0, "y": 0, "w": 1280, "h": 64 }, "fixed": true },
+    { "zone": "main", "box": { "x": 0, "y": -176, "w": 1280, "h": 1500 }, "fixed": false }
+  ],
+  "elements": [
+    {
+      "selector": "#logo",
+      "tag": "a",
+      "role": "link",
+      "box": { "x": 16, "y": 12, "w": 120, "h": 40 },
+      "fixed": true,
+      "interactive": true,
+      "parent": null
+    },
+    {
+      "selector": "main > div.cart > button:nth-of-type(2)",
+      "tag": "button",
+      "role": "button",
+      "box": { "x": 900, "y": 410, "w": 160, "h": 44 },
+      "fixed": false,
+      "interactive": true,
+      "parent": 2
+    },
+    {
+      "selector": "main > div.cart",
+      "tag": "div",
+      "role": null,
+      "box": { "x": 40, "y": 120, "w": 1200, "h": 420 },
+      "fixed": false,
+      "interactive": false,
+      "parent": null
+    },
+    {
+      "selector": "main > div.cart > h2",
+      "tag": "h2",
+      "role": "heading",
+      "box": { "x": 60, "y": 140, "w": 600, "h": 36 },
+      "fixed": false,
+      "interactive": false,
+      "parent": 2
+    }
+  ],
+  "truncated": false
+}

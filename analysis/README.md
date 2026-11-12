@@ -51,6 +51,7 @@ loader.load_session ─► cleaning ─► screens ─► episodes ─► detect
 | `cleaning.py`, `screens.py` | Etapas 1 y 2 |
 | `episodes.py`, `detectors.py` | Etapas 3 y 4: fachadas que ejecutan los detectores registrados |
 | `reference.py`, `usability_index.py` | Etapas 5 a 7 |
+| `gaze/` | Mirada: medición en grados (banco de pruebas), reprocesamiento al cerrar la sesión y atribución de cada fijación a los elementos de la pantalla. Ver "Mirada" |
 | `ml/` | Modelo de aprendizaje automático (fase posterior) |
 
 Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
@@ -169,3 +170,98 @@ python -m analysis.run --study 1 --db data/mock.db
 ```
 
 Esto reemplaza los resultados esperados que trae la base por los del pipeline. Para recuperarlos, vuelve a generarla.
+
+## Mirada (`gaze/`)
+
+La extensión registra, además de cada muestra de mirada, los números con que se estimó (lote `gaze_features`: pose de la cabeza, posición de los iris, apertura de los párpados, estado y punto antes del filtro) y cada punto que se le pidió mirar al participante (lote `gaze_target`: calibración, validación, vuelta del teclado y comprobaciones de deriva). Con eso la mirada se mide y se vuelve a estimar sin repetir la sesión.
+
+| Archivo | Qué hace |
+|---|---|
+| `gaze/model.py` | El estimador geométrico de la extensión (`extension/camera/gaze-geometry.js`) en numpy: pose de la cabeza más giro del ojo, rayo cortado con el plano de la pantalla, 11 parámetros por persona ajustados con Levenberg-Marquardt y una ridge para el residuo. Una prueba compara sus cuentas con las de JavaScript |
+| `gaze/samples.py` | Junta cada cuadro con el punto que debía mirarse en ese momento (el punto en movimiento, desplazado por el retraso de la cámara) y descarta parpadeos y cuadros incompletos |
+| `gaze/refine.py` | Reprocesamiento al cerrar la sesión: reajuste del modelo, deriva corregida en el tiempo, suavizado de Kalman en dos pasadas, fijaciones (I-DT) y zona y elemento de cada punto. Ver "Reprocesamiento" |
+| `gaze/layout.py` | Zona y elemento de un punto con la disposición registrada de la pantalla (`page_layout`) |
+| `gaze/attention.py` | Atribución de cada fijación a los elementos de la pantalla con probabilidades, con el estado "sin asignar", la secuencia, el árbol de la pantalla y, solo en la atención estimada, los clics y focos. Ver "Atribución" |
+| `gaze/bench.py` | Banco de pruebas: error en grados de la mirada en vivo y del modelo reajustado, por fase, región de la pantalla, cambio de postura de la cabeza y a lo largo del tiempo; vuelta del teclado, precisión y estados de la mirada |
+
+Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en las secciones `gaze` y `attention` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`. Cada sesión usa, si los registró, los píxeles por centímetro de su última calibración (ajustados en las opciones de la extensión de ese equipo) y la mediana de las distancias medidas (`GazeSettings.for_session`).
+
+### Banco de pruebas
+
+```bash
+python -m scripts.gaze_bench --session 17                     # informe en la consola
+python -m scripts.gaze_bench --session 17 --json informe.json  # y en JSON
+```
+
+- **En vivo** (`live_deg`) es el punto que dio el motor de la extensión antes del filtro. **Reajustada** (`refit_deg`) es el estimador geométrico entrenado de nuevo solo con la calibración inicial y evaluado en todo lo demás: sirve para comparar variantes del modelo con los mismos datos.
+- Errores en grados de ángulo visual, a la distancia medida en cada cuadro.
+- **Sesión de desarrollo sugerida** (con consentimiento, unos 10 minutos): calibración inicial; luego "Comprobar la mirada" desde el panel después de cada cambio (leer un texto, escribir mirando el teclado, mirar a un costado, inclinarse hacia atrás, acercarse) y la calibración final. Con `camera.drift_correction` en `false` las comprobaciones solo miden, sin corregir.
+
+### Reprocesamiento al cerrar la sesión
+
+`python -m analysis.run` reprocesa la mirada de cada sesión después de guardar sus demás resultados, si la sesión registró características de mirada. Lo guarda en `gaze_refined` (una fila por cuadro) y `gaze_quality` (una fila por sesión). Si falla, lo informa en el log y el resto del análisis queda guardado igual. Tarda unos segundos por sesión de 15 minutos.
+
+1. **Modelo.** Se ajusta el estimador geométrico de dos formas: solo con la calibración inicial (`fit_scope = calibration`) y con todos los puntos conocidos (`all_targets`), y se usa la de menor error honesto.
+2. **Deriva.** El desplazamiento medio de cada procedimiento de control (validación, vuelta del teclado, comprobación de deriva, validación final) se interpola en el tiempo, anclado en 0 en el momento de la calibración. Solo se aplica (`drift_corrected`) si mejora el error honesto.
+3. **Suavizado de Kalman en dos pasadas** dentro de cada tramo en que la persona mira la pantalla, cortado en los saltos de la mirada (`gaze.saccade_deg_per_s`). El ruido de medición sale de la dispersión en los puntos fijos (`noise_px`).
+4. **Fijaciones** por dispersión (I-DT: `gaze.fixation_dispersion_deg`, `gaze.fixation_min_ms`).
+5. **Zona y elemento** con la última disposición registrada antes de cada punto: la región semántica más interna que lo contiene (o la cuadrícula de 3 × 3) y el elemento interactivo más pequeño. A diferencia de la mirada en vivo, el elemento solo puede ser uno interactivo, porque son los únicos que se registran.
+
+**Error honesto** (`refined_error_deg`): cada punto de control se predice con un modelo que no lo vio y una corrección de deriva interpolada sin su procedimiento. `live_error_deg` es el error de la mirada en vivo en los mismos puntos. Sin calibración utilizable, `method = live`: se suaviza la mirada en vivo y se le asignan fijaciones y zonas, sin reajuste.
+
+### Atribución
+
+Después del reprocesamiento, `python -m analysis.run` atribuye cada fijación a los elementos de la pantalla y lo guarda en `gaze_fixation` (una fila por fijación) y `gaze_attribution` (una fila por fijación y candidato). Si falla, lo informa en el log y la mirada reprocesada queda guardada igual. Tarda menos de un segundo por sesión.
+
+La mirada por webcam se equivoca varios grados: una fijación entre un título y un buscador puede ser de cualquiera de los dos. Por eso no se asigna al elemento que contiene el punto, sino que se calcula la probabilidad de cada candidato:
+
+1. **Candidatos:** los elementos (interactivos y de contenido) de la última disposición registrada antes del fin de la fijación, a menos de `attention.candidate_radius_sigma` desvíos del error, más **sin asignar** (`selector` nulo): la persona mira el vacío, está distraída o pensando. Mirar fuera de la pantalla ya lo marca el estado de la mirada y no forma fijaciones.
+2. **Error:** el error medio de la mirada que quedó en `gaze_refined` (o `attention.default_error_deg`), agrandado por `attention.natural_error_factor` porque en uso natural la persona no fija un punto a propósito, y por `attention.low_confidence_factor` en fijaciones con confianza baja.
+3. **Verosimilitud:** la persona mira un punto cualquiera del elemento y la estimación se corre con un error gaussiano. Un elemento grande reparte su verosimilitud en más superficie que uno pequeño; sin asignar es uniforme en la ventana. Previa: `attention.unassigned_prior` para sin asignar y el resto por igual entre los elementos.
+4. **Secuencia:** modelo oculto de Markov con avance y retroceso. Volver a fijar el mismo elemento es `attention.stay_weight` veces más probable que pasar a otro, y pasar a uno cercano (`attention.near_weight`, `attention.near_distance_deg`) más que a uno lejano. Un hueco mayor que `attention.sequence_max_gap_ms` o un cambio de pantalla cortan la secuencia.
+5. **Árbol:** si ningún elemento llega a `attention.confident_probability`, se sube al ancestro registrado que reúne a los candidatos (por ejemplo, dos enlaces pequeños dentro de la misma tarjeta): `resolved_selector` es la tarjeta y `ambiguous` vale 1.
+
+**Dos salidas que no se mezclan:**
+
+| Columnas | Usa | Para qué |
+|---|---|---|
+| `p_gaze`; `element_*`, `resolved_*`, `unassigned_p` | Mirada y secuencia | Comparar con la interacción (pregunta P5). No sabe nada de los clics: si los usara, "la mirada coincide con lo que clicó" sería cierto por construcción |
+| `p_attention`; `attention_*` | Además, clics, dobles clics, menú contextual y focos | Atención estimada. Un clic sobre un elemento hace `attention.interaction_likelihood_ratio` veces más verosímil que las fijaciones del tramo previo (`attention.interaction_window_ms`) estuvieran sobre él. Sube la probabilidad, no la fija en 1: si la mirada estaba lejos, el clic no la arrastra |
+
+**Mirada fija prolongada** (`long_stare`): una fijación de `attention.long_stare_ms` o más sin clics, focos, cambios en campos ni scroll. Es un indicio de distracción o de pensar, no una prueba.
+
+**¿Vio el elemento?** `analysis.gaze.attention.probability_seen` da la probabilidad de que un elemento se haya mirado al menos una vez en un tramo (por ejemplo, el botón del paso siguiente antes de un error), combinando las fijaciones del tramo como independientes: `1 − Π (1 − pᵢ)`.
+
+**Disposiciones anteriores a la versión 1.6.0 de los contratos:** solo tienen elementos interactivos y no tienen árbol. Se atribuyen igual, pero lo que no es interactivo (títulos, textos) no existe para el modelo y cae en sin asignar.
+
+### Banco de atribución con verdad conocida
+
+Sirve `extension/test-page/attention.html` con `scripts.serve_test_page`, calibra
+y sigue su guion. Después de analizar la sesión:
+
+```bash
+python -m scripts.attention_bench --session ID --json data/attention-ID.json
+```
+
+Acepta `--script`, `--db` y `--start-index` (desde cero, obligatorio si hubo
+varios clics de inicio). Usa fijaciones completamente dentro de cada tramo
+estable, descartando los primeros 500 ms y los cruces de objetivo. Informa
+acierto del elemento, resolución por ancestros, base ingenua por cajas,
+calibración por intervalos 0,4/0,6/0,8/0,95, vacío y estados al mirar el teclado.
+`p_attention` se informa aparte como referencia. La cobertura aparece incluso
+si faltan fijaciones: no se interpreta captura ausente como fallo ni como acierto.
+La verdad supone que la persona siguió las instrucciones; una interrupción del
+guion exige descartar esa ejecución. Los parámetros de atribución se mantienen
+hasta medir sesiones reales independientes.
+
+El banco `scripts.gaze_bench` añade distancia mirada–clic en uso natural,
+excluyendo los clics de calibración y las coordenadas ausentes o (0, 0).
+Eso mide coherencia con interacción, no precisión independiente de la mirada.
+
+### Movimientos faciales
+
+`analysis/ml/` prepara rasgos relativos a los 10 s de rostro relajado marcados
+en la calibración inicial y una comparación por persona con regresión logística.
+La ejecución es explícita con `scripts.facial_bench`; requiere nuevas sesiones
+con línea base y datos suficientes. No infiere emociones ni cambia los incidentes
+o el IUC existentes. El README de ese módulo describe etiquetas, límites y uso.

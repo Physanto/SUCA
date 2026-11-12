@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
@@ -190,6 +191,45 @@ def replay_session() -> dict[str, Any]:
     return {"started_at": 1000.0, "ended_at": 10000.0, "screen_info": {}}
 
 
+def test_click_agreement_ignores_missing_coordinates_and_zero_zero() -> None:
+    events = events_frame(
+        [
+            {"t": 1000, "type": "click", "x": 0, "y": 0},
+            {"t": 1200, "type": "click", "x": 5, "y": None},
+            {"t": 1500, "type": "click", "x": 0, "y": 20},
+        ]
+    )
+    gaze = pd.DataFrame({"t": [1000, 1400], "x": [0, 0], "y": [20, 20]})
+    measured = replay.gaze_at_clicks(events, gaze)
+    assert measured["t"].tolist() == [1500]
+    assert measured["distance_px"].tolist() == [0]
+
+
+def test_fixation_marks_clip_the_window_and_use_only_gaze_probability() -> None:
+    fixations = pd.DataFrame(
+        [
+            {
+                "t_start": 500,
+                "t_end": 2000,
+                "x": 50,
+                "y": 70,
+                "resolved_selector": "#card",
+                "resolved_p": 0.65,
+                "attention_p": 0.99,
+                "unassigned_p": 0.15,
+                "ambiguous": True,
+                "long_stare": True,
+                "screen": "https://a/card/25",
+            }
+        ]
+    )
+    marks = replay.fixation_marks(fixations, 1000, 1500)
+    assert marks[0]["t"] == 0 and marks[0]["end"] == 500
+    assert marks[0]["probability"] == 0.65
+    assert marks[0]["ambiguous"] and marks[0]["long_stare"]
+    assert marks[0]["screen"] == "/card/{id}"
+
+
 def test_a_window_keeps_what_was_on_screen_when_it_starts(tmp_path: Path) -> None:
     """Un tramo empieza con la pantalla, el scroll, el cursor y la captura que ya se veían."""
     image = tmp_path / "frame.jpg"
@@ -280,3 +320,14 @@ def test_each_task_is_a_window_with_a_margin() -> None:
         ("Tarea 1: A", (1000.0, 10000.0)),
         ("Tarea 2: B", (7000.0, 14000.0)),
     ]
+
+
+def test_the_face_chart_stays_under_the_altair_row_limit() -> None:
+    """Diez minutos de rostro a 15 Hz no superan las 5000 filas de Altair."""
+    t = 1_000_000.0 + np.arange(0, 600_000, 1000 / 15)
+    values = {"brow_down_left": 0.2, "brow_down_right": 0.2, "mouth_press_left": 0.1}
+    face = pd.DataFrame({"t": t, "face_detected": True, "values": [values] * len(t)})
+    chart = charts.face_signals(1_000_000.0, face)
+    assert len(chart.data) <= 3 * charts.FACE_MAX_POINTS
+    assert chart.data["second"].max() > 590
+    chart.to_dict()

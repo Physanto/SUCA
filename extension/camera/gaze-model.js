@@ -1,6 +1,7 @@
 /**
- * @file Modelo de mirada: convierte las características de los ojos de un
- * cuadro en un punto de la ventana, en píxeles CSS.
+ * @file Estimador de mirada por apariencia: convierte la imagen reducida de los
+ * ojos, la posición de los iris y la pose de la cabeza de un cuadro en un punto
+ * de la ventana, en píxeles CSS.
  *
  * Es una regresión ridge, como la de WebGazer: se entrena con los cuadros
  * tomados mientras el participante mira los puntos de la calibración. Las
@@ -8,69 +9,23 @@
  * penalización sirva para todas, y la penalización se elige por validación
  * cruzada dejando fuera un punto de calibración a la vez.
  *
- * No depende del navegador: se prueba en Node.
+ * Es uno de los dos candidatos del estimador de mirada (`gaze-estimator.js`);
+ * el otro es el geométrico (`gaze-geometry.js`). La ridge también corrige el
+ * residuo del geométrico (`UX.ridge`).
+ *
+ * Requiere `numeric.js`. No depende del navegador: se prueba en Node.
  */
 
 (function (root) {
   'use strict';
 
   const UX = (root.UX = root.UX || {});
+  const { solveSymmetric } = UX.numeric;
 
   /** Penalizaciones que se prueban al entrenar, de menor a mayor. */
   const DEFAULT_LAMBDAS = [0.1, 1, 10, 100, 1000];
   /** Puntos de calibración distintos que hacen falta para entrenar. */
   const MIN_GROUPS = 4;
-
-  /**
-   * Resuelve `A · X = B` para una matriz simétrica definida positiva, con la
-   * descomposición de Cholesky. `A` es n × n y `B` es n × k.
-   *
-   * @param {number[][]} a - Matriz del sistema; no se modifica.
-   * @param {number[][]} b - Lados derechos, una columna por salida.
-   * @returns {number[][]} Solución, n × k.
-   * @throws {Error} Si la matriz no es definida positiva.
-   */
-  function solveSymmetric(a, b) {
-    const n = a.length;
-    const l = Array.from({ length: n }, () => new Float64Array(n));
-    for (let i = 0; i < n; i += 1) {
-      for (let j = 0; j <= i; j += 1) {
-        let sum = a[i][j];
-        for (let k = 0; k < j; k += 1) {
-          sum -= l[i][k] * l[j][k];
-        }
-        if (i === j) {
-          if (sum <= 0) {
-            throw new Error('matrix is not positive definite');
-          }
-          l[i][i] = Math.sqrt(sum);
-        } else {
-          l[i][j] = sum / l[j][j];
-        }
-      }
-    }
-    const k = b[0].length;
-    const x = Array.from({ length: n }, () => new Float64Array(k));
-    for (let col = 0; col < k; col += 1) {
-      // Sustitución hacia adelante (L · y = b) y hacia atrás (Lᵀ · x = y).
-      const y = new Float64Array(n);
-      for (let i = 0; i < n; i += 1) {
-        let sum = b[i][col];
-        for (let j = 0; j < i; j += 1) {
-          sum -= l[i][j] * y[j];
-        }
-        y[i] = sum / l[i][i];
-      }
-      for (let i = n - 1; i >= 0; i -= 1) {
-        let sum = y[i];
-        for (let j = i + 1; j < n; j += 1) {
-          sum -= l[j][i] * x[j][col];
-        }
-        x[i][col] = sum / l[i][i];
-      }
-    }
-    return x.map((row) => Array.from(row));
-  }
 
   /**
    * Entrena una regresión ridge sobre muestras ya estandarizadas.
@@ -250,33 +205,6 @@
     });
   }
 
-  /**
-   * Crea un suavizado exponencial de puntos, para reducir el temblor de la
-   * estimación. Se reinicia cuando se pierde el rostro.
-   *
-   * @param {number} alpha - Peso del punto nuevo, entre 0 y 1 (1 = sin suavizar).
-   * @returns {{next: function({x: number, y: number}): {x: number, y: number}, reset: function(): void}} Suavizado.
-   */
-  function createSmoother(alpha) {
-    if (!(alpha > 0 && alpha <= 1)) {
-      throw new Error(`smoothing alpha must be in (0, 1], got ${alpha}`);
-    }
-    let last = null;
-    return Object.freeze({
-      next(point) {
-        last =
-          last === null
-            ? { ...point }
-            : { x: last.x + alpha * (point.x - last.x), y: last.y + alpha * (point.y - last.y) };
-        return { ...last };
-      },
-      reset() {
-        last = null;
-      },
-    });
-  }
-
   UX.createGazeModel = createGazeModel;
-  UX.createSmoother = createSmoother;
-  UX.solveSymmetric = solveSymmetric;
+  UX.ridge = Object.freeze({ trainRidge, applyRidge, columnStats, standardize, DEFAULT_LAMBDAS });
 })(globalThis);

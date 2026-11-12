@@ -11,6 +11,7 @@ import altair as alt
 import pandas as pd
 
 from dashboard.heatmap import screen_key
+from dashboard.heatmap_insights import COLUMNS, ROWS
 
 #: Etiquetas en español de los tipos de incidente (``incident_type``).
 INCIDENT_LABELS: Mapping[str, str] = {
@@ -163,8 +164,16 @@ def timeline(
     )
 
 
+FACE_MAX_POINTS = 1500
+"""Puntos máximos por señal facial: Altair rechaza más de 5000 filas por gráfica."""
+
+
 def face_signals(start: float, face: pd.DataFrame, window_s: float = 1.0) -> alt.Chart:
     """Señales faciales de una sesión, suavizadas con una media móvil.
+
+    Después de suavizar, la señal se promedia por tramos para no pasar de
+    ``FACE_MAX_POINTS`` puntos: a 15 muestras por segundo una sesión de diez
+    minutos tiene 9000 por señal.
 
     Args:
         start: Inicio de la sesión (ms desde 1970).
@@ -185,15 +194,13 @@ def face_signals(start: float, face: pd.DataFrame, window_s: float = 1.0) -> alt
         ]
         series = pd.Series(values, index=pd.to_datetime(detected["t"], unit="ms"), dtype=float)
         smooth = series.rolling(f"{int(window_s * 1000)}ms").mean()
-        rows.append(
-            pd.DataFrame(
-                {
-                    "second": _seconds(detected["t"], start).to_numpy(),
-                    "value": smooth.to_numpy(),
-                    "signal": name,
-                }
-            )
-        )
+        seconds = _seconds(detected["t"], start).to_numpy()
+        span = float(seconds.max() - seconds.min()) if len(seconds) else 0.0
+        # Tramos de al menos un cuarto de la media móvil: no se pierde lo que ella deja ver.
+        step = max(window_s / 4, span / FACE_MAX_POINTS)
+        points = pd.DataFrame({"second": seconds, "value": smooth.to_numpy()})
+        points = points.groupby((points["second"] // step) if step > 0 else points.index).mean()
+        rows.append(points.assign(signal=name))
     frame = (
         pd.concat(rows, ignore_index=True)
         if rows
@@ -460,4 +467,110 @@ def bui_vs_sus(index: pd.DataFrame) -> alt.Chart:
             ],
         )
         .properties(height=300)
+    )
+
+
+def zone_grid(shares: pd.DataFrame, what: str) -> alt.Chart:
+    """Reparto de un mapa de calor por zonas de la pantalla, como una cuadrícula.
+
+    Args:
+        shares: ``heatmap_insights.zone_shares``.
+        what: Qué se cuenta, para el título de la leyenda (por ejemplo, "clics").
+
+    Returns:
+        Cuadrícula de 4 × 3 (tres filas de la primera vista y lo que quedó
+        debajo), con el porcentaje escrito en cada celda.
+    """
+    top = max(0.01, float(shares["share"].max()))
+    base = alt.Chart(shares).encode(
+        x=alt.X("column:N", title=None, sort=list(COLUMNS), axis=alt.Axis(orient="top")),
+        y=alt.Y("row:N", title=None, sort=list(ROWS)),
+    )
+    cells = base.mark_rect(stroke="white").encode(
+        color=alt.Color(
+            "share:Q",
+            title=f"% de {what}",
+            scale=alt.Scale(scheme="orangered", domain=[0, top]),
+            legend=alt.Legend(format=".0%"),
+        ),
+        tooltip=[
+            alt.Tooltip("row:N", title="Fila"),
+            alt.Tooltip("column:N", title="Columna"),
+            alt.Tooltip("count:Q", title=what.capitalize()),
+            alt.Tooltip("share:Q", title="Parte", format=".0%"),
+        ],
+    )
+    labels = base.mark_text(fontSize=13).encode(
+        text=alt.Text("share:Q", format=".0%"),
+        color=alt.condition(alt.datum.share > 0.25, alt.value("white"), alt.value("#1f2328")),
+    )
+    return (cells + labels).properties(height=200)
+
+
+def top_elements(frame: pd.DataFrame, value: str, title: str, *, fmt: str = "d") -> alt.Chart:
+    """Barras de los elementos con más clics o más tiempo de mirada.
+
+    Args:
+        frame: Una fila por elemento con ``label``, la columna ``value`` y, si se
+            conoce, ``interactive`` (vacío en sin asignar).
+        value: Columna que se grafica.
+        title: Título del eje.
+        fmt: Formato del valor en la etiqueta emergente.
+
+    Returns:
+        Barras horizontales, de mayor a menor, coloreadas según el tipo de elemento.
+    """
+    data = frame.copy()
+    data["kind"] = [
+        "Sin asignar"
+        if pd.isna(interactive)
+        else ("Interactivo" if bool(interactive) else "No interactivo")
+        for interactive in data["interactive"]
+    ]
+    return (
+        alt.Chart(data)
+        .mark_bar()
+        .encode(
+            y=alt.Y("label:N", title=None, sort=None, axis=alt.Axis(labelLimit=260)),
+            x=alt.X(f"{value}:Q", title=title),
+            color=alt.Color(
+                "kind:N",
+                title="Elemento",
+                scale=alt.Scale(
+                    domain=["Interactivo", "No interactivo", "Sin asignar"],
+                    range=["#4c78a8", "#f58518", "#9aa1a9"],
+                ),
+                legend=alt.Legend(orient="bottom"),
+            ),
+            tooltip=[
+                alt.Tooltip("label:N", title="Elemento"),
+                alt.Tooltip(f"{value}:Q", title=title, format=fmt),
+                alt.Tooltip("kind:N", title="Tipo"),
+            ],
+        )
+        .properties(height=max(120, 26 * len(data)))
+    )
+
+
+def gaze_states(shares: pd.DataFrame) -> alt.Chart:
+    """Parte del tiempo en cada estado de la mirada.
+
+    Args:
+        shares: ``heatmap_insights.gaze_state_shares``.
+
+    Returns:
+        Barras horizontales con el porcentaje de cada estado.
+    """
+    return (
+        alt.Chart(shares)
+        .mark_bar(color="#54a24b")
+        .encode(
+            y=alt.Y("state:N", title=None, sort="-x"),
+            x=alt.X("share:Q", title="Parte del tiempo", axis=alt.Axis(format=".0%")),
+            tooltip=[
+                alt.Tooltip("state:N", title="Estado"),
+                alt.Tooltip("share:Q", title="Parte", format=".1%"),
+            ],
+        )
+        .properties(height=max(100, 26 * len(shares)))
     )

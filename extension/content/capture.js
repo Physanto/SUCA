@@ -1087,6 +1087,12 @@
   /** Oyentes que no bloquean el desplazamiento ni el cursor de la página. */
   const PASSIVE = { capture: true, passive: true };
 
+  /**
+   * Criterios de la captura que usan otros módulos de la pestaña, para que un
+   * elemento sea "interactivo" y una pantalla se nombre igual en todos los registros.
+   */
+  UX.captureCriteria = Object.freeze({ roleOf, isInteractive, currentScreen });
+
   UX.modules.register({
     name: 'capture',
 

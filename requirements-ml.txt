@@ -1,0 +1,5 @@
+# Dependencias opcionales: estadística de la evaluación del experimento
+# (scripts.evaluate_study) y modelos de aprendizaje automático (analysis/ml/).
+-r requirements.txt
+scipy>=1.11
+scikit-learn>=1.3

@@ -128,6 +128,7 @@ def build_payload(
     captures: pd.DataFrame,
     frames: pd.DataFrame | None = None,
     window: tuple[float, float] | None = None,
+    fixations: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """Datos del reproductor para una sesión, o para un tramo de ella.
 
@@ -143,6 +144,7 @@ def build_payload(
             momento. Si falta, se dibuja sobre las capturas de referencia.
         window: Tramo a reproducir (inicio y fin, en ms con el reloj de la
             sesión). Si falta, toda la sesión.
+        fixations: Fijaciones atribuidas de la mirada reprocesada; omitir al ver mirada en vivo.
 
     Returns:
         Diccionario serializable en JSON, con tiempos en ms desde el inicio del
@@ -265,6 +267,7 @@ def build_payload(
         "moves": relative(_last_before_and_inside(move_rows, low, high)),
         "clicks": clicks,
         "gaze": gaze_points,
+        "fixations": fixation_marks(fixations, low, high),
         "fields": fields,
         "tasks": task_bands,
         "incidents": incident_marks,
@@ -272,6 +275,37 @@ def build_payload(
         "frame_images": frame_images,
         "images": images,
     }
+
+
+def fixation_marks(fixations: pd.DataFrame | None, low: float, high: float) -> list[dict[str, Any]]:
+    """Fijaciones del tramo con probabilidad solo de mirada y sus indicios de ambigüedad.
+
+    Las fijaciones que empezaron antes se recortan al inicio, para que la
+    reproducción conserve su contexto sin prolongarlas fuera de su final.
+    """
+    if fixations is None or fixations.empty:
+        return []
+    marks = []
+    for row in fixations.sort_values("t_start").itertuples():
+        if row.t_end < low or row.t_start > high:
+            continue
+        resolved = None if pd.isna(row.resolved_selector) else row.resolved_selector
+        probability = None if pd.isna(row.resolved_p) else float(row.resolved_p)
+        marks.append(
+            {
+                "t": _ms(max(low, row.t_start), low),
+                "end": _ms(min(high, row.t_end), low),
+                "x": float(row.x),
+                "y": float(row.y),
+                "selector": resolved,
+                "probability": probability,
+                "unassigned_p": float(row.unassigned_p),
+                "ambiguous": bool(row.ambiguous),
+                "long_stare": bool(row.long_stare),
+                "screen": screen_key(row.screen) if isinstance(row.screen, str) else None,
+            }
+        )
+    return marks
 
 
 #: Margen antes y después de una tarea al reproducirla, para ver cómo empieza y termina.
@@ -329,8 +363,13 @@ def gaze_at_clicks(events: pd.DataFrame, gaze: pd.DataFrame) -> pd.DataFrame:
     columns = ["t", "x", "y", "gaze_x", "gaze_y", "distance_px"]
     if events.empty or gaze.empty:
         return pd.DataFrame(columns=columns)
-    clicks = events[(events["type"] == "click") & events["x"].notna()]
-    valid = gaze[gaze["x"].notna()].sort_values("t")
+    clicks = events[
+        (events["type"] == "click")
+        & events["x"].notna()
+        & events["y"].notna()
+        & ~((events["x"] == 0) & (events["y"] == 0))
+    ]
+    valid = gaze[gaze["x"].notna() & gaze["y"].notna()].sort_values("t")
     times = valid["t"].to_numpy(dtype=float)
     xs, ys = valid["x"].to_numpy(dtype=float), valid["y"].to_numpy(dtype=float)
     rows = []

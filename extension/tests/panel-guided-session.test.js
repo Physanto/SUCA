@@ -35,7 +35,7 @@ const SUS_ANSWERS = [4, 2, 5, 1, 4, 2, 5, 1, 4, 2];
  * Arma el panel con sus piezas reales. `log` guarda, en orden, todo lo que sale hacia
  * el worker, la pestaña y el servidor.
  */
-function compose() {
+function compose({ camera } = {}) {
   const world = createFakeWorld();
   const log = [];
   const handlers = new Map();
@@ -85,6 +85,7 @@ function compose() {
     clock,
     platform: { activeTab: async () => TAB },
     environment: { screen: { width: 1920, height: 1080 }, devicePixelRatio: 1, chromeVersion: async () => '146.0.0.0' },
+    camera,
   });
   return { controller, batcher, log, handlers, clock, world };
 }
@@ -173,6 +174,32 @@ test('a complete guided session records the start and end of each task, how it e
   ]);
   assert.equal(world.areas.session.get('session'), undefined);
   assert.equal(controller.getState().phase, 'idle');
+});
+
+test('between tasks the panel asks for a drift check, once there is an initial calibration', async () => {
+  const { controller, log, handlers } = compose({ camera: { drift_check_between_tasks: true } });
+  await controller.init();
+  await controller.startSession({ ...FORM, mode: 'guided' });
+  const checks = () => log.filter((entry) => entry.message === 'calibration.request').map((entry) => entry.payload.type);
+
+  // Sin calibración inicial no hay nada que comprobar.
+  await controller.startTask();
+  await controller.endTask('done');
+  assert.deepEqual(checks(), []);
+
+  await controller.requestCalibration('initial');
+  handlers.get('calibration.result')({ error_px: 90, error_deg: 2.1, accepted: true });
+  await controller.startTask();
+  await controller.endTask('done');
+  assert.deepEqual(checks(), ['initial', 'drift_check']);
+  assert.equal(controller.getState().calibration.pending, 'drift_check');
+  handlers.get('calibration.result')({ error_px: 40, error_deg: 0.9, accepted: true });
+  assert.deepEqual(controller.getState().calibration.drift_check, { error_px: 40, error_deg: 0.9, accepted: true });
+
+  // Tras la última tarea viene el SUS: no hace falta comprobar.
+  await controller.startTask();
+  await controller.endTask('done');
+  assert.deepEqual(checks(), ['initial', 'drift_check']);
 });
 
 test('a reference session leaves its recording flushed before the draft reference is created', async () => {

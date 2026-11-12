@@ -1,0 +1,20 @@
+{
+  "t": 1791380123456.2,
+  "screen": { "url": "http://127.0.0.1:8767/cart", "title": "Carrito" },
+  "viewport_width": 1280,
+  "viewport_height": 720,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "regions": [],
+  "elements": [
+    {
+      "selector": "#buy",
+      "tag": "button",
+      "role": "button",
+      "text": "Comprar",
+      "box": { "x": 900, "y": 410, "w": 160, "h": 44 },
+      "fixed": false
+    }
+  ],
+  "truncated": false
+}

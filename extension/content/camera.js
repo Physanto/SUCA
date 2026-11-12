@@ -7,7 +7,9 @@
  * - mantener la conexión con el motor y reconectarse si se corta (el motor
  *   puede estar arrancando);
  * - registrar muestras `gaze` a `camera.gaze_hz` y `face` a `camera.face_hz`,
- *   cada punto de mirada con su scroll, elemento y zona;
+ *   cada punto de mirada con su scroll, elemento, zona, estado y confianza;
+ * - registrar las características de mirada de cada cuadro (`gaze_features`,
+ *   también durante la calibración) si `camera.record_gaze_features` lo pide;
  * - registrar los intervalos sin datos (`camera_gap`) que informa el motor, y el
  *   que deja un motor que Chrome cerró y el worker reemplazó (`reason: error`).
  *
@@ -15,8 +17,8 @@
  * navegaciones. A esta página solo llegan números, nunca imágenes.
  *
  * Mensajes:
- * - Envía: lotes `gaze`, `face` y eventos `camera_gap` (lote `events`) con
- *   `ctx.batcher.add`. `camera.status` lo envía el motor directamente al panel.
+ * - Envía: lotes `gaze`, `face`, `gaze_features` y eventos `camera_gap` (lote
+ *   `events`) con `ctx.batcher.add`. `camera.status` lo envía el motor directamente al panel.
  * - Recibe: ninguno propio. Arranca y se detiene con la sesión.
  *
  * Expone `UX.cameraLink` para `calibration.js`: estado de la cámara, pedidos al
@@ -44,6 +46,15 @@
   const RATE_TOLERANCE = 0.8;
   /** Un hueco más corto que esto no se registra (el mismo umbral que usa el motor). */
   const MIN_GAP_MS = 250;
+  /** Estados de la mirada en que la persona mira la pantalla (`gaze_state`). */
+  const LOOKING = ['on_screen', 'low_confidence'];
+  /** Campos numéricos de `gaze_features` que vienen del motor (los demás los pone la pestaña). */
+  const FEATURE_NUMBERS = [
+    'head_yaw', 'head_pitch', 'head_roll', 'head_tx', 'head_ty', 'head_tz', 'distance_cm', 'eye_u', 'eye_v',
+    'aspect', 'left_h', 'left_v', 'left_open', 'right_h', 'right_v', 'right_open', 'blink', 'raw_x', 'raw_y',
+  ];
+  /** Campos booleanos de `gaze_features` que vienen del motor. */
+  const FEATURE_FLAGS = ['left_refined', 'right_refined'];
 
   /** Redondea a una cantidad de decimales, para no enviar ruido numérico. */
   const round = (value, digits) => {
@@ -298,6 +309,7 @@
     let unsubscribe = [];
     let lastGazeT = -Infinity;
     let lastFaceT = -Infinity;
+    let lastFeaturesT = -Infinity;
     /** Momento del último cuadro recibido, o `null` si no llegó ninguno en esta página. */
     let lastFrameT = null;
     /** Hueco que empezó cuando se perdió el motor anterior: `{ t }`, o `null`. */
@@ -318,14 +330,32 @@
       return { url: `${origin}${pathname}`, title: '' };
     }
 
-    /** Muestra de mirada con la forma de `gaze.schema.json`. */
-    function gazeRecord(t, gaze) {
-      const scroll = {
+    /** Scroll de la página ahora. */
+    function scrollNow() {
+      return {
         scroll_x: Math.max(0, round(page.scrollX || 0, 1)),
         scroll_y: Math.max(0, round(page.scrollY || 0, 1)),
       };
-      if (gaze === null) {
-        return { t, x: null, y: null, ...scroll, element_selector: null, zone: null, valid: false };
+    }
+
+    /**
+     * Estado y confianza de la mirada de un cuadro, solo si el motor los envió y son
+     * del contrato (un motor de una versión anterior no los envía).
+     */
+    function stateOf(frame) {
+      const states = ctx.contracts.enums.gaze_state;
+      if (!states.includes(frame.gaze_state) || !Number.isFinite(frame.gaze_confidence)) {
+        return {};
+      }
+      return { state: frame.gaze_state, confidence: round(Math.min(1, Math.max(0, frame.gaze_confidence)), 3) };
+    }
+
+    /** Muestra de mirada con la forma de `gaze.schema.json`. */
+    function gazeRecord(t, gaze, state = {}) {
+      const scroll = scrollNow();
+      const looking = state.state === undefined || LOOKING.includes(state.state);
+      if (gaze === null || !looking) {
+        return { t, x: null, y: null, ...scroll, element_selector: null, zone: null, valid: false, ...state };
       }
       const x = round(gaze.x, 1);
       const y = round(gaze.y, 1);
@@ -333,7 +363,7 @@
       const height = page.innerHeight;
       if (x < 0 || y < 0 || x >= width || y >= height) {
         // Mira fuera de la página (por ejemplo, al panel lateral): no hay elemento ni zona.
-        return { t, x, y, ...scroll, element_selector: null, zone: null, valid: false };
+        return { t, x, y, ...scroll, element_selector: null, zone: null, valid: false, ...state };
       }
       const element = page.document.elementFromPoint(x, y);
       return {
@@ -344,6 +374,34 @@
         element_selector: element ? zones.selectorOf(element) : null,
         zone: zones.zoneOf(element, x, y, width, height),
         valid: true,
+        ...state,
+      };
+    }
+
+    /**
+     * Características de mirada de un cuadro con la forma de `gaze_features.schema.json`.
+     * Solo pasan los campos del contrato con valores del tipo esperado: lo que llegue
+     * además desde el motor no se registra.
+     */
+    function featuresRecord(frame, state) {
+      const source = frame.features || {};
+      const record = { t: frame.t, face_detected: Boolean(frame.features && source.face_detected) };
+      for (const key of FEATURE_NUMBERS) {
+        record[key] = record.face_detected && Number.isFinite(source[key]) ? source[key] : null;
+      }
+      for (const key of FEATURE_FLAGS) {
+        record[key] = record.face_detected && typeof source[key] === 'boolean' ? source[key] : null;
+      }
+      if (record.blink !== null) {
+        record.blink = Math.min(1, Math.max(0, record.blink));
+      }
+      return {
+        ...record,
+        state: state.state,
+        confidence: state.confidence,
+        viewport_width: page.innerWidth,
+        viewport_height: page.innerHeight,
+        ...scrollNow(),
       };
     }
 
@@ -388,9 +446,20 @@
         lastFaceT = frame.t;
         ctx.batcher.add('face', faceRecord(frame));
       }
+      const state = stateOf(frame);
       if (!link.gazePaused() && frame.t - lastGazeT >= (1000 / camera.gaze_hz) * RATE_TOLERANCE) {
         lastGazeT = frame.t;
-        ctx.batcher.add('gaze', gazeRecord(frame.t, frame.gaze));
+        ctx.batcher.add('gaze', gazeRecord(frame.t, frame.gaze, state));
+      }
+      // Las características se registran también durante la calibración: es cuando hay
+      // objetivos conocidos para medir y volver a ajustar la mirada después.
+      if (
+        camera.record_gaze_features &&
+        state.state !== undefined &&
+        frame.t - lastFeaturesT >= (1000 / camera.gaze_hz) * RATE_TOLERANCE
+      ) {
+        lastFeaturesT = frame.t;
+        ctx.batcher.add('gaze_features', featuresRecord(frame, state));
       }
     }
 
@@ -445,6 +514,7 @@
         ctx = context;
         lastGazeT = -Infinity;
         lastFaceT = -Infinity;
+        lastFeaturesT = -Infinity;
         lastFrameT = null;
         restartGap = null;
         unsubscribe = [

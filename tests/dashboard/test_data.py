@@ -4,9 +4,11 @@ Los valores esperados salen de la verdad de referencia de la base simulada.
 """
 
 import json
+import sqlite3
 import subprocess
 import sys
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -279,3 +281,55 @@ def test_pages_and_navigation_have_no_sql() -> None:
     for path in files:
         source = path.read_text(encoding="utf-8")
         assert "SELECT " not in source and ".execute(" not in source, path.name
+
+
+# --- Mirada reprocesada ----------------------------------------------------------------
+
+
+def add_refined_gaze(path: Path, session_id: int) -> None:
+    """Deja en la copia una mirada reprocesada de dos cuadros y su calidad, como el análisis."""
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executemany(
+            "INSERT INTO gaze_refined (session_id, t, x, y, scroll_x, scroll_y, state, confidence,"
+            " valid, zone, element_selector, fixation) VALUES (?, ?, ?, ?, 0, 0, ?, 1, ?, ?, ?, ?)",
+            [
+                (session_id, 1.0, 100.0, 200.0, "on_screen", 1, "main", "#buy", 0),
+                (session_id, 2.0, None, None, "off_screen", 0, None, None, None),
+            ],
+        )
+        connection.execute(
+            "INSERT INTO gaze_quality (session_id, method, fit_scope, frames, check_samples,"
+            " camera_delay_ms, live_error_deg, refined_error_deg, drift_corrected, residual_lambda,"
+            " noise_px, fixations) VALUES (?, 'geometric', 'calibration', 2, 40, 70, 1.4, 0.6, 1,"
+            " NULL, 12.5, 1)",
+            (session_id,),
+        )
+
+
+def test_prefers_the_refined_gaze_when_the_analysis_left_one(
+    writable: DashboardData, copy_path: Path
+) -> None:
+    live = writable.get_gaze(4)
+    add_refined_gaze(copy_path, 4)
+
+    refined = writable.get_gaze(4)
+    every = writable.get_gaze(4, valid_only=False)
+    forced_live = writable.get_gaze(4, refined=False)
+
+    assert set(live["source"]) == {"live"}
+    assert list(refined["element_selector"]) == ["#buy"] and set(refined["source"]) == {"refined"}
+    assert len(every) == 2
+    assert len(forced_live) == len(live)
+
+
+def test_gives_the_gaze_quality_only_after_a_refinement(
+    writable: DashboardData, copy_path: Path
+) -> None:
+    assert writable.get_gaze_quality(4) is None
+    add_refined_gaze(copy_path, 4)
+
+    quality = writable.get_gaze_quality(4)
+
+    assert quality["method"] == "geometric"
+    assert quality["refined_error_deg"] == 0.6
+    assert bool(quality["drift_corrected"]) is True

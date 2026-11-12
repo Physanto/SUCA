@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mirada a objetivos conocidos · SUCA</title>
+    <link rel="stylesheet" href="attention.css" />
+    <script src="attention.js" defer></script>
+  </head>
+  <body>
+    <!-- La guía permanece arriba; los objetivos conservan su posición durante el minuto. -->
+    <header class="instructions">
+      <div>Calibra antes de empezar. Mira cada objetivo 3 s, sin pulsar ni escribir. Para el teclado, cuenta hasta tres y vuelve.</div>
+      <button id="attention-start" type="button" disabled>Empezar</button>
+      <output id="attention-status" aria-live="polite">Cargando guion…</output>
+    </header>
+    <div class="scene">
+      <div class="title-search">
+        <h1 id="attention-title">Explora el catálogo</h1>
+        <input id="attention-search" type="search" aria-label="Buscar en el catálogo" placeholder="Buscar" />
+        <button id="attention-submit" type="button">Buscar</button>
+      </div>
+      <div class="content">
+        <article id="attention-card">
+          <h2>Una tarjeta de producto</h2>
+          <p>Observa el conjunto o el enlace indicado, según la instrucción.</p>
+          <div class="links">
+            <a id="attention-more" href="#details">Detalles</a>
+            <a id="attention-buy" href="#buy">Comprar</a>
+          </div>
+        </article>
+        <div>
+          <p id="attention-alert" role="alert">Quedan pocas unidades.</p>
+          <p id="attention-paragraph">Este texto ocupa varias líneas para comparar la mirada
+            sobre contenido amplio con la de enlaces pequeños. Lee con calma y sigue cada
+            indicación. No necesitas completar una compra, usar el ratón ni escribir datos.
+            Al cambiar el borde, dirige los ojos al nuevo objetivo y conserva una postura natural.</p>
+        </div>
+        <img id="attention-image" src="attention-scene.svg" alt="Paisaje de montañas junto a un lago" width="300" height="180" />
+      </div>
+      <!-- Sin texto, rol ni región semántica: el vacío no debe convertirse en candidato. -->
+      <div id="attention-empty"></div>
+    </div>
+    <div id="attention-marker" aria-hidden="true" hidden></div>
+  </body>
+</html>

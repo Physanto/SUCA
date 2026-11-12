@@ -93,6 +93,8 @@ def test_accepts_valid_values(tmp_path: Path, key: str, value: Any) -> None:
         ("friction_i_max", 0, "friction_i_max: must be positive"),
         ("camera_delay_ms", -10, "camera_delay_ms: must be zero or positive"),
         ("rage_click", 3, "rage_click: expected a mapping"),
+        ("attention.unassigned_prior", 1, "attention.unassigned_prior: must be a probability"),
+        ("attention.confident_probability", 0, "attention.confident_probability: must be positive"),
     ],
 )
 def test_rejects_invalid_values(tmp_path: Path, key: str, value: Any, message: str) -> None:

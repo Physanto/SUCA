@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "start_selector": "#attention-start",
+  "step_ms": 3000,
+  "settle_ms": 500,
+  "targets": [
+    {
+      "selector": "#attention-title",
+      "kind": "element",
+      "label": "Mira el título"
+    },
+    {
+      "selector": "#attention-search",
+      "kind": "element",
+      "label": "Mira el buscador"
+    },
+    {
+      "selector": "#attention-submit",
+      "kind": "element",
+      "label": "Mira el botón Buscar"
+    },
+    {
+      "selector": "#attention-title",
+      "kind": "element",
+      "label": "Mira el título"
+    },
+    {
+      "selector": "#attention-more",
+      "kind": "element",
+      "label": "Mira el enlace Detalles"
+    },
+    {
+      "selector": "#attention-buy",
+      "kind": "element",
+      "label": "Mira el enlace Comprar"
+    },
+    {
+      "selector": "#attention-card",
+      "kind": "element",
+      "label": "Mira la tarjeta completa"
+    },
+    {
+      "selector": "#attention-alert",
+      "kind": "element",
+      "label": "Mira el aviso pequeño"
+    },
+    {
+      "selector": "#attention-paragraph",
+      "kind": "element",
+      "label": "Mira el párrafo"
+    },
+    {
+      "selector": "#attention-image",
+      "kind": "element",
+      "label": "Mira la imagen"
+    },
+    {
+      "selector": null,
+      "kind": "empty",
+      "label": "Mira el vacío dentro del borde"
+    },
+    {
+      "selector": null,
+      "kind": "keyboard",
+      "label": "Mira el teclado, cuenta hasta tres y vuelve"
+    },
+    {
+      "selector": "#attention-search",
+      "kind": "element",
+      "label": "Mira el buscador"
+    },
+    {
+      "selector": "#attention-title",
+      "kind": "element",
+      "label": "Mira el título"
+    },
+    {
+      "selector": "#attention-buy",
+      "kind": "element",
+      "label": "Mira el enlace Comprar"
+    },
+    {
+      "selector": "#attention-more",
+      "kind": "element",
+      "label": "Mira el enlace Detalles"
+    },
+    {
+      "selector": "#attention-alert",
+      "kind": "element",
+      "label": "Mira el aviso pequeño"
+    },
+    {
+      "selector": null,
+      "kind": "empty",
+      "label": "Mira el vacío dentro del borde"
+    },
+    {
+      "selector": null,
+      "kind": "keyboard",
+      "label": "Mira el teclado, cuenta hasta tres y vuelve"
+    },
+    {
+      "selector": "#attention-image",
+      "kind": "element",
+      "label": "Mira la imagen"
+    }
+  ]
+}

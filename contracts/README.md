@@ -9,7 +9,7 @@ Formatos de datos, valores permitidos y mensajes que conectan las piezas del sis
 | `enums.json` | **Única fuente** de los valores permitidos (tipos de lote, de evento, de incidente, zonas de mirada…) |
 | `common.json` | Tipos compartidos: marca de tiempo, identificador, pantalla, datos vacíos |
 | `batch.schema.json` | Sobre de un lote: `contract_version`, `type`, `records` |
-| `batches/<tipo>.schema.json` | Un registro de cada tipo de lote: `events`, `gaze`, `face`, `tasks`, `calibration` |
+| `batches/<tipo>.schema.json` | Un registro de cada tipo de lote: `events`, `gaze`, `face`, `tasks`, `calibration`, `layout`, `gaze_features`, `gaze_target` |
 | `element.schema.json` | Descriptor de un elemento de la página |
 | `reference.schema.json` | Referencia de una tarea: pasos, condiciones candidatas, condición final y pasos obligatorios |
 | `study.schema.json` | Definición de un estudio en `studies/*.yaml`: sistema evaluado y tareas en orden |
@@ -36,6 +36,17 @@ Hay dos casos distintos:
 
 Así, la ausencia de muestras entre dos marcas de tiempo nunca es ambigua. Los detectores que cuentan eventos de interacción (por ejemplo, la pausa prolongada) deben excluir `camera_gap`.
 
+### Disposición de la pantalla
+
+El lote `layout` guarda, junto con cada captura de la pestaña evaluada, qué ocupa cada parte de la ventana: las regiones semánticas (`header`, `nav`, `main`, `aside`, `footer`, `search`) y los elementos visibles, con su rectángulo en la ventana y si tienen posición fija. Los elementos son interactivos (`interactive: true`: enlaces, botones, campos) o de contenido (`interactive: false`: títulos, párrafos, imágenes, etiquetas, mensajes con `role="alert"`, tarjetas, bloques con texto propio), y cada uno lleva en `parent` la posición de su ancestro registrado más cercano: juntos forman el árbol de la pantalla. Desde la versión 1.6.0; en registros anteriores faltan ambos campos y todos los elementos son interactivos. La zona y el elemento de una muestra `gaze` se resuelven en vivo con la página; `layout` permite resolverlos de nuevo después de la sesión para un punto de mirada corregido y atribuir cada fijación a los elementos con una probabilidad, usando la última disposición registrada antes de ese momento. Para pasar un rectángulo que no es fijo a coordenadas de página se suma el scroll de su registro (`scroll_x`, `scroll_y`). Nunca lleva texto de la página.
+
+### Mirada: estado, características y objetivos
+
+- Cada muestra `gaze` lleva `state` (`gaze_state`) y `confidence`. `valid` es verdadero solo con estado `on_screen` o `low_confidence` y un punto dentro de la ventana; `off_screen` indica que la persona mira fuera de la pantalla (el teclado, la habitación), que es distinto de una estimación fallida (`no_face`, `blink`).
+- El lote `gaze_features` guarda, por cuadro, los números con que se estima la mirada (pose de la cabeza, posición de los iris, apertura de los párpados) y el punto antes del filtro. Se registra también durante la calibración. Nunca lleva imágenes ni la malla completa del rostro.
+- El lote `gaze_target` guarda cada punto que se le pidió mirar (calibración, validación, comprobación de deriva) con su tramo de tiempo.
+- Con los dos, el análisis mide la mirada en grados y la vuelve a estimar después de la sesión. El tipo de calibración `drift_check` es la comprobación breve entre tareas; su `error_deg` es el de antes de corregir, y `corrected` dice si se corrigió.
+
 ## Validar en Python
 
 Toda validación pasa por `shared/contracts.py`, el único módulo que usa jsonschema:
@@ -50,7 +61,7 @@ for error in errors:
 enums()["incident_type"]  # ('rage_click', 'dead_click', ...)
 ```
 
-`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference`, `new-capture` y `new-frame`.
+`validate(kind, document)` acepta como `kind` el nombre de cualquier archivo `*.schema.json` sin la extensión: `batch`, `events`, `gaze`, `face`, `tasks`, `calibration`, `layout`, `gaze_features`, `gaze_target`, `element`, `reference`, `study`, `new-session`, `sus-answers`, `new-reference`, `new-capture` y `new-frame`.
 
 ## Ejemplos
 
@@ -75,3 +86,18 @@ Las pruebas validan todos los ejemplos (los inválidos deben fallar con el error
 | Nuevo mensaje | Agregarlo a `message_type` y documentarlo en `extension-messages.md` |
 
 Las pruebas fallan si falta alguna de estas piezas. Todo cambio actualiza la versión de los contratos según las reglas de `extension-messages.md`.
+
+## Cambios compatibles en 1.7.0
+
+- `gaze_target_phase` agrega `neutral_baseline`: 10 s de rostro relajado mirando
+  el centro antes de la calibración inicial. Se conserva la estructura de
+  `gaze_target`, sin cambios en tablas. Este tramo sirve al análisis facial;
+  no entrena ni valida la mirada.
+- `gaze_estimator` agrega `hybrid`: combinación de apariencia y geometría según
+  la distancia a la postura calibrada. Los errores de cada candidato se miden
+  por separado; no se presenta su mínimo como error validado de la combinación.
+
+Después de actualizar contratos, genera `extension/config.generated.js` y
+recarga la extensión. El servidor acepta versiones de la misma versión mayor;
+los registros anteriores sin línea base siguen siendo válidos, pero no sirven
+para calcular desviaciones faciales respecto de una postura neutra marcada.

@@ -44,3 +44,31 @@ friction_i_max: null
 
 # Retraso de la cámara respecto de los eventos; la limpieza lo resta a la mirada y al rostro. Se mide en el piloto.
 camera_delay_ms: 0
+
+# Mirada: medición en grados y reprocesamiento al cerrar la sesión (analysis/gaze/).
+gaze:
+  pursuit_skip_ms: 1000          # tramo inicial descartado del punto en movimiento de la calibración
+  saccade_deg_per_s: 60          # velocidad desde la que la mirada salta: el suavizado no cruza un salto
+  fixation_dispersion_deg: 1.5   # dispersión máxima de una fijación (I-DT)
+  fixation_min_ms: 100           # duración mínima de una fijación
+  smoothing_deg_per_s: 2         # movimiento esperable dentro de una fijación, para el suavizado de Kalman
+
+# Atribución de cada fijación a los elementos de la pantalla (analysis/gaze/attention.py).
+# Cada fijación recibe una probabilidad por elemento candidato y por "sin asignar".
+# Hay dos salidas: la de la mirada sola (la que se compara en P5) y la atención
+# estimada, que además usa los clics y focos.
+attention:
+  unassigned_prior: 0.12            # probabilidad previa de no mirar ningún elemento (distracción, vacío)
+  natural_error_factor: 1.3         # el error en uso natural supera al de los puntos de control
+  default_error_deg: 3.0            # error medio si la sesión no lo midió
+  low_confidence_factor: 1.5        # el error crece con confianza baja
+  candidate_radius_sigma: 3.0       # distancia máxima a un candidato, en desvíos del error
+  stay_weight: 4.0                  # volver a fijar el mismo elemento frente a pasar a otro
+  near_weight: 2.0                  # peso extra de pasar a un elemento cercano
+  near_distance_deg: 5.0            # distancia en que ese peso extra cae a un tercio
+  sequence_max_gap_ms: 1500         # hueco desde el que la fijación anterior ya no informa
+  interaction_window_ms: 1000       # tramo antes de un clic o foco que lo prepara
+  interaction_likelihood_ratio: 9.0 # empuje de la interacción; solo en la atención estimada
+  confident_probability: 0.6        # probabilidad desde la que un elemento se da por mirado
+  long_stare_ms: 2000               # mirada fija prolongada, sin interacción ni scroll
+  min_probability: 0.01             # probabilidad mínima de un candidato para guardarlo

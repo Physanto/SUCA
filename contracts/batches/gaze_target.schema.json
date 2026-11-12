@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://suca.local/contracts/batches/gaze_target.schema.json",
+  "title": "Objetivo de mirada",
+  "description": "Un punto que se le pidió mirar al participante durante una calibración, una validación o una comprobación de deriva, con el tramo de tiempo en que debía mirarlo. Junto con gaze_features permite medir el error de la mirada y volver a ajustar el modelo después de la sesión.",
+  "type": "object",
+  "properties": {
+    "t_start": { "description": "Inicio del tramo en que se toman las muestras de este objetivo.", "$ref": "../common.json#/$defs/timestamp" },
+    "t_end": { "description": "Fin del tramo.", "$ref": "../common.json#/$defs/timestamp" },
+    "calibration_type": { "description": "Procedimiento en que se mostró.", "$ref": "../enums.json#/$defs/calibration_type" },
+    "phase": { "description": "Parte del procedimiento.", "$ref": "../enums.json#/$defs/gaze_target_phase" },
+    "group": { "description": "Número del objetivo dentro del procedimiento, desde 0. Agrupa las muestras para la validación cruzada.", "type": "integer", "minimum": 0 },
+    "viewport_width": { "description": "Ancho de la ventana en píxeles CSS.", "type": "number", "exclusiveMinimum": 0 },
+    "viewport_height": { "description": "Alto de la ventana en píxeles CSS.", "type": "number", "exclusiveMinimum": 0 },
+    "points": {
+      "description": "Posición del objetivo en la ventana, en píxeles CSS. Un objetivo fijo tiene un solo punto; uno en movimiento, su recorrido muestreado (entre dos puntos se interpola).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": { "description": "Momento en que el objetivo estaba en ese punto.", "$ref": "../common.json#/$defs/timestamp" },
+          "x": { "description": "Coordenada horizontal en la ventana.", "type": "number" },
+          "y": { "description": "Coordenada vertical en la ventana.", "type": "number" }
+        },
+        "required": ["t", "x", "y"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["t_start", "t_end", "calibration_type", "phase", "group", "viewport_width", "viewport_height", "points"],
+  "additionalProperties": false
+}

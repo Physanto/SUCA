@@ -62,13 +62,15 @@ function createPage(fields = []) {
 }
 
 /** Inicia el módulo sobre una página falsa y anota cada pedido de captura. */
-function start({ fields = [], recorded = [] } = {}) {
+function start({ fields = [], recorded = [], layout = null } = {}) {
   const world = createPage(fields);
   const sent = [];
+  const batches = [];
   const handlers = new Map();
-  const module = UX.createFramesModule({ page: world.page });
+  const module = UX.createFramesModule({ page: world.page, layout });
   module.start({
     clock: { now: world.timers.now },
+    batcher: { add: (type, record) => batches.push({ type, record }) },
     session: { get: () => ({ session_id: 7, recorded_fields: recorded }) },
     messages: {
       types: { FRAME_REQUEST: 'frame.request', FRAME_MASKS: 'frame.masks' },
@@ -81,7 +83,7 @@ function start({ fields = [], recorded = [] } = {}) {
       },
     },
   });
-  return { ...world, module, sent, handlers };
+  return { ...world, module, sent, batches, handlers };
 }
 
 test('asks for a frame once the page has loaded, and for another after a click', () => {
@@ -206,4 +208,47 @@ test('stop drops the pending frame and removes every listener', () => {
   assert.equal(listeners.size, 0);
   assert.equal(handlers.size, 0);
   assert.equal(timers.pending(), 0);
+});
+
+test('records the layout of the screen with every frame request', () => {
+  const measured = [];
+  const layout = {
+    measure: (page, t) => {
+      measured.push(page);
+      return { t, regions: [] };
+    },
+  };
+  const { timers, fire, sent, batches, module, page } = start({ layout });
+
+  timers.advanceSync(600);
+  fire('click');
+  timers.advanceSync(1000);
+  module.stop();
+
+  assert.equal(sent.length, 2);
+  assert.deepEqual(batches, [
+    { type: 'layout', record: { t: 600, regions: [] } },
+    { type: 'layout', record: { t: 1600, regions: [] } },
+  ]);
+  assert.ok(measured.every((measuredPage) => measuredPage === page));
+});
+
+test('a layout that cannot be measured does not stop the frames', () => {
+  const layout = {
+    measure: () => {
+      throw new Error('detached document');
+    },
+  };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const { timers, sent, batches, module } = start({ layout });
+    timers.advanceSync(600);
+    module.stop();
+
+    assert.equal(sent.length, 1);
+    assert.deepEqual(batches, []);
+  } finally {
+    console.warn = warn;
+  }
 });

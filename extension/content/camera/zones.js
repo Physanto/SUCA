@@ -109,5 +109,5 @@
     return parts.join(' > ');
   }
 
-  UX.gazeZones = Object.freeze({ zoneOf, selectorOf });
+  UX.gazeZones = Object.freeze({ zoneOf, regionOf, selectorOf });
 })(globalThis);

@@ -70,6 +70,30 @@ def test_face_values_and_flags_are_stored(
     assert row["face_detected"] == 1
 
 
+def test_layout_keeps_regions_elements_and_scroll(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    record = example("layout.valid.json")
+
+    response = client.post(f"/sessions/{session_id}/batches", json=make_batch("layout", [record]))
+
+    assert response.status_code == 200
+    row = connection.execute("SELECT * FROM page_layout").fetchone()
+    assert (row["t"], row["viewport_width"], row["scroll_y"], row["truncated"]) == (
+        record["t"],
+        record["viewport_width"],
+        record["scroll_y"],
+        0,
+    )
+    assert json.loads(row["screen"]) == record["screen"]
+    assert json.loads(row["regions"]) == record["regions"]
+    assert json.loads(row["elements"]) == record["elements"]
+
+
 def test_calibration_summarizes_the_last_error_of_each_type(
     client: TestClient,
     connection: sqlite3.Connection,
@@ -112,6 +136,101 @@ def test_calibration_keeps_the_measured_distance_and_accepts_records_without_it(
     assert response.status_code == 200
     rows = connection.execute("SELECT viewing_distance_cm FROM calibration ORDER BY t").fetchall()
     assert [row[0] for row in rows] == [measured["viewing_distance_cm"], None]
+
+
+def test_a_drift_check_is_stored_without_changing_the_session_summary(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    initial = example("calibration.valid.json")
+    check = {
+        **initial,
+        "t": initial["t"] + 60_000,
+        "type": "drift_check",
+        "error_deg": 1.6,
+        "corrected": True,
+        "correction_x_px": -12.5,
+        "correction_y_px": 30.0,
+    }
+
+    response = client.post(
+        f"/sessions/{session_id}/batches", json=make_batch("calibration", [initial, check])
+    )
+
+    assert response.status_code == 200
+    summary = connection.execute("SELECT calibration_error_start FROM session").fetchone()[0]
+    assert summary == initial["error_deg"]
+    row = connection.execute(
+        "SELECT corrected, correction_x_px, estimator, precision_deg FROM calibration "
+        "WHERE type = 'drift_check'"
+    ).fetchone()
+    assert tuple(row) == (1, -12.5, "geometric", 0.6)
+
+
+def test_gaze_features_are_stored_one_column_per_field(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    record = example("gaze_features.valid.json")
+    without_face = {
+        **{key: None for key in record},
+        "t": record["t"] + 33,
+        "face_detected": False,
+        "state": "no_face",
+        "confidence": 0,
+        "viewport_width": 1280,
+        "viewport_height": 720,
+        "scroll_x": 0,
+        "scroll_y": 0,
+    }
+
+    response = client.post(
+        f"/sessions/{session_id}/batches",
+        json=make_batch("gaze_features", [record, without_face]),
+    )
+
+    assert response.status_code == 200
+    rows = connection.execute("SELECT * FROM gaze_feature ORDER BY t").fetchall()
+    assert (rows[0]["left_h"], rows[0]["left_refined"], rows[0]["state"]) == (0.031, 1, "on_screen")
+    assert (rows[1]["face_detected"], rows[1]["left_refined"], rows[1]["head_yaw"]) == (
+        0,
+        None,
+        None,
+    )
+
+
+def test_gaze_targets_keep_their_path(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    session_id: int,
+    example: Example,
+    make_batch: MakeBatch,
+) -> None:
+    record = example("gaze_target.valid.json")
+    pursuit = {
+        **record,
+        "phase": "pursuit",
+        "group": 0,
+        "points": [
+            {"t": record["t_start"], "x": 10, "y": 20},
+            {"t": record["t_end"], "x": 30, "y": 40},
+        ],
+    }
+
+    client.post(
+        f"/sessions/{session_id}/batches", json=make_batch("gaze_target", [record, pursuit])
+    )
+
+    rows = connection.execute('SELECT t, t_end, phase, "group", points FROM gaze_target').fetchall()
+    assert [(row["phase"], row["group"]) for row in rows] == [("points", 3), ("pursuit", 0)]
+    assert json.loads(rows[1]["points"]) == pursuit["points"]
+    assert rows[0]["t"] == record["t_start"]
 
 
 def test_sending_a_task_again_replaces_it(
@@ -290,7 +409,9 @@ def test_handlers_cannot_be_registered_twice() -> None:
 def test_enum_values_used_by_the_server_exist_in_the_contracts() -> None:
     enums = contracts.enums()
 
-    assert set(ingestion.CALIBRATION_ERROR_COLUMNS) == set(enums["calibration_type"])
+    assert set(ingestion.CALIBRATION_ERROR_COLUMNS) | {ingestion.DRIFT_CHECK} == set(
+        enums["calibration_type"]
+    )
     assert services.REFERENCE_MODE in enums["session_mode"]
     assert {services.DRAFT_REFERENCE, services.CONFIRMED_REFERENCE} == set(
         enums["reference_status"]

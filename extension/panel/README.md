@@ -27,7 +27,7 @@ El controlador publica un estado inmutable con `setState`; la vista se suscribe 
 | `startedAt` | Inicio de la sesión según el reloj común, o `null` si el panel se abrió con la sesión ya en curso. |
 | `guided` | Solo en modo guiado: `loaded`, `tasks`, `index` (tarea que toca; igual a `tasks.length` al terminar), `current` y `sus` (`answers`, `saving`, `saved`). |
 | `reference` | Solo en modo referencia: `loaded`, `tasks`, `recording`, `saved`, `unsaved`, `captures` y `capturing`. |
-| `camera`, `calibration` | Estado de la cámara y último resultado de cada calibración (`initial`, `final`). |
+| `camera`, `calibration` | Estado de la cámara y último resultado de cada calibración (`initial`, `drift_check`, `final`). |
 
 Los métodos que cambian el estado lo hacen **antes de esperar** al servidor o a la pestaña, para que un segundo clic no repita la acción.
 
@@ -37,7 +37,7 @@ Los métodos que cambian el estado lo hacen **antes de esperar** al servidor o a
 
 **Cierre (los tres modos).** El panel vacía su acumulador de lotes, envía `session.closed` y borra el estado. **No llama a `POST /sessions/{id}/close`**: el worker cierra la sesión en el servidor después de los últimos lotes.
 
-**Calibración y cámara (los tres modos).** Dos botones piden la calibración inicial o la final con `calibration.request`. La cámara responde con `calibration.result` (error en píxeles y en grados, y si se aceptó) y `camera.status` (`active`, `no_permission` o `error`). Sin permiso de cámara o con error, no se pide calibración y la sesión sigue sin ella.
+**Calibración y cámara (los tres modos).** Tres botones piden la calibración inicial, una comprobación de la mirada (`drift_check`: tres puntos que miden la deriva y la corrigen) o la calibración final con `calibration.request`. En el modo guiado, con `camera.drift_check_between_tasks` activo y una calibración inicial hecha, el panel pide la comprobación sola al terminar cada tarea, salvo la última. La cámara responde con `calibration.result` (error en píxeles y en grados, y si se aceptó) y `camera.status` (`active`, `no_permission` o `error`). Sin permiso de cámara o con error, no se pide calibración y la sesión sigue sin ella.
 
 ### Libre (`free`)
 
@@ -86,7 +86,7 @@ El worker enruta `session.started`, `task.started` y `calibration.request` solo 
 | `session.closed` | Panel → worker | Al cerrar, después de vaciar el acumulador. |
 | `task.started` | Panel → pestaña (vía worker) | Al empezar una tarea (guiado) o una grabación (referencia). |
 | `task.completed` | `task-end.js` → panel | La pestaña cumplió la condición final. |
-| `calibration.request` | Panel → cámara (vía worker) | Al pulsar un botón de calibración. |
+| `calibration.request` | Panel → cámara (vía worker) | Al pulsar un botón de calibración, y entre tareas del modo guiado (`drift_check`). |
 | `calibration.result` | Cámara → panel | Al terminar la calibración. |
 | `camera.status` | Cámara → panel | Cuando cambia el estado de la cámara. |
 | `screen_capture.request` | Panel → worker | Al pulsar **Capturar pantalla**. |

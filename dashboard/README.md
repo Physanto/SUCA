@@ -23,8 +23,10 @@ En la barra lateral se elige:
 | `app.py` | Navegación: registra las páginas (`PAGES`) y muestra los selectores de base y estudio |
 | `data.py` | `DashboardData`: todas las consultas del panel y su única escritura. No importa Streamlit |
 | `ui.py` | Ayudas de Streamlit: selectores, base elegida (`selected_data`), estudio elegido (`selected_study`), encabezado de página y tablas en español (`show_table`) |
-| `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice) y el resumen por tarea |
-| `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla |
+| `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice, zonas de un mapa, elementos más clicados o mirados, estados de la mirada) y el resumen por tarea |
+| `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla. La mirada es la reprocesada si existe |
+| `heatmap_insights.py` | Lo que dice cada mapa en números, sin Streamlit: explicación de cada capa, reparto por zonas (3 × 3 de la primera vista y lo que quedó debajo), elementos más clicados, recorrido del cursor, segundos de mirada por elemento (ponderados por la probabilidad de la atribución, `p_gaze`) y estados de la mirada |
+| `heatmap_view.py` | Dispone esa explicación y sus gráficas debajo de cada mapa, en las páginas Sesión y Pantallas |
 | `findings.py` | Hallazgos de un estudio: agrupación de incidentes, gravedad propuesta, resúmenes e informe |
 | `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |
@@ -34,7 +36,7 @@ En la barra lateral se elige:
 | Archivo | Título | Qué muestra |
 |---|---|---|
 | `pages/sessions.py` | Sesiones | Lista filtrable por versión y modo; cantidad por versión, SUS e IUC medios |
-| `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
+| `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración, error medio de las comprobaciones de deriva y, si se reprocesó, error de la mirada en vivo y reprocesada y fijaciones); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
 | `pages/tasks.py` | Tareas | Tasa de éxito y duración de cada tarea por versión; resumen con duración y pasos medianos y el paso de desvío más frecuente |
 | `pages/screens.py` | Pantallas | Incidentes por pantalla (por tipo) y tiempo en cada una; mapa de calor de todas las sesiones del estudio, por versión |
 | `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
@@ -76,7 +78,8 @@ Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de es
 | `get_incidents(session_id, study_id)` | Incidentes de una sesión o de un estudio |
 | `get_episodes(session_id)` | Episodios con su duración y `metrics` |
 | `get_face(session_id)` | Muestras faciales con sus `values` |
-| `get_gaze(session_id, valid_only)` | Muestras de mirada (por defecto, solo las válidas) |
+| `get_gaze(session_id, valid_only, refined)` | Muestras de mirada (por defecto, solo las válidas). Si el análisis dejó la mirada reprocesada (`gaze_refined`), devuelve esa; la columna `source` dice cuál (`refined` o `live`) |
+| `get_gaze_quality(session_id)` | Calidad de la mirada reprocesada (`gaze_quality`): método, error en vivo y refinado en grados, deriva corregida, fijaciones; `None` sin reprocesar |
 | `get_calibrations(session_id)` | Cada intento de calibración: error en px y en grados, si se aceptó y la distancia medida |
 | `get_task_results(study_id)` | Resultados por tarea de todas las sesiones del estudio, con versión y participante |
 | `get_screen_summary(study_id)` | Por pantalla normalizada: visitas, sesiones, tiempo e incidentes |
@@ -134,3 +137,22 @@ pytest tests/dashboard
 
 - `test_data.py` prueba cada función de datos sobre la base simulada y compara con su verdad de referencia. También comprueba que leer nunca escribe, que `data.py` no importa Streamlit y que ninguna página tiene SQL.
 - `test_pages.py` ejecuta la navegación y cada página sin navegador, con `AppTest` de Streamlit. Con `st.navigation`, `AppTest` no vuelve a ejecutar `app.py` al cambiar de página, así que cada página se prueba ejecutándola directamente.
+
+### Mirada atribuida y movimientos faciales
+
+En Reproducción se elige **Mirada: Reprocesada / En vivo**. La reprocesada
+muestra por fijación el selector resuelto, su probabilidad, la parte sin asignar,
+la ambigüedad y la mirada fija prolongada. Un selector sin resolver no equivale
+a certeza de mirar el vacío; se muestra su probabilidad sin asignar. La atribución
+se oculta al elegir mirada en vivo porque se calculó sobre la reprocesada.
+
+En Hallazgos, **¿Miró el siguiente elemento antes del incidente?** consulta los
+5 s previos con `p_gaze`, sin usar clics ni focos. Cada referencia confirmada se
+mantiene separada; el avance usa las mismas reglas que el análisis de desvíos.
+No se incorporan fijaciones que terminan después del incidente. Se informa el
+motivo cuando falta referencia, tramo de tarea o captura atribuida.
+
+La comparación facial usa ventanas de 2 s junto a incidentes y controles a más
+de 5 s de todos ellos, con movimientos relativos a la línea base neutra de esa
+persona. Las sesiones antiguas sin esa marca aparecen como datos insuficientes.
+No se infieren emociones ni se entrena un modelo desde el panel.

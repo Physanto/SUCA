@@ -284,25 +284,157 @@ class DashboardData:
         )
         return frame
 
-    def get_gaze(self, session_id: int, *, valid_only: bool = True) -> pd.DataFrame:
+    def get_gaze(
+        self, session_id: int, *, valid_only: bool = True, refined: bool = True
+    ) -> pd.DataFrame:
         """Muestras de mirada de una sesión.
+
+        Si la sesión tiene mirada reprocesada (``gaze_refined``, la deja el análisis
+        al cerrar la sesión) y ``refined`` es verdadero, devuelve esa: el modelo
+        reajustado, la deriva corregida y el temblor suavizado. Si no, la registrada
+        en vivo.
 
         Args:
             session_id: Sesión.
             valid_only: Si es verdadero (por defecto), solo las muestras válidas.
+            refined: Si se prefiere la mirada reprocesada cuando existe.
 
         Returns:
             ``t``, ``x``, ``y``, ``scroll_x``, ``scroll_y``, ``element_selector``,
-            ``zone`` y ``valid``.
+            ``zone``, ``valid`` y ``source`` (``refined`` o ``live``).
         """
+        names = ["t", "x", "y", "scroll_x", "scroll_y", "element_selector", "zone", "valid"]
+        validity = " AND valid = 1" if valid_only else ""
+        if refined and self._has_rows("gaze_refined", session_id):
+            table, source = "gaze_refined", "refined"
+        else:
+            table, source = "gaze_sample", "live"
         frame = self._frame(
-            "SELECT t, x, y, scroll_x, scroll_y, element_selector, zone, valid FROM gaze_sample"
-            f" WHERE session_id = ?{' AND valid = 1' if valid_only else ''} ORDER BY t",
+            f"SELECT {', '.join(names)} FROM {table} WHERE session_id = ?{validity} ORDER BY t",
             session_id,
-            columns=["t", "x", "y", "scroll_x", "scroll_y", "element_selector", "zone", "valid"],
+            columns=names,
             bools=("valid",),
         )
+        frame["source"] = source
         return frame
+
+    def get_gaze_quality(self, session_id: int) -> dict[str, Any] | None:
+        """Calidad de la mirada reprocesada de una sesión.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            Fila de ``gaze_quality`` (método, error en vivo y refinado en grados,
+            si se corrigió la deriva, fijaciones…), o ``None`` si no se reprocesó.
+        """
+        names = [
+            "method",
+            "fit_scope",
+            "frames",
+            "check_samples",
+            "camera_delay_ms",
+            "live_error_deg",
+            "refined_error_deg",
+            "drift_corrected",
+            "noise_px",
+            "fixations",
+        ]
+        frame = self._frame(
+            f"SELECT {', '.join(names)} FROM gaze_quality WHERE session_id = ?",
+            session_id,
+            columns=names,
+            bools=("drift_corrected",),
+        )
+        return None if frame.empty else frame.iloc[0].to_dict()
+
+    def get_gaze_states(self, session_id: int) -> pd.DataFrame:
+        """Estado de cada muestra de mirada, también de las que el mapa no dibuja.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``t`` y ``state`` (``gaze_state``) de la mirada reprocesada si existe, si
+            no de la registrada en vivo. Vacío en sesiones sin estado.
+        """
+        table = "gaze_refined" if self._has_rows("gaze_refined", session_id) else "gaze_sample"
+        return self._frame(
+            f"SELECT t, state FROM {table} WHERE session_id = ? AND state IS NOT NULL ORDER BY t",
+            session_id,
+            columns=["t", "state"],
+        )
+
+    def get_gaze_fixations(self, session_id: int) -> pd.DataFrame:
+        """Fijaciones de la mirada atribuidas a los elementos de la pantalla.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            Filas de ``gaze_fixation`` (sin ``session_id``), en orden de tiempo:
+            ``fixation``, ``t_start``, ``t_end``, ``screen`` (URL), el elemento más
+            probable, el que se da por mirado, ``unassigned_p``, ``long_stare``…
+            Vacío si la sesión no se atribuyó.
+        """
+        names = [
+            "fixation",
+            "t_start",
+            "t_end",
+            "x",
+            "y",
+            "screen",
+            "element_selector",
+            "element_p",
+            "resolved_selector",
+            "resolved_p",
+            "ambiguous",
+            "unassigned_p",
+            "attention_selector",
+            "attention_p",
+            "long_stare",
+        ]
+        return self._frame(
+            f"SELECT {', '.join(names)} FROM gaze_fixation WHERE session_id = ? ORDER BY t_start",
+            session_id,
+            columns=names,
+            ints=("fixation",),
+            bools=("ambiguous", "long_stare"),
+        )
+
+    def get_gaze_attribution(self, session_id: int) -> pd.DataFrame:
+        """Probabilidad de cada candidato de cada fijación.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``fixation``, ``selector`` (vacío: sin asignar), ``tag``, ``interactive``,
+            ``p_gaze`` (solo mirada) y ``p_attention`` (con clics y focos).
+        """
+        names = ["fixation", "selector", "tag", "interactive", "p_gaze", "p_attention"]
+        return self._frame(
+            f"SELECT {', '.join(names)} FROM gaze_attribution WHERE session_id = ?"
+            " ORDER BY fixation",
+            session_id,
+            columns=names,
+            ints=("fixation",),
+            bools=("interactive",),
+        )
+
+    def _has_rows(self, table: str, session_id: int) -> bool:
+        """Si una tabla tiene filas de la sesión. ``table`` viene del código, nunca del usuario."""
+        query = f"SELECT 1 FROM {table} WHERE session_id = ? LIMIT 1"
+        return self._connection.execute(query, (_plain(session_id),)).fetchone() is not None
+
+    def get_gaze_targets(self, session_id: int) -> pd.DataFrame:
+        """Tramos de calibración y línea base neutra para consultar señales faciales."""
+        return self._frame(
+            "SELECT t, t_end, phase, calibration_type FROM gaze_target"
+            " WHERE session_id = ? ORDER BY t",
+            session_id,
+            columns=["t", "t_end", "phase", "calibration_type"],
+        )
 
     def get_calibrations(self, session_id: int) -> pd.DataFrame:
         """Calibraciones de mirada de una sesión, en orden (cada intento es una fila).
@@ -311,15 +443,24 @@ class DashboardData:
             session_id: Sesión.
 
         Returns:
-            ``t``, ``type``, ``error_px``, ``error_deg``, ``accepted`` y
-            ``viewing_distance_cm`` (vacía si no se midió).
+            ``t``, ``type``, ``error_px``, ``error_deg``, ``accepted``,
+            ``viewing_distance_cm`` (vacía si no se midió) y ``corrected`` (solo en
+            las comprobaciones de deriva).
         """
         return self._frame(
-            "SELECT t, type, error_px, error_deg, accepted, viewing_distance_cm FROM calibration"
-            " WHERE session_id = ? ORDER BY t",
+            "SELECT t, type, error_px, error_deg, accepted, viewing_distance_cm, corrected"
+            " FROM calibration WHERE session_id = ? ORDER BY t",
             session_id,
-            columns=["t", "type", "error_px", "error_deg", "accepted", "viewing_distance_cm"],
-            bools=("accepted",),
+            columns=[
+                "t",
+                "type",
+                "error_px",
+                "error_deg",
+                "accepted",
+                "viewing_distance_cm",
+                "corrected",
+            ],
+            bools=("accepted", "corrected"),
         )
 
     # --- Datos de un estudio -----------------------------------------------------

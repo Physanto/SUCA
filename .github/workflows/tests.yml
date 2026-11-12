@@ -18,9 +18,11 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements*.txt
+      # Con las dependencias opcionales, para que no se omitan las pruebas de la
+      # estadística del experimento ni las del modelo de aprendizaje automático.
       - name: Install dependencies
         run: |
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt -r requirements-ml.txt
           pip install -e .
       - name: Ruff
         run: ruff check .

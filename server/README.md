@@ -24,7 +24,7 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 
 | Método y ruta | Cuerpo | Respuesta | Errores |
 |---|---|---|---|
-| `GET /health` | — | `{"status": "ok", "contract_version": "1.3.0", "schema_version": "4"}` | 401 |
+| `GET /health` | — | `{"status": "ok", "contract_version": "1.7.0", "schema_version": "8"}` | 401 |
 | `GET /studies` | — | `[{"id", "name", "system_under_test", "description", "recorded_fields"}]` | 401 |
 | `GET /studies/{id}/tasks` | — | Tareas en orden: `[{"id", "position", "instruction", "references": [{"id", "end_condition"}]}]`, solo con referencias confirmadas | 401, 404 |
 | `POST /sessions` | `new-session` | 201 `{"session_id", "started_at"}` | 401, 422 |
@@ -114,3 +114,19 @@ Las pruebas crean una base temporal con el estudio de ejemplo, fijan el reloj de
   El endpoint de lotes y `services.store_batch` no cambian. Una prueba falla si un tipo de lote no tiene manejador.
 - **Nuevo endpoint:** el formato del cuerpo va en `contracts/requests/`, la lógica en una función de `services.py` que reciba solo las interfaces que use, el SQL en `repositories.py` y la ruta en `routes.py`.
 - **Sustituir dependencias en pruebas:** `app.dependency_overrides[routes.get_repository]` o `[routes.get_clock]`.
+
+### Actualizar una base del esquema 7
+
+Detén el servidor y cualquier análisis que escriba, y ejecuta:
+
+```bash
+python -m scripts.migrate_db --db data/otra.db
+```
+
+Crea un respaldo SQLite consistente antes de cambiar nada, agrega las tablas de
+atribución del esquema canónico y `calibration.css_px_per_cm`, y actualiza la
+versión a 8 en una transacción. Si falla, revierte la migración y conserva el
+respaldo. Una base ya actualizada no cambia. No migra versiones anteriores a 7;
+la base simulada antigua se regenera con `scripts.generate_mock_data`.
+Los reintentos de una calibración idéntica se guardan una sola vez; una nueva
+medición con otro momento se conserva aunque tenga el mismo error.
