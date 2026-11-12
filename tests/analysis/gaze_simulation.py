@@ -1,6 +1,7 @@
 """Sesión de mirada simulada, con una persona de parámetros conocidos.
 
-Un modelo geométrico verdadero (el mismo de las pruebas de la extensión) da,
+Un modelo geométrico verdadero (``scripts/simulation/camera.py``, el mismo de
+las pruebas de la extensión) da,
 para cada punto de la pantalla y cada postura de la cabeza, la posición del
 iris que tendría la persona. Con eso se arma una sesión completa como la
 guardaría el servidor: calibración inicial (13 puntos, punto en movimiento y
@@ -18,39 +19,25 @@ import numpy as np
 import pandas as pd
 
 from analysis import columns
+from scripts.simulation.camera import (
+    CSS_PX_PER_CM,
+    DELAY_MS,
+    FRAME_MS,
+    OPEN_REF,
+    TRUTH,
+    iris_for,
+)
+
+__all__ = ["CSS_PX_PER_CM", "DELAY_MS", "OPEN_REF", "TRUTH", "iris_for"]
 
 T0 = 1_791_380_000_000.0
 VIEWPORT = (1280.0, 720.0)
-CSS_PX_PER_CM = 40.0
-FRAME_MS = 33.0
-DELAY_MS = 70.0
-TRUTH = np.array([-2.2, 0.04, -2.8, -0.05, 0.6, 1, 1, 650, -90, 1.05, 0.97])
-OPEN_REF = 0.3
 CALIBRATION_POSE = {"yaw": 0.0, "pitch": -8.0, "distance": 58.0}
 SHIFTED_POSE = {"yaw": 9.0, "pitch": -15.0, "distance": 66.0}
 EVENT_SEPARATION_MS = 61_000.0
 """Pausa después de cada comprobación, para que la siguiente sea otro procedimiento."""
 DRIFT_PX_PER_MIN = 12.0
 """Cuánto se corre la mirada en vivo por minuto (hacia la derecha y abajo)."""
-
-_RAD = np.pi / 180
-
-
-def iris_for(x: float, y: float, pose: dict[str, float]) -> tuple[float, float]:
-    """Posición del iris (``h``, ``v``) que hace mirar un punto con una postura dada."""
-    a_h, b_h, a_v, b_v, c_open, g_yaw, g_pitch, cx, cy, kx, ky = TRUTH
-    tan_v = np.tan(63 * _RAD / 2)
-    tan_h = tan_v * pose["aspect"]
-    oz = pose["distance"]
-    ox = -(pose["eye_u"] - 0.5) * 2 * tan_h * oz
-    oy = (pose["eye_v"] - 0.5) * 2 * tan_v * oz
-    px = (x - cx) / (kx * CSS_PX_PER_CM)
-    py = (y - cy) / (ky * CSS_PX_PER_CM)
-    yaw = np.arctan((px - ox) / oz)
-    pitch = np.arctan((oy - py) * np.cos(yaw) / oz)
-    theta = yaw - g_yaw * pose["yaw"] * _RAD
-    phi = pitch - g_pitch * pose["pitch"] * _RAD
-    return (theta - b_h) / a_h, (phi - b_v - c_open * (pose["open"] - OPEN_REF)) / a_v
 
 
 @dataclass

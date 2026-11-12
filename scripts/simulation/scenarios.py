@@ -49,8 +49,9 @@ MOCK_GAZE_HZ = 10
 """Frecuencia de la mirada en los datos simulados (la extensión usa la de la
 configuración). Es menor para que la base sea pequeña y se genere rápido."""
 
-MOCK_FACE_HZ = 5
-"""Frecuencia del rostro en los datos simulados, por la misma razón."""
+MOCK_FACE_HZ = 15
+"""Frecuencia del rostro en los datos simulados: la de la extensión, porque la
+línea base facial exige al menos 80 muestras en sus 10 s."""
 
 MOCK_FRICTION_I_MAX = 15.0
 """Normalización de la fricción (incidentes por minuto de tarea) para el índice
@@ -325,6 +326,8 @@ def _builder(context: StudyContext, index: int, **options: Any) -> SessionBuilde
         friction_i_max=i_max,
         gaze_hz=MOCK_GAZE_HZ,
         face_hz=MOCK_FACE_HZ,
+        # Ojos simulados en las sesiones con cámara: mirada reprocesada, atribución y rostro.
+        eyes=options.get("mode") != "reference",
         **options,
     )
 

@@ -5,6 +5,7 @@ Sesiones falsas pero realistas, con problemas conocidos y la **verdad de referen
 | Archivo | Qué hace |
 |---|---|
 | `builder.py` | `SessionBuilder`: arma una sesión paso a paso y anota su verdad de referencia |
+| `camera.py` | Cámara simulada: ojos con un modelo geométrico conocido, calibración completa con línea base facial y valores del rostro |
 | `scenarios.py` | La tienda simulada (pantallas, elementos, rutas de las 4 tareas de `studies/example.yaml`) y las sesiones de la base simulada |
 | `store.py` | Guarda las sesiones por el mismo camino que los datos reales y ayuda a las pruebas |
 | `../generate_mock_data.py` | Genera la base simulada completa y su verdad de referencia |
@@ -31,7 +32,14 @@ Contenido:
 | `guided_v2` | `guided` | V2 | Problemas 1 a 8, un desvío conocido (tarea 3: elige transferencia antes que tarjeta) y una tarea abandonada (tarea 4) |
 | `free_v1` | `free` | V1 | Búsquedas con errores, imagen que parece botón, botón lento, ida y vuelta entre pantallas, pausa y formulario abandonado |
 
-Las sesiones guiadas tienen calibración inicial y final, SUS, mirada y rostro. La mirada y el rostro van a 10 y 5 Hz (en la extensión, a las frecuencias de la configuración), para que la base sea pequeña.
+Las sesiones con cámara (todas menos la de referencia) tienen **ojos simulados**: una persona con un modelo geométrico conocido que mira adonde va el cursor, unos 300 ms antes que la mano. Con ellos la base trae lo mismo que una sesión real:
+
+- **Calibración completa** (`gaze_target` y `calibration`): la inicial empieza con 10 s de rostro relajado (`neutral_baseline`) y sigue con 13 puntos, el punto en movimiento, el movimiento de cabeza, 8 puntos de validación y la vuelta del teclado; la final valida 8 puntos. Ocupan su tiempo real (algo más de un minuto la inicial) y la mirada en vivo queda en pausa mientras duran.
+- **Características de los ojos** (`gaze_features`) en cada muestra de mirada, para reprocesarla al cerrar la sesión.
+- **Disposición de cada pantalla** (`layout`) al abrirla y tras cada scroll, con los elementos que aparecen en los eventos de esa pantalla, para atribuir las fijaciones.
+- **Rostro** con todos los valores del contrato, relajado en la línea base y más tenso cerca de los incidentes.
+
+Así `python -m analysis.run --db data/mock.db --study 1` reprocesa la mirada (error cercano a 0,4°), atribuye las fijaciones a los elementos y el panel muestra los movimientos faciales junto a los incidentes. La mirada va a 10 Hz y el rostro a 15 Hz (la línea base facial exige al menos 80 muestras en sus 10 s).
 
 Las **tablas de resultados** (`episode`, `incident`, `task_result`, `usability_index`) quedan llenas con la verdad de referencia, para que el panel de resultados tenga qué mostrar antes de que existan los detectores. El índice se guarda con la versión `mock`. Ejecutar `python -m analysis.run --db data/mock.db …` reemplaza esos resultados por los del pipeline; para recuperarlos, vuelve a generar la base.
 
@@ -85,6 +93,7 @@ def test_finds_a_dead_click(tmp_path, params):
 - **Umbrales:** los patrones leen `analysis/parameters.yaml` y por defecto lo superan. Con valores por debajo del umbral (`with_rage_click(clicks=2)`, `with_long_pause(ms=1000)`), el patrón ocurre pero la verdad no lo cuenta: sirve para el caso negativo de cada detector. El comportamiento normal nunca cruza ningún umbral. Para probar con otros umbrales, pasa `params=` al constructor.
 - **Verdad:** `session.truth.incidents`, `.episodes`, `.tasks` y `.usability_index`.
 - **Sin base:** `session.batches` tiene los registros por tipo de lote, con la forma de los contratos.
+- **Ojos simulados:** `SessionBuilder(..., eyes=True)` agrega las características de los ojos, la calibración completa, la disposición de las pantallas y el rostro con línea base. `scripts.simulation.camera` también sirve suelto: `SimulatedEyes(seed, viewport).calibration("initial", t, error_deg, accepted)`.
 - **Misma semilla, misma sesión.**
 - **Sesiones completas:** `scenarios.guided_v1(context)` y las demás funciones de escenario devuelven las sesiones de la base simulada con su verdad. `context` es un `scenarios.StudyContext`; ver `tests/simulation/conftest.py`.
 
