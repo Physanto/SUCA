@@ -9,6 +9,7 @@ import pytest
 
 from scripts import simulate_experiment
 from scripts.simulation import experiment, scenarios
+from scripts.simulation.builder import BuilderError, SessionBuilder
 from server.services import sus_score
 from shared import db
 from shared.config import load_config
@@ -97,3 +98,11 @@ def test_the_cli_refuses_the_real_database(capsys: pytest.CaptureFixture[str]) -
     real = load_config().database.path
     assert simulate_experiment.main(["--db", str(real)]) == 1
     assert "real database" in capsys.readouterr().err
+
+
+def test_a_pause_at_the_start_of_a_task_is_refused(context: scenarios.StudyContext) -> None:
+    """El detector no ve una pausa entre un evento fuera de la tarea y el primero de ella."""
+    builder = SessionBuilder(study_id=1, mode="guided", camera=False).on_screen(scenarios.LOGIN)
+    builder.do(scenarios.LOGIN_ACTION).with_task(1, scenarios.TASKS[0].path)
+    with pytest.raises(BuilderError, match="same task"):
+        builder.with_long_pause()

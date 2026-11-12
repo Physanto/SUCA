@@ -199,13 +199,14 @@ def participant_session(context: StudyContext, plan: ParticipantPlan) -> Simulat
     builder.do(LOGIN_ACTION)
 
     builder.with_task(*_task(context, 1))
-    if plan.false_alarm:
-        # Se detiene a pensar sin que nada falle: el detector lo verá y no es un problema sembrado.
-        builder.with_long_pause()
     if 8 in hit:
         builder.with_repeated_search(
             SEARCH, [results("audfonos inalambricos"), results("audifonos inlambricos")], problem=8
         )
+    if plan.false_alarm:
+        # Se detiene a pensar ante los resultados sin que nada falle: el detector lo verá y
+        # no es un problema sembrado. Va entre dos eventos de la tarea, como lo mide el detector.
+        builder.follow(1).with_long_pause()
     builder.end_task("reference")
 
     builder.with_task(*_task(context, 2)).follow(2)

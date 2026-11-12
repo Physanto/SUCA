@@ -804,6 +804,13 @@ class SessionBuilder:
         if duration > self._params.long_pause_ms:
             if not self._events:
                 raise BuilderError("with_long_pause() needs an event before it")
+            task_id = self._task.task_id if self._task else None
+            if self._events[-1]["task_id"] != task_id:
+                # El detector mide la pausa entre dos eventos de la misma tarea.
+                raise BuilderError(
+                    "with_long_pause() needs an event of the same task before it; "
+                    "do an action of the task first"
+                )
             self._open_pause = {
                 "t_start": self._events[-1]["t"],
                 "problem": problem,
@@ -917,6 +924,9 @@ class SessionBuilder:
                 f"with_overtime() needs the reference duration of task {task.task_id}"
             )
         limit = task.t_start + reference * self._params.task_overtime_factor
+        if not self._events or self._events[-1]["task_id"] != task.task_id:
+            # Cada pausa larga va entre dos eventos de la tarea, como la mide el detector.
+            self._move_by(40, 25)
         while self._t <= limit + 500:
             self.with_long_pause()
             self._move_by(40, 25)
