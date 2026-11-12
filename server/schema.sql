@@ -320,6 +320,48 @@ CREATE TABLE gaze_quality (
 );
 
 
+-- Fijación de la mirada reprocesada, atribuida a los elementos de la pantalla
+-- (analysis/gaze/attention.py) con la disposición vigente (page_layout).
+-- element_* y unassigned_p usan solo la mirada (la que se compara en P5);
+-- attention_* además usan los clics y focos (atención estimada).
+CREATE TABLE gaze_fixation (
+    session_id         INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    fixation           INTEGER NOT NULL,  -- número de fijación de gaze_refined
+    t_start            REAL    NOT NULL,
+    t_end              REAL    NOT NULL,
+    x                  REAL    NOT NULL,  -- centro en la ventana, píxeles CSS
+    y                  REAL    NOT NULL,
+    scroll_x           REAL    NOT NULL,
+    scroll_y           REAL    NOT NULL,
+    screen             TEXT,              -- URL de la disposición usada
+    sigma_px           REAL    NOT NULL,  -- desvío del error de la mirada supuesto
+    element_selector   TEXT,              -- elemento más probable, o NULL si no hay candidatos
+    element_p          REAL,
+    resolved_selector  TEXT,              -- elemento (o ancestro) que se da por mirado, o NULL
+    resolved_p         REAL,              -- su probabilidad, con la de sus descendientes
+    ambiguous          INTEGER NOT NULL,  -- 0/1: hubo que subir a un ancestro
+    unassigned_p       REAL    NOT NULL,  -- probabilidad de no mirar ningún elemento
+    attention_selector TEXT,              -- elemento más probable con clics y focos
+    attention_p        REAL,
+    long_stare         INTEGER NOT NULL,  -- 0/1: larga, sin interacción ni scroll
+    PRIMARY KEY (session_id, fixation)
+);
+
+CREATE INDEX gaze_fixation_session_t_idx ON gaze_fixation (session_id, t_start);
+
+-- Probabilidad de cada candidato de cada fijación (los que superan el mínimo).
+CREATE TABLE gaze_attribution (
+    session_id  INTEGER NOT NULL REFERENCES session (id) ON DELETE CASCADE,
+    fixation    INTEGER NOT NULL,
+    selector    TEXT,              -- NULL: sin asignar (vacío, distracción)
+    tag         TEXT,
+    interactive INTEGER,           -- 0/1; NULL en sin asignar
+    p_gaze      REAL    NOT NULL,  -- solo mirada y secuencia
+    p_attention REAL    NOT NULL   -- además, clics y focos
+);
+
+CREATE INDEX gaze_attribution_session_fixation_idx ON gaze_attribution (session_id, fixation);
+
 -- =====================================================================
 -- Referencias, capturas de pantalla y metadatos
 -- =====================================================================
@@ -373,4 +415,4 @@ CREATE TABLE meta (
 );
 
 -- Versión del esquema. Súbela con cada cambio de este archivo.
-INSERT INTO meta (key, value) VALUES ('schema_version', '7');
+INSERT INTO meta (key, value) VALUES ('schema_version', '8');
