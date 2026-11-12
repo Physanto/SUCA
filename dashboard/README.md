@@ -28,6 +28,9 @@ En la barra lateral se elige:
 | `heatmap_insights.py` | Lo que dice cada mapa en números, sin Streamlit: explicación de cada capa, reparto por zonas (3 × 3 de la primera vista y lo que quedó debajo), elementos más clicados, recorrido del cursor, segundos de mirada por elemento (ponderados por la probabilidad de la atribución, `p_gaze`) y estados de la mirada |
 | `heatmap_view.py` | Dispone esa explicación y sus gráficas debajo de cada mapa, en las páginas Sesión y Pantallas |
 | `findings.py` | Hallazgos de un estudio: agrupación de incidentes, gravedad propuesta, resúmenes e informe |
+| `sus.py` | Lectura del SUS: calificación (Pobre, Aceptable, Bueno, Excelente) y nota de A a F frente al promedio de 68, aporte de cada ítem y confiabilidad según cuántas personas respondieron |
+| `nielsen.py` | Relación orientativa entre los tipos de incidente y las 10 heurísticas de Nielsen, con su razón; **no es una evaluación heurística** |
+| `report.py`, `report_svg.py`, `report_inputs.py` | El informe de resultados en un solo archivo HTML: veredicto, SUS, IUC, tareas, hallazgos, mapas de calor, línea de tiempo y heurísticas. `report_inputs` lo arma desde la base, `report` lo redacta y `report_svg` dibuja las gráficas sin JavaScript |
 | `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |
 
@@ -39,10 +42,29 @@ En la barra lateral se elige:
 | `pages/session.py` | Sesión | Resumen (duración, tareas con éxito, incidentes, SUS, IUC, error y distancia de cada calibración, error medio de las comprobaciones de deriva y, si se reprocesó, error de la mirada en vivo y reprocesada y fijaciones); línea de tiempo con tareas, pantallas, episodios, incidentes y clics; señal facial; mapa de calor de clics, cursor o mirada por pantalla; tablas |
 | `pages/tasks.py` | Tareas | Tasa de éxito y duración de cada tarea por versión; resumen con duración y pasos medianos y el paso de desvío más frecuente |
 | `pages/screens.py` | Pantallas | Incidentes por pantalla (por tipo) y tiempo en cada una; mapa de calor de todas las sesiones del estudio, por versión |
-| `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman |
+| `pages/index.py` | Índice | IUC medio por versión; componentes por versión; IUC frente a SUS con la correlación de Spearman; el SUS por versión con su calificación y los ítems que más restaron |
 | `pages/references.py` | Referencias | Pasos de cada referencia, con la marca de obligatorio editable; elección de la condición final entre las candidatas; **Confirmar referencia** (la única escritura) |
 | `pages/replay.py` | Reproducción | La sesión, o una tarea, sobre las capturas tomadas durante la sesión, con cada señal en su color y en una capa que se puede ocultar; reproducir, velocidad, saltos de 5 s y la línea de tiempo con tareas, pantallas, clics e incidentes; y la distancia entre la mirada y cada clic |
 | `pages/findings.py` | Hallazgos | Los problemas agrupados por pantalla, elemento y tipo de incidente, de más a menos graves: personas afectadas por versión, tareas no completadas, si aparece también en V0, qué suele indicar y qué revisar, y dónde verlo en Reproducción. Resumen por versión y por tarea, recomendación y conclusiones del evaluador, e informe en Markdown para descargar |
+| `pages/report.py` | Informe | El informe de resultados completo (lectura general, SUS, IUC, tareas, hallazgos, mapas de calor, línea de tiempo y heurísticas), con la gravedad y la recomendación de los hallazgos principales y las conclusiones editables, para descargar como HTML |
+
+### Informe (`report.py`, `scripts/study_report.py`)
+
+Un único archivo HTML que se abre sin internet (las gráficas son SVG y los mapas de calor van incrustados), se proyecta o se imprime a PDF desde el navegador. Se genera desde la página **Informe** o desde la terminal:
+
+```bash
+python -m scripts.study_report --study 1
+python -m scripts.study_report --study 1 --modes guided free --versions V0 V2 \
+    --conclusions conclusiones.txt --output data/reports/informe.html
+```
+
+- **Lectura general:** SUS con su calificación, tareas completadas, IUC medio y hallazgos graves, y una frase que los resume. El **criterio** de esa frase se imprime en el propio informe (provisional, no un umbral del proyecto). Con menos de 3 sesiones por versión avisa que la lectura es poco fiable.
+- **SUS:** puntaje con calificación y nota, cada respuesta sobre la escala, por versión y los ítems que más restaron. Con menos de 5 respuestas dice que es una anécdota.
+- **Hallazgos:** los 10 principales redactados (qué indica, qué revisar, dónde verlo y la recomendación del evaluador) y el resto en una tabla.
+- **Mapas de calor** de clics y de mirada de las pantallas de los hallazgos principales, y la **línea de tiempo** de las sesiones.
+- **Heurísticas de Nielsen:** indicios por heurística, con el aviso de que es una relación orientativa y no una evaluación heurística.
+- **Privacidad:** contiene datos de participantes y capturas de la aplicación evaluada. Se guarda en `data/reports/` (no se versiona) y no debe subirse a ningún servicio en línea.
+- La gravedad y las recomendaciones que se editan en la página no se guardan en la base: descarga el informe antes de recargar.
 
 ### Mapas de calor (`heatmap.py`)
 
@@ -82,6 +104,7 @@ Las posiciones se llevan a coordenadas de la **página** (ventana + scroll de es
 | `get_gaze_quality(session_id)` | Calidad de la mirada reprocesada (`gaze_quality`): método, error en vivo y refinado en grados, deriva corregida, fijaciones; `None` sin reprocesar |
 | `get_calibrations(session_id)` | Cada intento de calibración: error en px y en grados, si se aceptó y la distancia medida |
 | `get_task_results(study_id)` | Resultados por tarea de todas las sesiones del estudio, con versión y participante |
+| `get_sus_answers(study_id)` | Las 10 respuestas del SUS y el puntaje de cada sesión del estudio |
 | `get_screen_summary(study_id)` | Por pantalla normalizada: visitas, sesiones, tiempo e incidentes |
 | `get_usability_index(study_id)` | Índice y componentes de cada sesión, con su SUS |
 | `get_references(study_id, status)` | Referencias de las tareas: pasos, candidatas, condición y pasos obligatorios |

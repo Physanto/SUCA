@@ -25,6 +25,7 @@ TITLES = {
     "references": "Referencias",
     "replay": "Reproducción",
     "findings": "Hallazgos",
+    "report": "Informe",
 }
 
 
