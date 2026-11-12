@@ -137,3 +137,22 @@ pytest tests/dashboard
 
 - `test_data.py` prueba cada función de datos sobre la base simulada y compara con su verdad de referencia. También comprueba que leer nunca escribe, que `data.py` no importa Streamlit y que ninguna página tiene SQL.
 - `test_pages.py` ejecuta la navegación y cada página sin navegador, con `AppTest` de Streamlit. Con `st.navigation`, `AppTest` no vuelve a ejecutar `app.py` al cambiar de página, así que cada página se prueba ejecutándola directamente.
+
+### Mirada atribuida y movimientos faciales
+
+En Reproducción se elige **Mirada: Reprocesada / En vivo**. La reprocesada
+muestra por fijación el selector resuelto, su probabilidad, la parte sin asignar,
+la ambigüedad y la mirada fija prolongada. Un selector sin resolver no equivale
+a certeza de mirar el vacío; se muestra su probabilidad sin asignar. La atribución
+se oculta al elegir mirada en vivo porque se calculó sobre la reprocesada.
+
+En Hallazgos, **¿Miró el siguiente elemento antes del incidente?** consulta los
+5 s previos con `p_gaze`, sin usar clics ni focos. Cada referencia confirmada se
+mantiene separada; el avance usa las mismas reglas que el análisis de desvíos.
+No se incorporan fijaciones que terminan después del incidente. Se informa el
+motivo cuando falta referencia, tramo de tarea o captura atribuida.
+
+La comparación facial usa ventanas de 2 s junto a incidentes y controles a más
+de 5 s de todos ellos, con movimientos relativos a la línea base neutra de esa
+persona. Las sesiones antiguas sin esa marca aparecen como datos insuficientes.
+No se infieren emociones ni se entrena un modelo desde el panel.

@@ -5,9 +5,10 @@ evaluador las confirma en la reproducción, escribe la recomendación y las
 conclusiones, y descarga el informe.
 """
 
+import pandas as pd
 import streamlit as st
 
-from dashboard import findings, ui
+from dashboard import facial_insights, findings, gaze_findings, ui
 
 ui.page_header(
     "Hallazgos",
@@ -36,6 +37,27 @@ with ui.selected_data() as data:
     incidents = data.get_incidents(study_id=study_id)
     task_results = data.get_task_results(study_id)
     study_name = every["study"].iloc[0]
+    references = data.get_references(study_id, status="confirmed")
+    gaze_evidence = []
+    facial_evidence, facial_missing = [], 0
+    for sid in sessions["session_id"]:
+        own = incidents[incidents["session_id"] == sid]
+        if own.empty:
+            continue
+        gaze_evidence.append(gaze_findings.before_incidents(
+            own, data.get_events(int(sid)), references,
+            data.get_gaze_fixations(int(sid)), data.get_gaze_attribution(int(sid)),
+            data.get_session_tasks(int(sid)),
+        ).assign(session_id=sid))
+        session = data.get_session(int(sid))
+        if session["ended_at"] is not None:
+            try:
+                facial_evidence.append(facial_insights.incident_comparison(
+                    data.get_face(int(sid)), data.get_gaze_targets(int(sid)), own,
+                    float(session["started_at"]), float(session["ended_at"]),
+                ).assign(Sesión=int(sid)))
+            except ValueError:
+                facial_missing += 1
 
 if sessions.empty:
     st.caption("Elige al menos un modo y una versión con sesiones.")
@@ -159,6 +181,35 @@ for index, row in enumerate(edited.head(10).itertuples(), start=1):
             f"**Dónde verlo.** {row.examples}. Abre **Reproducción**, elige la sesión y ve a ese "
             "minuto."
         )
+
+with st.expander("¿Miró el siguiente elemento antes del incidente?"):
+    st.caption(
+        "Probabilidad aproximada en los 5 s previos, solo con mirada y secuencia; "
+        "no usa clics ni focos. Cada referencia se muestra por separado. "
+        "Sin captura atribuida se deja vacío. Las fijaciones vecinas no son independientes."
+    )
+    if gaze_evidence:
+        shown_evidence = pd.concat(gaze_evidence, ignore_index=True)
+        shown_evidence["p_seen"] = shown_evidence["p_seen"] * 100
+        st.dataframe(shown_evidence.rename(columns={
+            "t": "Momento", "type": "Incidente", "task_id": "Tarea",
+            "reference_id": "Referencia", "selector": "Elemento siguiente",
+            "p_seen": "Probabilidad (%)", "fixations": "Fijaciones",
+            "reason": "Observación", "session_id": "Sesión",
+        }), hide_index=True)
+    else:
+        st.caption("Sin incidentes para consultar en estas sesiones.")
+
+with st.expander("Movimientos faciales junto a incidentes y momentos de control"):
+    st.caption(
+        "Cambios respecto de los 10 s de rostro relajado de esa persona. Ventanas de 2 s; "
+        "se excluyen pose extrema, captura insuficiente y calibraciones. Son movimientos "
+        "observados: no se infieren emociones."
+    )
+    if facial_evidence:
+        st.dataframe(pd.concat(facial_evidence, ignore_index=True), hide_index=True)
+    if facial_missing:
+        st.caption(f"{facial_missing} sesiones sin línea base facial utilizable.")
 
 # --- Tareas ----------------------------------------------------------------------------------
 st.subheader("Tareas")

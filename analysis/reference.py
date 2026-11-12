@@ -261,6 +261,28 @@ def compare(data: SessionData, params: Parameters) -> pd.DataFrame:
     return columns.frame("task_result", rows)
 
 
+def next_reference_step(events: pd.DataFrame, steps: list[dict[str, Any]]) -> int:
+    """Posición del paso siguiente tras los eventos observados de una tarea.
+
+    Comparte las reglas de avance, saltos y controles persistentes del cálculo
+    de desvíos. No usa eventos posteriores al momento consultado: quien llama
+    recorta la tarea y el tiempo. Una posición igual a len(steps) indica fin.
+    """
+    observed = extract_steps(events)
+    titles: dict[str, set[str]] = {}
+    for step in [*steps, *observed]:
+        screen = step["screen"]
+        title = _text(screen.get("title"))
+        if title:
+            titles.setdefault(screen["url"], set()).add(title)
+    ambiguous = {url for url, values in titles.items() if len(values) > 1}
+    route = _Route([_step_key(step, ambiguous) for step in steps], set(), {})
+    for step in observed:
+        key = _step_key(step, ambiguous)
+        route.advance(key, _control_key(step, key))
+    return route.cursor
+
+
 def _text(value: str | None) -> str:
     """Normaliza espacios sin cambiar mayúsculas ni el contenido capturado."""
     return " ".join((value or "").split())

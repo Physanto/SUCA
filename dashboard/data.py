@@ -427,6 +427,14 @@ class DashboardData:
         query = f"SELECT 1 FROM {table} WHERE session_id = ? LIMIT 1"
         return self._connection.execute(query, (_plain(session_id),)).fetchone() is not None
 
+    def get_gaze_targets(self, session_id: int) -> pd.DataFrame:
+        """Tramos de calibración y línea base neutra para consultar señales faciales."""
+        return self._frame(
+            "SELECT t, t_end, phase, calibration_type FROM gaze_target"
+            " WHERE session_id = ? ORDER BY t", session_id,
+            columns=["t", "t_end", "phase", "calibration_type"],
+        )
+
     def get_calibrations(self, session_id: int) -> pd.DataFrame:
         """Calibraciones de mirada de una sesión, en orden (cada intento es una fila).
 
