@@ -114,6 +114,10 @@ class BatchWriter(Protocol):
         """Inserta filas en una tabla. Todas las filas tienen las mismas columnas."""
         ...
 
+    def insert_distinct(self, table: str, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Inserta solo filas que no existan ya con exactamente todos sus valores."""
+        ...
+
     def upsert(self, table: str, rows: Sequence[Mapping[str, Any]], key: Sequence[str]) -> None:
         """Inserta filas o, si ya existe una con la misma clave, la reemplaza."""
         ...
@@ -311,6 +315,24 @@ class SqliteRepository:
             f"INSERT INTO {_quote(table)} ({_column_list(columns)}) "
             f"VALUES ({', '.join('?' for _ in columns)})",
             [tuple(row[column] for column in columns) for row in rows],
+        )
+
+    def insert_distinct(self, table: str, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Evita repetir mediciones idénticas reenviadas tras un fallo de transporte.
+
+        Debe usarse dentro de la transacción de ingesta, que serializa los
+        escritores. IS compara también valores nulos. No fusiona mediciones
+        parecidas ni calibraciones distintas con el mismo error.
+        """
+        if not rows:
+            return
+        columns = list(rows[0])
+        placeholders = ', '.join('?' for _ in columns)
+        same = ' AND '.join(f'{_quote(column)} IS ?' for column in columns)
+        self.connection.executemany(
+            f"INSERT INTO {_quote(table)} ({_column_list(columns)}) SELECT {placeholders}"
+            f" WHERE NOT EXISTS (SELECT 1 FROM {_quote(table)} WHERE {same})",
+            [tuple(row[column] for column in columns) * 2 for row in rows],
         )
 
     def upsert(self, table: str, rows: Sequence[Mapping[str, Any]], key: Sequence[str]) -> None:

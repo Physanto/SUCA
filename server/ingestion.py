@@ -173,7 +173,7 @@ def store_calibration(
     La sesión guarda el error en grados de la última calibración de cada tipo:
     si hubo que recalibrar, cuenta la última.
     """
-    writer.insert(
+    writer.insert_distinct(
         "calibration",
         [
             {
