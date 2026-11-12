@@ -1,4 +1,4 @@
-"""Catálogo de problemas sembrados de un estudio, para evaluar los detectores (P3).
+"""Catálogo de problemas sembrados de un estudio: dónde ocurren y qué los detecta.
 
 El catálogo es un YAML (por ejemplo, ``studies/example-problems.yaml``) con, por
 problema, las versiones en que está activo, la tarea y las pantallas donde

@@ -11,8 +11,8 @@ from analysis.parameters import load_parameters
 from analysis.run import analyze_session
 from scripts import evaluate_study, simulate_experiment
 from scripts.evaluation import report
-from scripts.evaluation.catalog import load_catalog
 from shared import db
+from shared.problems import load_catalog
 
 pytest.importorskip("scipy", reason="optional statistics dependencies: requirements-ml.txt")
 

@@ -19,9 +19,9 @@ import pandas as pd
 from analysis.loader import SqliteAnalysisRepository
 from analysis.parameters import Parameters
 from scripts.evaluation import agreement, detection, statistics
-from scripts.evaluation.catalog import Catalog
 from scripts.evaluation.index import COMPONENTS, DEFAULT_HALVES, session_indexes
 from scripts.evaluation.repository import StudyResults, load_study_results
+from shared.problems import Catalog
 
 MIN_GROUP = 3
 """Sesiones mínimas por versión para compararlas."""

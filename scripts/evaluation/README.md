@@ -65,7 +65,7 @@ python -m scripts.evaluate_study --db data/experiment.db --study 1 --friction-i-
 
 | Archivo | Qué hace |
 |---|---|
-| `catalog.py` | Lee y valida el catálogo de problemas sembrados |
+| `shared/problems.py` | Lee y valida el catálogo de problemas sembrados (lo usa también el modelo de aprendizaje automático) |
 | `repository.py` | Lee los resultados de las sesiones guiadas cerradas |
 | `index.py` | IUC de cada sesión, completo y por mitades, con `analysis.usability_index` |
 | `statistics.py` | Pruebas estadísticas y acuerdo |

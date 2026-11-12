@@ -16,8 +16,8 @@ from collections.abc import Mapping, Set
 
 import pandas as pd
 
-from scripts.evaluation.catalog import Catalog
 from scripts.evaluation.repository import StudyResults
+from shared.problems import Catalog
 
 
 def incident_matches(results: StudyResults, catalog: Catalog) -> pd.DataFrame:

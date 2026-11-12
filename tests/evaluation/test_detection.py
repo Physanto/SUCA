@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 
 from scripts.evaluation import agreement, detection
-from scripts.evaluation.catalog import load_catalog
 from scripts.evaluation.repository import StudyResults
+from shared.problems import load_catalog
 
 CATALOG = load_catalog(Path(__file__).resolve().parents[2] / "studies" / "example-problems.yaml")
 

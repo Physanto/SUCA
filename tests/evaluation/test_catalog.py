@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.evaluation.catalog import CatalogError, load_catalog
+from shared.problems import CatalogError, load_catalog
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "studies" / "example-problems.yaml"

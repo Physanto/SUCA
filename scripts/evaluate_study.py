@@ -31,10 +31,10 @@ from pathlib import Path
 
 from analysis.parameters import ParametersError, load_parameters
 from scripts.evaluation import agreement, report
-from scripts.evaluation.catalog import CatalogError, load_catalog
 from scripts.evaluation.repository import load_study_results
 from shared import db
 from shared.config import ConfigError, load_config
+from shared.problems import CatalogError, load_catalog
 
 
 def main(argv: list[str] | None = None) -> int:
