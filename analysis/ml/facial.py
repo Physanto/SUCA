@@ -29,7 +29,8 @@ class FacialSettings:
     """Umbrales iniciales para preparar rasgos; todavía pendientes del piloto.
 
     Attributes:
-        window_ms: Ancho de la ventana de rasgos, entre 1 y 2 segundos.
+        window_ms: Ancho de la ventana de rasgos, entre 1 y 5 segundos: 2 s para
+            ver los movimientos junto a los incidentes y 5 s en las ventanas del modelo.
         max_pose_deg: Giro o inclinación absoluta que invalida una muestra.
         min_valid_share: Fracción mínima de muestras útiles en la ventana.
         min_baseline_ms: Duración mínima cubierta por la captura neutra.
@@ -51,8 +52,8 @@ class FacialSettings:
         values = vars(self)
         if any(not np.isfinite(value) or value <= 0 for value in values.values()):
             raise ValueError("facial settings must be finite and positive")
-        if not 1000 <= self.window_ms <= 2000:
-            raise ValueError("facial window_ms must be between 1000 and 2000")
+        if not 1000 <= self.window_ms <= 5000:
+            raise ValueError("facial window_ms must be between 1000 and 5000")
         if self.min_valid_share > 1 or self.blink_threshold >= 1:
             raise ValueError("facial proportions must be <= 1 and blink_threshold < 1")
 
