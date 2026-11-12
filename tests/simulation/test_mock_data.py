@@ -405,5 +405,5 @@ def test_cli_refuses_the_real_database_and_reports_each_session(
     assert main(["--db", "other.db", "--seed", "3"]) == 0
     assert calls == [(Path("other.db").resolve(), 3)]
     output = capsys.readouterr().out
-    assert "session 5 (free_v1): 6 incidents" in output
+    assert "session 5 (free_v1): 7 incidents" in output
     assert "ground truth: " in output

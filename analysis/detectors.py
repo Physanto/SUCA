@@ -565,3 +565,61 @@ class RepeatedSearchDetector:
                         rows.append({**_incident(submit, self.incident_type), "element": None})
                         reported = True
         return columns.frame("incident", rows)
+
+
+@DETECTORS.register
+class SilentFailureDetector:
+    """Envíos de formulario que fallan sin un aviso que la captura reconozca.
+
+    El sitio puede mostrar su error de una forma que la captura no lee (un aviso
+    general sin vínculo con el campo, por ejemplo): no hay ``validation_error``,
+    pero la persona sigue en la misma pantalla y corrige lo que escribió. Se
+    detecta por el comportamiento, no por el marcado del sitio.
+    """
+
+    incident_type = "silent_failure"
+
+    def find(self, data: SessionData, params: Parameters) -> pd.DataFrame:
+        """Marca el envío tras el cual se corrige un campo ya llenado sin avanzar ni error.
+
+        Las búsquedas quedan fuera: sus reformulaciones las cubre ``repeated_search``.
+        Los reintentos sin cambiar nada (volver a pulsar enviar) los cubren los
+        clics sin respuesta y los de frustración.
+        """
+        window = params.silent_failure.retry_window_ms
+        rows = []
+        for run in form_runs(data):
+            if run.kind == "search":
+                continue
+            submits = [event for event in run.events if event.type == "form_submit"]
+            # El último envío de la serie es el intento: los anteriores son envíos duplicados.
+            if submits and self._corrected_without_notice(run.visit.events, submits[-1], window):
+                rows.append(_incident(submits[-1], self.incident_type))
+        return columns.frame("incident", rows)
+
+    @staticmethod
+    def _corrected_without_notice(events: list[Any], submit: Any, window: float) -> bool:
+        """Si tras el envío se corrige un campo ya llenado sin error ni cambio de pantalla.
+
+        Los eventos de la visita terminan donde la persona cambia de pantalla, así
+        que un reintento dentro de ellos ocurre sin avanzar.
+        """
+        filled = {
+            event.element["selector"]
+            for event in events
+            if event.type == "field_change"
+            and is_field(event.element)
+            and event.Index < submit.Index
+        }
+        for event in events:
+            if event.Index <= submit.Index:
+                continue
+            if event.t - submit.t > window or event.type == "validation_error":
+                return False
+            if (
+                event.type == "field_change"
+                and is_field(event.element)
+                and event.element["selector"] in filled
+            ):
+                return True
+        return False

@@ -9,7 +9,7 @@
 # distancias en píxeles CSS.
 
 # Versión de este conjunto de parámetros (texto libre, no vacío).
-version: "pilot-1"
+version: "pilot-2"
 
 # Ráfaga de clics rápidos en un área pequeña (rage click).
 rage_click:
@@ -34,6 +34,11 @@ navigation_loop_window: 3
 repeated_search:
   min_searches: 2        # búsquedas mínimas para considerarla repetida
   window_ms: 60000       # ventana de tiempo en que deben ocurrir
+
+# Fallo silencioso: un envío de formulario tras el cual la persona sigue en la misma pantalla,
+# sin un error de validación registrado, y corrige un campo que ya había llenado.
+silent_failure:
+  retry_window_ms: 20000 # tiempo tras el envío en que corregir un campo cuenta como reintento
 
 # Tarea excedida (modo guiado): veces el tiempo de la referencia a partir de las cuales se marca.
 task_overtime_factor: 3

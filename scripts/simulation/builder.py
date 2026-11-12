@@ -379,6 +379,16 @@ class _FormError:
     problem: int | None
 
 
+@dataclass
+class _SilentFailure:
+    """Fallo silencioso pendiente para el próximo formulario."""
+
+    field_index: int
+    times: int
+    erases: bool
+    problem: int | None
+
+
 class SessionBuilder:
     """Construye una sesión simulada con interfaz fluida.
 
@@ -472,6 +482,7 @@ class SessionBuilder:
         self._pending_rage: tuple[int | None, int | None] | None = None
         self._pending_hesitation: tuple[float | None, int | None] | None = None
         self._pending_form_error: _FormError | None = None
+        self._pending_silent_failure: _SilentFailure | None = None
         self._open_pause: dict[str, Any] | None = None
         self._skip_think = False
         self._scroll_y = 0.0
@@ -756,6 +767,35 @@ class SessionBuilder:
         self._pending_form_error = _FormError(
             field_index, times, erases, pause, error_type, problem
         )
+        return self
+
+    def with_silent_failure(
+        self,
+        field_index: int = 0,
+        *,
+        times: int = 1,
+        erases: bool = False,
+        problem: int | None = None,
+    ) -> "SessionBuilder":
+        """El siguiente formulario de la ruta falla sin un aviso que la captura reconozca.
+
+        La página responde pero no avanza ni marca un error de validación (por
+        ejemplo, un aviso general sin vínculo con el campo). La persona corrige el
+        campo y lo envía de nuevo. Cada intento fallido es un ``silent_failure``.
+        Como no hay ``validation_error``, el análisis ve cada intento como una
+        serie de interacciones distinta: un episodio por intento y ningún
+        ``field_reentry``.
+
+        Args:
+            field_index: Campo que la persona corrige, por posición.
+            times: Cuántas veces falla antes de aceptarse.
+            erases: Si la persona vuelve a llenar todos los campos y no solo uno.
+            problem: Problema sembrado que representa.
+
+        Returns:
+            El constructor.
+        """
+        self._pending_silent_failure = _SilentFailure(field_index, times, erases, problem)
         return self
 
     def with_repeated_search(
@@ -1094,6 +1134,9 @@ class SessionBuilder:
             start = start if start is not None else self._last_click
             self._type()
         error, self._pending_form_error = self._pending_form_error, None
+        silent, self._pending_silent_failure = self._pending_silent_failure, None
+        if error is not None and silent is not None:
+            raise BuilderError("with_form_error() and with_silent_failure() cannot share a form")
         errors = reentries = 0
         attempts = 1
         if error is not None:
@@ -1130,6 +1173,11 @@ class SessionBuilder:
                     reentries += 1
                 attempts += 1
             self._submit(action, role=repeat, navigate=True, screen_role=role)
+        elif silent is not None:
+            start = self._silent_failures(action, silent, role=role, screen=screen, start=start)
+            self._submit(
+                action, role="repeat" if role == "path" else role, navigate=True, screen_role=role
+            )
         else:
             self._submit(action, role=role, navigate=True, required=action.required)
         if action.kind == "search":
@@ -1146,6 +1194,56 @@ class SessionBuilder:
             )
             outcome = "success" if action.kind == "login" else "submitted"
             self._episode(action.kind, start, self._submit_time, screen, outcome, metrics)
+
+    def _silent_failures(
+        self,
+        action: FillForm,
+        silent: _SilentFailure,
+        *,
+        role: str | None,
+        screen: str,
+        start: float,
+    ) -> float:
+        """Envíos que fallan sin aviso reconocible, cada uno seguido de la corrección del campo.
+
+        Cada intento queda como un episodio: sin ``validation_error``, el análisis
+        parte las interacciones del formulario en cada envío seguido de una edición.
+
+        Returns:
+            Inicio de la serie del intento final: el primer clic de la última corrección.
+        """
+        if not 0 <= silent.field_index < len(action.fields):
+            raise BuilderError(f"with_silent_failure(): the form has no field {silent.field_index}")
+        repeat = "repeat" if role == "path" else role
+        login = action.kind == "login"
+        for attempt in range(silent.times):
+            first_try = attempt == 0
+            self._submit(
+                action,
+                role=role if first_try else repeat,
+                navigate=False,
+                required=action.required and first_try,
+            )
+            sent = self._submit_time
+            self._incident(
+                "silent_failure", sent, sent, element=action.form, problem=silent.problem
+            )
+            # En el inicio de sesión, un intento seguido de otro en la misma visita no dio acceso.
+            self._episode(
+                action.kind,
+                start,
+                sent,
+                screen,
+                "failed" if login else "submitted",
+                {"attempts": 1, "errors": 0} if login else {"errors": 0, "reentries": 0},
+            )
+            field_element = action.fields[silent.field_index]
+            start = None
+            for element in action.fields if silent.erases else (field_element,):
+                self._click(element, role=repeat)
+                start = start if start is not None else self._last_click
+                self._type()
+        return start
 
     def _submit(
         self,
@@ -1812,6 +1910,7 @@ class SessionBuilder:
                 ("with_rage_click", self._pending_rage),
                 ("with_hesitation", self._pending_hesitation),
                 ("with_form_error", self._pending_form_error),
+                ("with_silent_failure", self._pending_silent_failure),
             )
             if value is not None
         ]

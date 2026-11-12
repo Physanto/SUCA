@@ -32,7 +32,7 @@ Contenido:
 | `guided_v0` | `guided` | V0 | Las 4 tareas por la ruta correcta, sin incidentes |
 | `guided_v1` | `guided` | V1 | Problemas 1 a 4 |
 | `guided_v2` | `guided` | V2 | Problemas 1 a 8, un desvío conocido (tarea 3: elige transferencia antes que tarjeta) y una tarea abandonada (tarea 4) |
-| `free_v1` | `free` | V1 | Búsquedas con errores, imagen que parece botón, botón lento, ida y vuelta entre pantallas, pausa y formulario abandonado |
+| `free_v1` | `free` | V1 | Inicio de sesión que falla sin aviso reconocible y se corrige, búsquedas con errores, imagen que parece botón, botón lento, ida y vuelta entre pantallas, pausa y formulario abandonado |
 
 Las sesiones con cámara (todas menos la de referencia) tienen **ojos simulados**: una persona con un modelo geométrico conocido que mira adonde va el cursor, unos 300 ms antes que la mano. Con ellos la base trae lo mismo que una sesión real:
 
@@ -109,7 +109,7 @@ def test_finds_a_dead_click(tmp_path, params):
     assert list(found["t"]) == [item.t_start for item in session.truth.incidents]
 ```
 
-- **Patrones:** `with_rage_click`, `with_dead_click`, `with_navigation_loop`, `with_form_error`, `with_repeated_search`, `with_long_pause`, `with_hesitation`, `with_form_abandonment`, `with_overtime` y `with_deviation_at_step`.
+- **Patrones:** `with_rage_click`, `with_dead_click`, `with_navigation_loop`, `with_form_error`, `with_silent_failure`, `with_repeated_search`, `with_long_pause`, `with_hesitation`, `with_form_abandonment`, `with_overtime` y `with_deviation_at_step`.
 - **Tareas:** `with_task(task_id, ruta)` empieza una tarea; `follow(n)` hace las siguientes acciones de la ruta; `end_task("reference" | "done" | "gave_up")` la termina. `do(...)` hace acciones fuera de la ruta y `redo(...)` repite acciones de la ruta sin que cuenten como desvío.
 - **Umbrales:** los patrones leen `analysis/parameters.yaml` y por defecto lo superan. Con valores por debajo del umbral (`with_rage_click(clicks=2)`, `with_long_pause(ms=1000)`), el patrón ocurre pero la verdad no lo cuenta: sirve para el caso negativo de cada detector. El comportamiento normal nunca cruza ningún umbral. Para probar con otros umbrales, pasa `params=` al constructor.
 - **Verdad:** `session.truth.incidents`, `.episodes`, `.tasks` y `.usability_index`.

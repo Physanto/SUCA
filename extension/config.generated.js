@@ -75,7 +75,7 @@
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.7.0",
+    "version": "1.8.0",
     "enums": {
       "batch_type": [
         "events",
@@ -132,7 +132,8 @@
         "field_reentry",
         "form_abandonment",
         "repeated_search",
-        "task_overtime"
+        "task_overtime",
+        "silent_failure"
       ],
       "episode_type": [
         "login",

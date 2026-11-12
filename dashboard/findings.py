@@ -67,6 +67,14 @@ INCIDENT_ADVICE: Mapping[str, tuple[str, str]] = {
         "La tarea tomó mucho más que la ruta ideal.",
         "En qué paso se desvió (página Tareas) y qué pantallas consumieron el tiempo.",
     ),
+    "silent_failure": (
+        "La persona envió un formulario, siguió en la misma pantalla y corrigió lo que había "
+        "escrito, sin que se registrara un error de validación: el envío falló y el sitio no se "
+        "lo dijo de una forma que la captura reconozca (por ejemplo, un aviso general).",
+        "En la reproducción, qué mensaje vio. Conviene que el error aparezca junto al campo, con "
+        "un texto que diga cómo corregirlo, y que se anuncie a los lectores de pantalla "
+        "(role=alert o aria-invalid): sin eso, una persona que no ve el aviso no sabe qué pasó.",
+    ),
 }
 
 #: Gravedades propuestas, de mayor a menor.

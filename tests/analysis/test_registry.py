@@ -87,6 +87,7 @@ def test_stage_registries_only_accept_contract_types() -> None:
         "field_reentry",
         "form_abandonment",
         "repeated_search",
+        "silent_failure",
     )
     assert episodes.EPISODE_DETECTORS.names() == ("login", "form", "search", "screen")
     with pytest.raises(RegistryError, match="not one of"):

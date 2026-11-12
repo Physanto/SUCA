@@ -49,7 +49,7 @@
       "enum": ["navigation", "no_permission", "error"]
     },
     "incident_type": {
-      "description": "Tipo de incidente de fricción que producen los detectores del análisis.",
+      "description": "Tipo de incidente de fricción que producen los detectores del análisis. 'silent_failure' es un envío de formulario tras el cual la persona sigue en la misma pantalla, sin que se registrara un error de validación, y corrige un campo que ya había llenado: el sitio falló sin avisar de una forma que la captura reconozca.",
       "enum": [
         "rage_click",
         "dead_click",
@@ -60,7 +60,8 @@
         "field_reentry",
         "form_abandonment",
         "repeated_search",
-        "task_overtime"
+        "task_overtime",
+        "silent_failure"
       ]
     },
     "episode_type": {

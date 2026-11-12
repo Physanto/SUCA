@@ -118,7 +118,8 @@ def detect(data: SessionData, params: Parameters) -> pd.DataFrame:
 def _form_rows(data: SessionData, kind: str) -> pd.DataFrame:
     """Produce episodios de formulario o autenticación con sus métricas."""
     rows = []
-    for run in form_runs(data):
+    runs = form_runs(data)
+    for run in runs:
         if run.kind != kind:
             continue
         attempts, errors, reentries = form_metrics(run)
@@ -129,8 +130,18 @@ def _form_rows(data: SessionData, kind: str) -> pd.DataFrame:
         submitted = bool(signals) and signals[-1] == "form_submit"
         outcome = "submitted" if submitted else "abandoned"
         if kind == "login":
+            # Si vuelve a intentarlo sin salir de la pantalla, este intento no dio acceso.
+            retried = any(
+                other is not run
+                and other.kind == kind
+                and other.visit is run.visit
+                and other.start > run.start
+                for other in runs
+            )
             outcome = (
-                "success"
+                "failed"
+                if submitted and retried
+                else "success"
                 if submitted and run.visit.exited
                 else ("submitted" if submitted else "failed" if attempts else "abandoned")
             )

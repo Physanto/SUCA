@@ -37,13 +37,14 @@ def changed(key: str, value: Any) -> dict[str, Any]:
 def test_loads_the_default_parameters() -> None:
     params = load_parameters()
 
-    assert params.version == "pilot-1"
+    assert params.version == "pilot-2"
     assert (params.rage_click.min_clicks, params.rage_click.window_ms) == (3, 1000)
     assert params.rage_click.radius_px == 30
     assert params.dead_click.wait_ms == 1500
     assert (params.long_pause_ms, params.hesitation_ms) == (5000, 2000)
     assert params.navigation_loop_window == 3
     assert (params.repeated_search.min_searches, params.repeated_search.window_ms) == (2, 60000)
+    assert params.silent_failure.retry_window_ms == 20000
     assert params.task_overtime_factor == 3.0
     assert params.friction_i_max is None
     assert params.camera_delay_ms == 0.0
