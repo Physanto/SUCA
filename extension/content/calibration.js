@@ -253,6 +253,33 @@
   }
 
   /**
+   * Reduce un recorrido a un punto cada `minGapMs` como mínimo, para guardarlo
+   * como objetivo sin repetir la frecuencia de la pantalla.
+   *
+   * @param {Array<{t: number, x: number, y: number}>} points - Recorrido en orden de tiempo.
+   * @param {number} minGapMs - Separación mínima entre puntos guardados, en milisegundos.
+   * @returns {Array<{t: number, x: number, y: number}>} El primer punto, los que
+   *   quedan a `minGapMs` o más del último guardado y el último del recorrido.
+   */
+  function thinPath(points, minGapMs) {
+    const kept = [];
+    for (const point of points) {
+      // Se compara con el último guardado, no con el anterior del recorrido: la
+      // pantalla dibuja más rápido que `minGapMs` y ningún punto pasaría el filtro.
+      // Se tolera 1 ms porque los cuadros de la pantalla no llegan exactos.
+      if (kept.length === 0 || point.t - kept[kept.length - 1].t >= minGapMs - 1) {
+        kept.push(point);
+      }
+    }
+    const last = points[points.length - 1];
+    // El final se conserva para que el objetivo cubra todo el recorrido mostrado.
+    if (last !== undefined && kept[kept.length - 1] !== last) {
+      kept.push(last);
+    }
+    return kept;
+  }
+
+  /**
    * Posición del punto en movimiento en una fracción del recorrido (curva de Lissajous
    * que empieza en el centro). Su velocidad máxima, ~0,4 anchos de ventana por segundo,
    * se sigue con la vista sin saltos.
@@ -372,8 +399,7 @@
       }
       await link.request('calibration.pursuit', { points, t_start: tStart, t_end: tEnd });
       // Como objetivo se guarda el recorrido a la frecuencia de la cámara: basta para interpolar.
-      const sampled = points.filter((p, i) => i === 0 || p.t - points[i - 1].t >= PURSUIT_RECORD_MS - 1);
-      target(type, 'pursuit', 0, tStart, tEnd, sampled);
+      target(type, 'pursuit', 0, tStart, tEnd, thinPath(points, PURSUIT_RECORD_MS));
       return true;
     }
 
@@ -1236,6 +1262,7 @@
     degToPx,
     assessFraming,
     pursuitAt,
+    thinPath,
     precisionPx,
     FRAMING_LIMITS,
     CALIBRATION_POINTS,

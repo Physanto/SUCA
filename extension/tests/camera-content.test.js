@@ -551,6 +551,27 @@ test('the moving point starts at the center and stays inside the window', () => 
   }
 });
 
+test('the recorded moving point keeps one position per camera frame at screen refresh rate', () => {
+  // A 60 Hz la pantalla dibuja cada ~16,7 ms, menos que la separación pedida:
+  // antes se comparaba con el punto anterior y solo quedaba el primero.
+  const path = Array.from({ length: 721 }, (_, i) => ({ t: 1000 + i * 16.7, x: i, y: 2 * i }));
+  const kept = UX.calibrationMath.thinPath(path, 33);
+
+  assert.ok(kept.length >= 350 && kept.length <= 362);
+  assert.equal(kept[0], path[0]);
+  assert.equal(kept[kept.length - 1], path[path.length - 1]);
+  for (let i = 1; i < kept.length - 1; i += 1) {
+    assert.ok(kept[i].t - kept[i - 1].t >= 32);
+  }
+});
+
+test('thinning keeps every point when they are already far apart and handles an empty path', () => {
+  const path = [0, 40, 80].map((t) => ({ t, x: t, y: t }));
+
+  assert.deepEqual(UX.calibrationMath.thinPath(path, 33), path);
+  assert.deepEqual(UX.calibrationMath.thinPath([], 33), []);
+});
+
 test('precision is the RMS distance between consecutive samples of each point', () => {
   const series = [
     [
