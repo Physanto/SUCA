@@ -287,6 +287,8 @@ def refine_gaze(
         inputs = repository.load_gaze_inputs(session_id)
         if inputs.features.empty:
             return None
+        # Cada sesión con la pantalla y la distancia de su equipo.
+        settings = settings.for_session(inputs.calibrations)
         refined = refine(inputs, settings)
         repository.save_gaze_refinement(session_id, refined.samples, refined.quality)
     except Exception as error:

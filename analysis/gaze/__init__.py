@@ -1,4 +1,4 @@
-"""Mirada: medición en grados y reprocesamiento al cerrar la sesión.
+"""Mirada: medición en grados, reprocesamiento al cerrar la sesión y atribución.
 
 - ``model``: el estimador geométrico de la extensión, en numpy.
 - ``samples``: cuadros (``gaze_feature``) junto con el punto que debían mirar
@@ -9,7 +9,10 @@
 - ``layout``: zona y elemento de un punto, con la disposición registrada.
 """
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, replace
+
+import pandas as pd
 
 from analysis.parameters import GazeParams
 from shared.config import CameraConfig
@@ -48,3 +51,33 @@ class GazeSettings:
             blink_threshold=camera.blink_threshold,
             params=params,
         )
+
+    def for_session(self, calibrations: pd.DataFrame) -> "GazeSettings":
+        """Ajustes con la pantalla y la distancia que registró la sesión.
+
+        Cada equipo puede tener su pantalla (opciones de la extensión): la
+        calibración guarda los píxeles por centímetro con que trabajó, y esos
+        mandan sobre la configuración. La distancia de referencia pasa a ser la
+        mediana de las medidas en la sesión. Sin esos datos (sesiones
+        anteriores), quedan los de la configuración.
+
+        Args:
+            calibrations: Filas de ``calibration`` de la sesión (``t``, ``type`` y,
+                si existen, ``css_px_per_cm`` y ``viewing_distance_cm``).
+
+        Returns:
+            Ajustes de la sesión.
+        """
+        changes: dict[str, float] = {}
+        if "css_px_per_cm" in calibrations:
+            screens = calibrations.sort_values("t")["css_px_per_cm"].astype(float).dropna()
+            screens = screens[screens > 0]
+            if len(screens):
+                # La última calibración manda: si se cambió la pantalla, se recalibró.
+                changes["css_px_per_cm"] = float(screens.iloc[-1])
+        if "viewing_distance_cm" in calibrations:
+            distances = calibrations["viewing_distance_cm"].astype(float).dropna()
+            distances = distances[distances > 0]
+            if len(distances) and math.isfinite(float(distances.median())):
+                changes["viewing_distance_cm"] = float(distances.median())
+        return replace(self, **changes) if changes else self

@@ -314,3 +314,28 @@ def test_a_failed_refinement_does_not_undo_the_analysis(
     assert results.gaze_quality is None
     assert "gaze refinement failed: disk on fire" in caplog.text
     assert len(results.usability_index) <= 1
+
+
+def test_each_session_uses_the_screen_and_distance_it_recorded(settings: GazeSettings) -> None:
+    calibrations = pd.DataFrame(
+        {
+            "t": [1.0, 2.0, 3.0],
+            "type": ["initial", "drift_check", "initial"],
+            "css_px_per_cm": [40.0, None, 36.2],
+            "viewing_distance_cm": [48.0, 50.0, None],
+        }
+    )
+
+    session = settings.for_session(calibrations)
+
+    # La última calibración con pantalla manda; la distancia es la mediana de las medidas.
+    assert session.css_px_per_cm == 36.2
+    assert session.viewing_distance_cm == 49.0
+    assert session.params is settings.params
+
+
+def test_sessions_without_screen_data_keep_the_configuration(settings: GazeSettings) -> None:
+    old = pd.DataFrame({"t": [1.0], "type": ["initial"], "viewing_distance_cm": [None]})
+
+    assert settings.for_session(old) == settings
+    assert settings.for_session(columns.empty("gaze_calibrations")) == settings

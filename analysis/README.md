@@ -184,7 +184,7 @@ La extensión registra, además de cada muestra de mirada, los números con que 
 | `gaze/attention.py` | Atribución de cada fijación a los elementos de la pantalla con probabilidades, con el estado "sin asignar", la secuencia, el árbol de la pantalla y, solo en la atención estimada, los clics y focos. Ver "Atribución" |
 | `gaze/bench.py` | Banco de pruebas: error en grados de la mirada en vivo y del modelo reajustado, por fase, región de la pantalla, cambio de postura de la cabeza y a lo largo del tiempo; vuelta del teclado, precisión y estados de la mirada |
 
-Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en las secciones `gaze` y `attention` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`.
+Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en las secciones `gaze` y `attention` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`. Cada sesión usa, si los registró, los píxeles por centímetro de su última calibración (ajustados en las opciones de la extensión de ese equipo) y la mediana de las distancias medidas (`GazeSettings.for_session`).
 
 ### Banco de pruebas
 

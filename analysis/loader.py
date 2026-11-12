@@ -474,6 +474,7 @@ _GAZE_TARGETS_SQL = (
 )
 _GAZE_CALIBRATIONS_SQL = (
     "SELECT t, type, error_px, error_deg, accepted, camera_delay_ms, viewing_distance_cm,"
+    " css_px_per_cm,"
     " precision_deg, return_error_deg, estimator, corrected, correction_x_px, correction_y_px"
     " FROM calibration WHERE session_id = ? ORDER BY t"
 )

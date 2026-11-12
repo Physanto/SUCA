@@ -87,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+    settings = settings.for_session(inputs.calibrations)
     report = evaluate(inputs.features, inputs.targets, inputs.calibrations, settings)
     print(render(report))
     if args.json is not None:
