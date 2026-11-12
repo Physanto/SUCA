@@ -348,6 +348,80 @@ class DashboardData:
         )
         return None if frame.empty else frame.iloc[0].to_dict()
 
+    def get_gaze_states(self, session_id: int) -> pd.DataFrame:
+        """Estado de cada muestra de mirada, también de las que el mapa no dibuja.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``t`` y ``state`` (``gaze_state``) de la mirada reprocesada si existe, si
+            no de la registrada en vivo. Vacío en sesiones sin estado.
+        """
+        table = "gaze_refined" if self._has_rows("gaze_refined", session_id) else "gaze_sample"
+        return self._frame(
+            f"SELECT t, state FROM {table} WHERE session_id = ? AND state IS NOT NULL ORDER BY t",
+            session_id,
+            columns=["t", "state"],
+        )
+
+    def get_gaze_fixations(self, session_id: int) -> pd.DataFrame:
+        """Fijaciones de la mirada atribuidas a los elementos de la pantalla.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            Filas de ``gaze_fixation`` (sin ``session_id``), en orden de tiempo:
+            ``fixation``, ``t_start``, ``t_end``, ``screen`` (URL), el elemento más
+            probable, el que se da por mirado, ``unassigned_p``, ``long_stare``…
+            Vacío si la sesión no se atribuyó.
+        """
+        names = [
+            "fixation",
+            "t_start",
+            "t_end",
+            "x",
+            "y",
+            "screen",
+            "element_selector",
+            "element_p",
+            "resolved_selector",
+            "resolved_p",
+            "ambiguous",
+            "unassigned_p",
+            "attention_selector",
+            "attention_p",
+            "long_stare",
+        ]
+        return self._frame(
+            f"SELECT {', '.join(names)} FROM gaze_fixation WHERE session_id = ? ORDER BY t_start",
+            session_id,
+            columns=names,
+            ints=("fixation",),
+            bools=("ambiguous", "long_stare"),
+        )
+
+    def get_gaze_attribution(self, session_id: int) -> pd.DataFrame:
+        """Probabilidad de cada candidato de cada fijación.
+
+        Args:
+            session_id: Sesión.
+
+        Returns:
+            ``fixation``, ``selector`` (vacío: sin asignar), ``tag``, ``interactive``,
+            ``p_gaze`` (solo mirada) y ``p_attention`` (con clics y focos).
+        """
+        names = ["fixation", "selector", "tag", "interactive", "p_gaze", "p_attention"]
+        return self._frame(
+            f"SELECT {', '.join(names)} FROM gaze_attribution WHERE session_id = ?"
+            " ORDER BY fixation",
+            session_id,
+            columns=names,
+            ints=("fixation",),
+            bools=("interactive",),
+        )
+
     def _has_rows(self, table: str, session_id: int) -> bool:
         """Si una tabla tiene filas de la sesión. ``table`` viene del código, nunca del usuario."""
         query = f"SELECT 1 FROM {table} WHERE session_id = ? LIMIT 1"
