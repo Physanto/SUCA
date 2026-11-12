@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://suca.local/contracts/batches/layout.schema.json",
   "title": "Disposición de la pantalla",
-  "description": "Qué ocupa cada parte de la ventana en un momento de la sesión: las regiones semánticas y los elementos interactivos visibles, con sus rectángulos. Se registra junto con cada captura de la pestaña evaluada. Sirve para asignar zona y elemento a un punto de mirada después de la sesión, cuando la página ya no existe. Solo lleva números, selectores, etiquetas y roles: nunca texto de la página.",
+  "description": "Qué ocupa cada parte de la ventana en un momento de la sesión: las regiones semánticas y los elementos visibles (interactivos y de contenido), con sus rectángulos y el árbol que forman. Se registra junto con cada captura de la pestaña evaluada. Sirve para atribuir la mirada a zonas y elementos después de la sesión, cuando la página ya no existe. Solo lleva números, selectores, etiquetas y roles: nunca texto de la página.",
   "type": "object",
   "properties": {
     "t": { "description": "Momento de la medición.", "$ref": "../common.json#/$defs/timestamp" },
@@ -26,7 +26,7 @@
       }
     },
     "elements": {
-      "description": "Elementos interactivos visibles en la ventana (enlaces, botones, campos y elementos con rol interactivo), en orden del documento.",
+      "description": "Elementos visibles en la ventana: primero los interactivos (enlaces, botones, campos y elementos con rol interactivo) y después los de contenido (títulos, párrafos, imágenes, etiquetas, celdas, mensajes con role=\"alert\" o \"status\", tarjetas, secciones y bloques con texto propio), cada grupo en orden del documento. Lo que está dentro de un elemento interactivo o de una imagen no se registra aparte.",
       "type": "array",
       "items": {
         "type": "object",
@@ -35,13 +35,15 @@
           "tag": { "description": "Etiqueta HTML en minúsculas.", "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "role": { "description": "Rol ARIA explícito o implícito, o null.", "type": ["string", "null"] },
           "box": { "description": "Rectángulo en la ventana al medir.", "$ref": "#/$defs/box" },
-          "fixed": { "description": "Si el elemento (o un ancestro) tiene posición fija o pegajosa.", "type": "boolean" }
+          "fixed": { "description": "Si el elemento (o un ancestro) tiene posición fija o pegajosa.", "type": "boolean" },
+          "interactive": { "description": "Si el elemento es interactivo (true) o de contenido (false). Si falta, es interactivo: los registros anteriores a la versión 1.6.0 solo tenían interactivos.", "type": "boolean" },
+          "parent": { "description": "Posición (desde 0) en 'elements' del ancestro registrado más cercano, o null si no tiene. Si falta, null. Que la posición exista lo comprueba quien la usa.", "type": ["integer", "null"], "minimum": 0 }
         },
         "required": ["selector", "tag", "role", "box", "fixed"],
         "additionalProperties": false
       }
     },
-    "truncated": { "description": "Si había más elementos interactivos visibles que el máximo que se registra y se omitieron los últimos.", "type": "boolean" }
+    "truncated": { "description": "Si había más elementos visibles (interactivos o de contenido) que el máximo que se registra de cada grupo y se omitieron los últimos.", "type": "boolean" }
   },
   "required": ["t", "screen", "viewport_width", "viewport_height", "scroll_x", "scroll_y", "regions", "elements", "truncated"],
   "additionalProperties": false,

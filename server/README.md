@@ -24,7 +24,7 @@ curl -H "X-Api-Token: suca-local-dev-token" http://127.0.0.1:8765/health
 
 | Método y ruta | Cuerpo | Respuesta | Errores |
 |---|---|---|---|
-| `GET /health` | — | `{"status": "ok", "contract_version": "1.5.0", "schema_version": "7"}` | 401 |
+| `GET /health` | — | `{"status": "ok", "contract_version": "1.6.0", "schema_version": "7"}` | 401 |
 | `GET /studies` | — | `[{"id", "name", "system_under_test", "description", "recorded_fields"}]` | 401 |
 | `GET /studies/{id}/tasks` | — | Tareas en orden: `[{"id", "position", "instruction", "references": [{"id", "end_condition"}]}]`, solo con referencias confirmadas | 401, 404 |
 | `POST /sessions` | `new-session` | 201 `{"session_id", "started_at"}` | 401, 422 |
