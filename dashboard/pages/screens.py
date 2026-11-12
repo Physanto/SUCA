@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-from dashboard import charts, heatmap, replay, ui
+from dashboard import charts, heatmap, heatmap_insights, heatmap_view, replay, ui
 
 ui.page_header(
     "Pantallas",
@@ -29,14 +29,24 @@ with ui.selected_data() as data:
     )  # fmt: skip
     located = []
     viewport = heatmap.DEFAULT_VIEWPORT
+    # Lo de cada sesión, para las gráficas que acompañan al mapa.
+    all_events, all_fixations, all_attribution, all_states = [], [], [], []
+    labels: dict[str, str] = {}
     for session_id in chosen["session_id"]:
         session = data.get_session(int(session_id))
         viewport = replay.viewport_of(session)
-        located.append(
-            heatmap.points(
-                data.get_events(int(session_id)), data.get_gaze(int(session_id)), layer or "click"
+        events = data.get_events(int(session_id))
+        located.append(heatmap.points(events, data.get_gaze(int(session_id)), layer or "click"))
+        all_events.append(events)
+        labels.update(heatmap_insights.labels_by_selector(events))
+        if layer == "gaze":
+            all_fixations.append(
+                data.get_gaze_fixations(int(session_id)).assign(session_id=session_id)
             )
-        )
+            all_attribution.append(
+                data.get_gaze_attribution(int(session_id)).assign(session_id=session_id)
+            )
+            all_states.append(data.get_gaze_states(int(session_id)))
 
 if screens.empty:
     st.caption("Todavía no hay pantallas: analiza las sesiones.")
@@ -70,6 +80,25 @@ st.caption(
     f"{len(chosen)} sesiones · {drawn.drawn} puntos dibujados"
     + (f"; {drawn.outside} fuera de la imagen" if drawn.outside else "")
     + ("." if background is not None else ". Sin captura de esta pantalla: fondo neutro.")
+)
+
+
+def _joined(frames: list[pd.DataFrame]) -> pd.DataFrame:
+    """Une lo de varias sesiones; vacío si no hay ninguna."""
+    frames = [frame for frame in frames if not frame.empty]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+heatmap_view.show_details(
+    layer or "click",
+    screen,
+    selected,
+    viewport,
+    events=_joined(all_events),
+    fixations=_joined(all_fixations),
+    attribution=_joined(all_attribution),
+    states=_joined(all_states),
+    labels=labels,
 )
 
 st.subheader("Resumen")

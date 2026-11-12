@@ -23,8 +23,10 @@ En la barra lateral se elige:
 | `app.py` | Navegación: registra las páginas (`PAGES`) y muestra los selectores de base y estudio |
 | `data.py` | `DashboardData`: todas las consultas del panel y su única escritura. No importa Streamlit |
 | `ui.py` | Ayudas de Streamlit: selectores, base elegida (`selected_data`), estudio elegido (`selected_study`), encabezado de página y tablas en español (`show_table`) |
-| `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice) y el resumen por tarea |
+| `charts.py` | Gráficas de Altair de todas las páginas (línea de tiempo, señal facial, incidentes, tareas, índice, zonas de un mapa, elementos más clicados o mirados, estados de la mirada) y el resumen por tarea |
 | `heatmap.py` | Mapas de calor de clics, cursor y mirada sobre la captura de cada pantalla. La mirada es la reprocesada si existe |
+| `heatmap_insights.py` | Lo que dice cada mapa en números, sin Streamlit: explicación de cada capa, reparto por zonas (3 × 3 de la primera vista y lo que quedó debajo), elementos más clicados, recorrido del cursor, segundos de mirada por elemento (ponderados por la probabilidad de la atribución, `p_gaze`) y estados de la mirada |
+| `heatmap_view.py` | Dispone esa explicación y sus gráficas debajo de cada mapa, en las páginas Sesión y Pantallas |
 | `findings.py` | Hallazgos de un estudio: agrupación de incidentes, gravedad propuesta, resúmenes e informe |
 | `replay.py`, `replay-player.html` | Reproducción visual de una sesión y la comprobación de la mirada con los clics |
 | `pages/` | Una página por archivo |

@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 
-from dashboard import charts, heatmap, replay, ui
+from dashboard import charts, heatmap, heatmap_insights, heatmap_view, replay, ui
 
 ui.page_header(
     "Sesión",
@@ -28,6 +28,9 @@ with ui.selected_data() as data:
     face = data.get_face(session_id)
     calibrations = data.get_calibrations(session_id)
     gaze_quality = data.get_gaze_quality(session_id)
+    gaze_fixations = data.get_gaze_fixations(session_id)
+    gaze_attribution = data.get_gaze_attribution(session_id)
+    gaze_states = data.get_gaze_states(session_id)
     captures = data.get_screen_captures(study_id)
 
 summary = sessions.set_index("session_id").loc[session_id]
@@ -133,9 +136,8 @@ else:
     shots = captures[[heatmap.screen_key(url) == screen for url in captures["url"]]]
     background = Image.open(shots.iloc[-1]["absolute_path"]) if not shots.empty else None
     chosen = located[located["screen"] == screen][["x", "y"]].to_numpy()
-    drawn = heatmap.render(
-        chosen, layer=layer or "click", background=background, viewport=replay.viewport_of(session)
-    )
+    viewport = replay.viewport_of(session)
+    drawn = heatmap.render(chosen, layer=layer or "click", background=background, viewport=viewport)
     st.image(drawn.image, width="stretch")
     st.caption(
         f"{drawn.drawn} puntos dibujados"
@@ -149,6 +151,17 @@ else:
             if background is not None
             else ". Sin captura de esta pantalla: se dibuja sobre un fondo neutro."
         )
+    )
+    heatmap_view.show_details(
+        layer or "click",
+        screen,
+        chosen,
+        viewport,
+        events=events,
+        fixations=gaze_fixations,
+        attribution=gaze_attribution,
+        states=gaze_states,
+        labels=heatmap_insights.labels_by_selector(events),
     )
 
 # --- Datos ------------------------------------------------------------------------------
