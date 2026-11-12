@@ -44,18 +44,28 @@ with ui.selected_data() as data:
         own = incidents[incidents["session_id"] == sid]
         if own.empty:
             continue
-        gaze_evidence.append(gaze_findings.before_incidents(
-            own, data.get_events(int(sid)), references,
-            data.get_gaze_fixations(int(sid)), data.get_gaze_attribution(int(sid)),
-            data.get_session_tasks(int(sid)),
-        ).assign(session_id=sid))
+        gaze_evidence.append(
+            gaze_findings.before_incidents(
+                own,
+                data.get_events(int(sid)),
+                references,
+                data.get_gaze_fixations(int(sid)),
+                data.get_gaze_attribution(int(sid)),
+                data.get_session_tasks(int(sid)),
+            ).assign(session_id=sid)
+        )
         session = data.get_session(int(sid))
         if session["ended_at"] is not None:
             try:
-                facial_evidence.append(facial_insights.incident_comparison(
-                    data.get_face(int(sid)), data.get_gaze_targets(int(sid)), own,
-                    float(session["started_at"]), float(session["ended_at"]),
-                ).assign(Sesión=int(sid)))
+                facial_evidence.append(
+                    facial_insights.incident_comparison(
+                        data.get_face(int(sid)),
+                        data.get_gaze_targets(int(sid)),
+                        own,
+                        float(session["started_at"]),
+                        float(session["ended_at"]),
+                    ).assign(Sesión=int(sid))
+                )
             except ValueError:
                 facial_missing += 1
 
@@ -191,12 +201,22 @@ with st.expander("¿Miró el siguiente elemento antes del incidente?"):
     if gaze_evidence:
         shown_evidence = pd.concat(gaze_evidence, ignore_index=True)
         shown_evidence["p_seen"] = shown_evidence["p_seen"] * 100
-        st.dataframe(shown_evidence.rename(columns={
-            "t": "Momento", "type": "Incidente", "task_id": "Tarea",
-            "reference_id": "Referencia", "selector": "Elemento siguiente",
-            "p_seen": "Probabilidad (%)", "fixations": "Fijaciones",
-            "reason": "Observación", "session_id": "Sesión",
-        }), hide_index=True)
+        st.dataframe(
+            shown_evidence.rename(
+                columns={
+                    "t": "Momento",
+                    "type": "Incidente",
+                    "task_id": "Tarea",
+                    "reference_id": "Referencia",
+                    "selector": "Elemento siguiente",
+                    "p_seen": "Probabilidad (%)",
+                    "fixations": "Fijaciones",
+                    "reason": "Observación",
+                    "session_id": "Sesión",
+                }
+            ),
+            hide_index=True,
+        )
     else:
         st.caption("Sin incidentes para consultar en estas sesiones.")
 

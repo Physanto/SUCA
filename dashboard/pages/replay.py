@@ -63,10 +63,14 @@ with ui.selected_data() as data:
     calibrations = data.get_calibrations(session_id)
 
 if not gaze.empty:
-    st.caption("Mirada mostrada: " + (
-        "reprocesada; atribución calculada solo con mirada y secuencia."
-        if gaze["source"].iloc[0] == "refined" else "en vivo."
-    ))
+    st.caption(
+        "Mirada mostrada: "
+        + (
+            "reprocesada; atribución calculada solo con mirada y secuencia."
+            if gaze["source"].iloc[0] == "refined"
+            else "en vivo."
+        )
+    )
 if payload["frames"]:
     if len(payload["frames"]) > MANY_FRAMES:
         st.caption(

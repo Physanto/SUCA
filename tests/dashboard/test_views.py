@@ -191,11 +191,13 @@ def replay_session() -> dict[str, Any]:
 
 
 def test_click_agreement_ignores_missing_coordinates_and_zero_zero() -> None:
-    events = events_frame([
-        {"t": 1000, "type": "click", "x": 0, "y": 0},
-        {"t": 1200, "type": "click", "x": 5, "y": None},
-        {"t": 1500, "type": "click", "x": 0, "y": 20},
-    ])
+    events = events_frame(
+        [
+            {"t": 1000, "type": "click", "x": 0, "y": 0},
+            {"t": 1200, "type": "click", "x": 5, "y": None},
+            {"t": 1500, "type": "click", "x": 0, "y": 20},
+        ]
+    )
     gaze = pd.DataFrame({"t": [1000, 1400], "x": [0, 0], "y": [20, 20]})
     measured = replay.gaze_at_clicks(events, gaze)
     assert measured["t"].tolist() == [1500]
@@ -203,15 +205,26 @@ def test_click_agreement_ignores_missing_coordinates_and_zero_zero() -> None:
 
 
 def test_fixation_marks_clip_the_window_and_use_only_gaze_probability() -> None:
-    fixations = pd.DataFrame([{
-        "t_start": 500, "t_end": 2000, "x": 50, "y": 70,
-        "resolved_selector": "#card", "resolved_p": .65, "attention_p": .99,
-        "unassigned_p": .15, "ambiguous": True, "long_stare": True,
-        "screen": "https://a/card/25",
-    }])
+    fixations = pd.DataFrame(
+        [
+            {
+                "t_start": 500,
+                "t_end": 2000,
+                "x": 50,
+                "y": 70,
+                "resolved_selector": "#card",
+                "resolved_p": 0.65,
+                "attention_p": 0.99,
+                "unassigned_p": 0.15,
+                "ambiguous": True,
+                "long_stare": True,
+                "screen": "https://a/card/25",
+            }
+        ]
+    )
     marks = replay.fixation_marks(fixations, 1000, 1500)
     assert marks[0]["t"] == 0 and marks[0]["end"] == 500
-    assert marks[0]["probability"] == .65
+    assert marks[0]["probability"] == 0.65
     assert marks[0]["ambiguous"] and marks[0]["long_stare"]
     assert marks[0]["screen"] == "/card/{id}"
 

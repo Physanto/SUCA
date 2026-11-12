@@ -431,7 +431,8 @@ class DashboardData:
         """Tramos de calibración y línea base neutra para consultar señales faciales."""
         return self._frame(
             "SELECT t, t_end, phase, calibration_type FROM gaze_target"
-            " WHERE session_id = ? ORDER BY t", session_id,
+            " WHERE session_id = ? ORDER BY t",
+            session_id,
             columns=["t", "t_end", "phase", "calibration_type"],
         )
 

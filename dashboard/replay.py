@@ -277,9 +277,7 @@ def build_payload(
     }
 
 
-def fixation_marks(
-    fixations: pd.DataFrame | None, low: float, high: float
-) -> list[dict[str, Any]]:
+def fixation_marks(fixations: pd.DataFrame | None, low: float, high: float) -> list[dict[str, Any]]:
     """Fijaciones del tramo con probabilidad solo de mirada y sus indicios de ambigüedad.
 
     Las fijaciones que empezaron antes se recortan al inicio, para que la
@@ -293,15 +291,20 @@ def fixation_marks(
             continue
         resolved = None if pd.isna(row.resolved_selector) else row.resolved_selector
         probability = None if pd.isna(row.resolved_p) else float(row.resolved_p)
-        marks.append({
-            "t": _ms(max(low, row.t_start), low),
-            "end": _ms(min(high, row.t_end), low),
-            "x": float(row.x), "y": float(row.y),
-            "selector": resolved, "probability": probability,
-            "unassigned_p": float(row.unassigned_p),
-            "ambiguous": bool(row.ambiguous), "long_stare": bool(row.long_stare),
-            "screen": screen_key(row.screen) if isinstance(row.screen, str) else None,
-        })
+        marks.append(
+            {
+                "t": _ms(max(low, row.t_start), low),
+                "end": _ms(min(high, row.t_end), low),
+                "x": float(row.x),
+                "y": float(row.y),
+                "selector": resolved,
+                "probability": probability,
+                "unassigned_p": float(row.unassigned_p),
+                "ambiguous": bool(row.ambiguous),
+                "long_stare": bool(row.long_stare),
+                "screen": screen_key(row.screen) if isinstance(row.screen, str) else None,
+            }
+        )
     return marks
 
 
@@ -361,7 +364,9 @@ def gaze_at_clicks(events: pd.DataFrame, gaze: pd.DataFrame) -> pd.DataFrame:
     if events.empty or gaze.empty:
         return pd.DataFrame(columns=columns)
     clicks = events[
-        (events["type"] == "click") & events["x"].notna() & events["y"].notna()
+        (events["type"] == "click")
+        & events["x"].notna()
+        & events["y"].notna()
         & ~((events["x"] == 0) & (events["y"] == 0))
     ]
     valid = gaze[gaze["x"].notna() & gaze["y"].notna()].sort_values("t")

@@ -327,8 +327,8 @@ class SqliteRepository:
         if not rows:
             return
         columns = list(rows[0])
-        placeholders = ', '.join('?' for _ in columns)
-        same = ' AND '.join(f'{_quote(column)} IS ?' for column in columns)
+        placeholders = ", ".join("?" for _ in columns)
+        same = " AND ".join(f"{_quote(column)} IS ?" for column in columns)
         self.connection.executemany(
             f"INSERT INTO {_quote(table)} ({_column_list(columns)}) SELECT {placeholders}"
             f" WHERE NOT EXISTS (SELECT 1 FROM {_quote(table)} WHERE {same})",
