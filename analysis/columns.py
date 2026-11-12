@@ -177,6 +177,41 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
             },
             max_rows=1,
         ),
+        # Fijaciones atribuidas a los elementos de la pantalla (analysis/gaze/attention.py).
+        "gaze_fixation": TableSpec(
+            {
+                "fixation": _INT,
+                "t_start": _FLOAT,
+                "t_end": _FLOAT,
+                "x": _FLOAT,
+                "y": _FLOAT,
+                "scroll_x": _FLOAT,
+                "scroll_y": _FLOAT,
+                "screen": _TEXT_NULL,
+                "sigma_px": _FLOAT,
+                "element_selector": _TEXT_NULL,
+                "element_p": _FLOAT_NULL,
+                "resolved_selector": _TEXT_NULL,
+                "resolved_p": _FLOAT_NULL,
+                "ambiguous": _BOOL,
+                "unassigned_p": _FLOAT,
+                "attention_selector": _TEXT_NULL,
+                "attention_p": _FLOAT_NULL,
+                "long_stare": _BOOL,
+            },
+            unique=("fixation",),
+        ),
+        # Probabilidad de cada candidato de cada fijación; selector nulo es sin asignar.
+        "gaze_attribution": TableSpec(
+            {
+                "fixation": _INT,
+                "selector": _TEXT_NULL,
+                "tag": _TEXT_NULL,
+                "interactive": _BOOL_NULL,
+                "p_gaze": _FLOAT,
+                "p_attention": _FLOAT,
+            },
+        ),
         # Borradores: se actualizan por tarea y grabación, sin reemplazar confirmadas.
         "reference_draft": TableSpec(
             {
@@ -327,6 +362,16 @@ SPECS: Mapping[str, TableSpec] = MappingProxyType(
             },
             exact=False,
         ),
+        # Eventos que la atribución de la mirada usa: clics, focos y actividad.
+        "gaze_interactions": TableSpec(
+            {
+                "t": _FLOAT,
+                "type": _TEXT,
+                "selector": _TEXT_NULL,
+            },
+            exact=False,
+            enum=("type", "event_type"),
+        ),
         "references": TableSpec(
             {
                 "id": _INT,
@@ -347,6 +392,9 @@ RESULT_TABLES = ("episode", "incident", "task_result", "usability_index")
 
 GAZE_RESULT_TABLES = ("gaze_refined", "gaze_quality")
 """Tablas de la mirada reprocesada; se guardan aparte, con ``save_gaze_refinement``."""
+
+GAZE_ATTENTION_TABLES = ("gaze_fixation", "gaze_attribution")
+"""Tablas de la atribución de la mirada; se guardan aparte, con ``save_gaze_attention``."""
 
 
 def spec(name: str) -> TableSpec:

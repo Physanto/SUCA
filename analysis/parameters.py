@@ -22,6 +22,9 @@ _T = TypeVar("_T")
 #: Marca de los campos que admiten 0 además de valores positivos.
 _ALLOW_ZERO = {"allow_zero": True}
 
+#: Marca de los campos que son una probabilidad: mayores que 0 y menores que 1.
+_PROBABILITY = {"probability": True}
+
 
 class ParametersError(ValueError):
     """El archivo de parámetros no existe, no es YAML válido o tiene valores incorrectos."""
@@ -90,6 +93,56 @@ class GazeParams:
 
 
 @dataclass(frozen=True)
+class AttentionParams:
+    """Atribución de cada fijación a los elementos de la pantalla, con probabilidades.
+
+    Attributes:
+        unassigned_prior: Probabilidad previa de que una fijación no esté sobre
+            ningún elemento (mira el vacío, está distraída o pensando).
+        natural_error_factor: Veces que el error de la mirada en uso natural
+            supera al medido en los puntos de control, donde la persona fija un
+            punto a propósito.
+        default_error_deg: Error medio de la mirada si la sesión no lo midió.
+        low_confidence_factor: Veces que crece el error en una fijación con
+            confianza baja (postura fuera de la calibrada, vuelta de mirar fuera).
+        candidate_radius_sigma: Distancia máxima, en desvíos del error, entre la
+            fijación y un elemento candidato.
+        stay_weight: Veces que es más probable volver a fijar el mismo elemento
+            que pasar a otro cualquiera.
+        near_weight: Peso extra de pasar a un elemento cercano.
+        near_distance_deg: Distancia en que el peso extra de un elemento cercano
+            cae a un tercio (e⁻¹).
+        sequence_max_gap_ms: Hueco entre fijaciones desde el que la anterior ya
+            no informa sobre la siguiente.
+        interaction_window_ms: Tramo antes de un clic o un foco en que una
+            fijación se considera preparación de esa interacción.
+        interaction_likelihood_ratio: Veces que una interacción con un elemento
+            hace más verosímil que la fijación previa estuviera sobre él. Solo en
+            la atención estimada, nunca en la atribución por la mirada sola.
+        confident_probability: Probabilidad desde la que un elemento (o el
+            ancestro que reúne a los candidatos) se da por mirado.
+        long_stare_ms: Duración desde la que una fijación sin interacción ni
+            scroll se marca como mirada fija prolongada.
+        min_probability: Probabilidad mínima de un candidato para guardarlo.
+    """
+
+    unassigned_prior: float = field(metadata=_PROBABILITY)
+    natural_error_factor: float
+    default_error_deg: float
+    low_confidence_factor: float
+    candidate_radius_sigma: float
+    stay_weight: float
+    near_weight: float
+    near_distance_deg: float
+    sequence_max_gap_ms: float
+    interaction_window_ms: float
+    interaction_likelihood_ratio: float
+    confident_probability: float = field(metadata=_PROBABILITY)
+    long_stare_ms: float
+    min_probability: float = field(metadata=_PROBABILITY)
+
+
+@dataclass(frozen=True)
 class Parameters:
     """Todos los parámetros del análisis.
 
@@ -109,6 +162,7 @@ class Parameters:
             llega a 0, o ``None`` mientras no se fije con el piloto.
         camera_delay_ms: Retraso de la cámara respecto de los eventos (0 o más).
         gaze: Medición y reprocesamiento de la mirada.
+        attention: Atribución de la mirada a los elementos de la pantalla.
     """
 
     version: str
@@ -122,6 +176,7 @@ class Parameters:
     friction_i_max: float | None
     camera_delay_ms: float = field(metadata=_ALLOW_ZERO)
     gaze: GazeParams
+    attention: AttentionParams
 
 
 def load_parameters(path: Path | str | None = None) -> Parameters:
@@ -187,7 +242,8 @@ def _build(cls: type[_T], data: Any, key: str) -> _T:
 def _convert(key: str, value: Any, field_type: Any, metadata: Any) -> Any:
     """Comprueba el tipo y el rango de un valor.
 
-    Los números deben ser positivos, salvo los campos marcados para admitir 0.
+    Los números deben ser positivos, salvo los campos marcados para admitir 0;
+    las probabilidades, además, menores que 1.
 
     Args:
         key: Ruta de la clave, para los mensajes.
@@ -221,4 +277,6 @@ def _convert(key: str, value: Any, field_type: Any, metadata: Any) -> Any:
     if not minimum_ok:
         rule = "must be zero or positive" if metadata.get("allow_zero") else "must be positive"
         raise ParametersError(f"{key}: {rule}, got {value}")
+    if metadata.get("probability") and value >= 1:
+        raise ParametersError(f"{key}: must be a probability below 1, got {value}")
     return float(value) if field_type is float else value

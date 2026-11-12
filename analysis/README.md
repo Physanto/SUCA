@@ -51,7 +51,7 @@ loader.load_session ─► cleaning ─► screens ─► episodes ─► detect
 | `cleaning.py`, `screens.py` | Etapas 1 y 2 |
 | `episodes.py`, `detectors.py` | Etapas 3 y 4: fachadas que ejecutan los detectores registrados |
 | `reference.py`, `usability_index.py` | Etapas 5 a 7 |
-| `gaze/` | Mirada: medición en grados (banco de pruebas) y reprocesamiento al cerrar la sesión. Ver "Mirada" |
+| `gaze/` | Mirada: medición en grados (banco de pruebas), reprocesamiento al cerrar la sesión y atribución de cada fijación a los elementos de la pantalla. Ver "Mirada" |
 | `ml/` | Modelo de aprendizaje automático (fase posterior) |
 
 Reanalizar actualiza los borradores de referencia y conserva los que el evaluador ya confirmó.
@@ -181,9 +181,10 @@ La extensión registra, además de cada muestra de mirada, los números con que 
 | `gaze/samples.py` | Junta cada cuadro con el punto que debía mirarse en ese momento (el punto en movimiento, desplazado por el retraso de la cámara) y descarta parpadeos y cuadros incompletos |
 | `gaze/refine.py` | Reprocesamiento al cerrar la sesión: reajuste del modelo, deriva corregida en el tiempo, suavizado de Kalman en dos pasadas, fijaciones (I-DT) y zona y elemento de cada punto. Ver "Reprocesamiento" |
 | `gaze/layout.py` | Zona y elemento de un punto con la disposición registrada de la pantalla (`page_layout`) |
+| `gaze/attention.py` | Atribución de cada fijación a los elementos de la pantalla con probabilidades, con el estado "sin asignar", la secuencia, el árbol de la pantalla y, solo en la atención estimada, los clics y focos. Ver "Atribución" |
 | `gaze/bench.py` | Banco de pruebas: error en grados de la mirada en vivo y del modelo reajustado, por fase, región de la pantalla, cambio de postura de la cabeza y a lo largo del tiempo; vuelta del teclado, precisión y estados de la mirada |
 
-Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en la sección `gaze` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`.
+Los datos se cargan con `SqliteAnalysisRepository.load_gaze_inputs` (protocolo `GazeRepository`), aparte de `SessionData`: el resto del análisis no los necesita. Los umbrales están en las secciones `gaze` y `attention` de `parameters.yaml`; la pantalla (`css_px_per_cm`) y el umbral de parpadeo, en `camera` de `config/shared.json`.
 
 ### Banco de pruebas
 
@@ -207,3 +208,28 @@ python -m scripts.gaze_bench --session 17 --json informe.json  # y en JSON
 5. **Zona y elemento** con la última disposición registrada antes de cada punto: la región semántica más interna que lo contiene (o la cuadrícula de 3 × 3) y el elemento interactivo más pequeño. A diferencia de la mirada en vivo, el elemento solo puede ser uno interactivo, porque son los únicos que se registran.
 
 **Error honesto** (`refined_error_deg`): cada punto de control se predice con un modelo que no lo vio y una corrección de deriva interpolada sin su procedimiento. `live_error_deg` es el error de la mirada en vivo en los mismos puntos. Sin calibración utilizable, `method = live`: se suaviza la mirada en vivo y se le asignan fijaciones y zonas, sin reajuste.
+
+### Atribución
+
+Después del reprocesamiento, `python -m analysis.run` atribuye cada fijación a los elementos de la pantalla y lo guarda en `gaze_fixation` (una fila por fijación) y `gaze_attribution` (una fila por fijación y candidato). Si falla, lo informa en el log y la mirada reprocesada queda guardada igual. Tarda menos de un segundo por sesión.
+
+La mirada por webcam se equivoca varios grados: una fijación entre un título y un buscador puede ser de cualquiera de los dos. Por eso no se asigna al elemento que contiene el punto, sino que se calcula la probabilidad de cada candidato:
+
+1. **Candidatos:** los elementos (interactivos y de contenido) de la última disposición registrada antes del fin de la fijación, a menos de `attention.candidate_radius_sigma` desvíos del error, más **sin asignar** (`selector` nulo): la persona mira el vacío, está distraída o pensando. Mirar fuera de la pantalla ya lo marca el estado de la mirada y no forma fijaciones.
+2. **Error:** el error medio de la mirada que quedó en `gaze_refined` (o `attention.default_error_deg`), agrandado por `attention.natural_error_factor` porque en uso natural la persona no fija un punto a propósito, y por `attention.low_confidence_factor` en fijaciones con confianza baja.
+3. **Verosimilitud:** la persona mira un punto cualquiera del elemento y la estimación se corre con un error gaussiano. Un elemento grande reparte su verosimilitud en más superficie que uno pequeño; sin asignar es uniforme en la ventana. Previa: `attention.unassigned_prior` para sin asignar y el resto por igual entre los elementos.
+4. **Secuencia:** modelo oculto de Markov con avance y retroceso. Volver a fijar el mismo elemento es `attention.stay_weight` veces más probable que pasar a otro, y pasar a uno cercano (`attention.near_weight`, `attention.near_distance_deg`) más que a uno lejano. Un hueco mayor que `attention.sequence_max_gap_ms` o un cambio de pantalla cortan la secuencia.
+5. **Árbol:** si ningún elemento llega a `attention.confident_probability`, se sube al ancestro registrado que reúne a los candidatos (por ejemplo, dos enlaces pequeños dentro de la misma tarjeta): `resolved_selector` es la tarjeta y `ambiguous` vale 1.
+
+**Dos salidas que no se mezclan:**
+
+| Columnas | Usa | Para qué |
+|---|---|---|
+| `p_gaze`; `element_*`, `resolved_*`, `unassigned_p` | Mirada y secuencia | Comparar con la interacción (pregunta P5). No sabe nada de los clics: si los usara, "la mirada coincide con lo que clicó" sería cierto por construcción |
+| `p_attention`; `attention_*` | Además, clics, dobles clics, menú contextual y focos | Atención estimada. Un clic sobre un elemento hace `attention.interaction_likelihood_ratio` veces más verosímil que las fijaciones del tramo previo (`attention.interaction_window_ms`) estuvieran sobre él. Sube la probabilidad, no la fija en 1: si la mirada estaba lejos, el clic no la arrastra |
+
+**Mirada fija prolongada** (`long_stare`): una fijación de `attention.long_stare_ms` o más sin clics, focos, cambios en campos ni scroll. Es un indicio de distracción o de pensar, no una prueba.
+
+**¿Vio el elemento?** `analysis.gaze.attention.probability_seen` da la probabilidad de que un elemento se haya mirado al menos una vez en un tramo (por ejemplo, el botón del paso siguiente antes de un error), combinando las fijaciones del tramo como independientes: `1 − Π (1 − pᵢ)`.
+
+**Disposiciones anteriores a la versión 1.6.0 de los contratos:** solo tienen elementos interactivos y no tienen árbol. Se atribuyen igual, pero lo que no es interactivo (títulos, textos) no existe para el modelo y cae en sin asignar.

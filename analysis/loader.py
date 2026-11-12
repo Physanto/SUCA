@@ -19,12 +19,13 @@ import json
 import math
 import sqlite3
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import pandas as pd
 
 from analysis import columns
+from analysis.gaze.attention import ACTIVITY_TYPES
 from shared import contracts, db
 
 CONFIRMED_REFERENCE = "confirmed"
@@ -117,11 +118,11 @@ def validate_session_data(data: Any, *, label: str = "session data") -> None:
 
 @dataclass(frozen=True)
 class GazeInputs:
-    """Lo que necesitan la medición y el reprocesamiento de la mirada de una sesión.
+    """Lo que necesitan la medición, el reprocesamiento y la atribución de la mirada.
 
     Las columnas de cada DataFrame están en ``analysis/columns.py`` (tablas
-    ``gaze_features``, ``gaze_targets``, ``gaze_calibrations``, ``layouts`` y
-    ``gaze``). Los campos JSON ya son diccionarios o listas.
+    ``gaze_features``, ``gaze_targets``, ``gaze_calibrations``, ``layouts``,
+    ``gaze`` y ``gaze_interactions``). Los campos JSON ya son diccionarios o listas.
 
     Attributes:
         session: Datos generales de la sesión.
@@ -130,6 +131,8 @@ class GazeInputs:
         calibrations: Calibraciones, validaciones y comprobaciones de deriva.
         layouts: Disposición de cada pantalla, en orden de tiempo.
         gaze: Muestras de mirada registradas en vivo.
+        interactions: Clics, focos y eventos de actividad, con el selector de su
+            elemento si lo tienen, en orden de tiempo.
     """
 
     session: SessionInfo
@@ -138,6 +141,7 @@ class GazeInputs:
     calibrations: pd.DataFrame
     layouts: pd.DataFrame
     gaze: pd.DataFrame
+    interactions: pd.DataFrame = field(default_factory=lambda: columns.empty("gaze_interactions"))
 
 
 class GazeRepository(Protocol):
@@ -151,6 +155,12 @@ class GazeRepository(Protocol):
         self, session_id: int, samples: pd.DataFrame, quality: pd.DataFrame
     ) -> None:
         """Reemplaza la mirada reprocesada de una sesión, todo o nada."""
+        ...
+
+    def save_gaze_attention(
+        self, session_id: int, fixations: pd.DataFrame, candidates: pd.DataFrame
+    ) -> None:
+        """Reemplaza la atribución de la mirada de una sesión, todo o nada."""
         ...
 
 
@@ -259,6 +269,10 @@ class SqliteAnalysisRepository:
             ),
             layouts=columns.frame("layouts", map(_layout, self._rows(_LAYOUTS_SQL, session_id))),
             gaze=columns.frame("gaze", self._rows(_GAZE_SQL, session_id)),
+            interactions=columns.frame(
+                "gaze_interactions",
+                map(_interaction, self._rows(_INTERACTIONS_SQL, session_id)),
+            ),
         )
 
     def save_gaze_refinement(
@@ -276,6 +290,28 @@ class SqliteAnalysisRepository:
                 en ese caso no se toca la base.
         """
         tables = dict(zip(columns.GAZE_RESULT_TABLES, (samples, quality), strict=True))
+        for table, df in tables.items():
+            columns.validate(df, table)
+        with db.transaction(self._connection):
+            for table, df in tables.items():
+                self._connection.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
+                self._insert(table, session_id, df, {})
+
+    def save_gaze_attention(
+        self, session_id: int, fixations: pd.DataFrame, candidates: pd.DataFrame
+    ) -> None:
+        """Reemplaza la atribución de la mirada de una sesión, todo o nada.
+
+        Args:
+            session_id: Sesión.
+            fixations: Una fila por fijación (tabla ``gaze_fixation``).
+            candidates: Candidatos de cada fijación (tabla ``gaze_attribution``).
+
+        Raises:
+            columns.ColumnValidationError: Si alguna tabla no cumple su especificación;
+                en ese caso no se toca la base.
+        """
+        tables = dict(zip(columns.GAZE_ATTENTION_TABLES, (fixations, candidates), strict=True))
         for table, df in tables.items():
             columns.validate(df, table)
         with db.transaction(self._connection):
@@ -445,6 +481,11 @@ _LAYOUTS_SQL = (
     "SELECT t, screen, viewport_width, viewport_height, scroll_x, scroll_y, regions, elements,"
     " truncated FROM page_layout WHERE session_id = ? ORDER BY t"
 )
+_INTERACTIONS_SQL = (
+    "SELECT t, type, element FROM event WHERE session_id = ? AND type IN ("
+    + ", ".join(f"'{name}'" for name in ACTIVITY_TYPES)
+    + ") ORDER BY t, id"
+)
 _TASKS_SQL = (
     "SELECT task_id, t_start, t_end, ended_by FROM session_task"
     " WHERE session_id = ? ORDER BY t_start"
@@ -499,6 +540,13 @@ def _layout(row: dict[str, Any]) -> dict[str, Any]:
         "regions": _json(row["regions"]),
         "elements": _json(row["elements"]),
     }
+
+
+def _interaction(row: dict[str, Any]) -> dict[str, Any]:
+    """Convierte una fila de ``event`` en una interacción: solo el selector del elemento."""
+    element = _json(row["element"])
+    selector = element.get("selector") if isinstance(element, dict) else None
+    return {"t": row["t"], "type": row["type"], "selector": selector}
 
 
 def _reference(row: dict[str, Any]) -> dict[str, Any]:

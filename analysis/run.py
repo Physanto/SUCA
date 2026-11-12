@@ -19,8 +19,10 @@ repositorio reemplaza los resultados previos de la sesión.
 
 Después de guardar esos resultados, si la sesión registró características de
 mirada, reprocesa la mirada (``analysis/gaze/refine.py``) y la guarda en
-``gaze_refined`` y ``gaze_quality``. Un fallo de este paso se informa pero no
-anula el resto del análisis, que ya quedó guardado.
+``gaze_refined`` y ``gaze_quality``. Luego atribuye cada fijación a los
+elementos de la pantalla con probabilidades (``analysis/gaze/attention.py``) y
+la guarda en ``gaze_fixation`` y ``gaze_attribution``. Un fallo de cualquiera
+de los dos se informa pero no anula lo que ya quedó guardado.
 
 Es el punto de composición del análisis: aquí se arman los parámetros, la
 conexión y el repositorio.
@@ -47,16 +49,18 @@ import pandas as pd
 
 from analysis import cleaning, columns, detectors, episodes, reference, screens, usability_index
 from analysis.gaze import GazeSettings
-from analysis.gaze.refine import refine
+from analysis.gaze.attention import attribute
+from analysis.gaze.refine import GazeRefinement, refine
 from analysis.loader import (
     AnalysisRepository,
+    GazeInputs,
     GazeRepository,
     NotFoundError,
     SessionData,
     SqliteAnalysisRepository,
     validate_session_data,
 )
-from analysis.parameters import Parameters, ParametersError, load_parameters
+from analysis.parameters import AttentionParams, Parameters, ParametersError, load_parameters
 from shared import db
 from shared.config import ConfigError, load_config
 
@@ -231,7 +235,7 @@ def analyze_session(
         session_id: Sesión a analizar.
         params: Parámetros del análisis.
         gaze: Acceso a los datos de mirada y sus ajustes; sin ellos no se
-            reprocesa la mirada.
+            reprocesa ni se atribuye la mirada.
 
     Returns:
         Resultados de la sesión.
@@ -254,20 +258,25 @@ def analyze_session(
         reference_drafts=results.reference_drafts,
     )
     if gaze is not None:
-        quality = refine_gaze(*gaze, session_id)
+        quality = refine_gaze(*gaze, session_id, attention=params.attention)
         results = replace(results, gaze_quality=quality)
     return results
 
 
 def refine_gaze(
-    repository: GazeRepository, settings: GazeSettings, session_id: int
+    repository: GazeRepository,
+    settings: GazeSettings,
+    session_id: int,
+    *,
+    attention: AttentionParams | None = None,
 ) -> pd.DataFrame | None:
-    """Reprocesa la mirada de una sesión y la guarda.
+    """Reprocesa la mirada de una sesión, la atribuye a los elementos y guarda ambas.
 
     Args:
         repository: Acceso a los datos de mirada.
         settings: Ajustes de la mirada.
         session_id: Sesión.
+        attention: Parámetros de la atribución; sin ellos solo se reprocesa.
 
     Returns:
         Calidad de la mirada reprocesada, o ``None`` si la sesión no registró
@@ -289,7 +298,66 @@ def refine_gaze(
         session_id,
         (time.perf_counter() - started) * 1000,
     )
+    if attention is not None:
+        attend_gaze(repository, settings, attention, session_id, inputs, refined)
     return refined.quality
+
+
+def attend_gaze(
+    repository: GazeRepository,
+    settings: GazeSettings,
+    params: AttentionParams,
+    session_id: int,
+    inputs: GazeInputs,
+    refined: GazeRefinement,
+) -> None:
+    """Atribuye las fijaciones de la mirada reprocesada y las guarda.
+
+    Un fallo se informa en el log y deja la mirada reprocesada como está.
+
+    Args:
+        repository: Acceso a los datos de mirada.
+        settings: Ajustes de la mirada.
+        params: Parámetros de la atribución.
+        session_id: Sesión.
+        inputs: Datos de mirada ya cargados (disposiciones e interacciones).
+        refined: Mirada reprocesada.
+    """
+    started = time.perf_counter()
+    try:
+        result = attribute(
+            refined.samples,
+            inputs.layouts,
+            inputs.interactions,
+            _used_error_deg(refined.quality),
+            settings,
+            params,
+        )
+        repository.save_gaze_attention(session_id, result.fixations, result.candidates)
+    except Exception as error:
+        logger.warning("session %d: gaze attribution failed: %s", session_id, error)
+        return
+    fixations = result.fixations
+    unassigned = float(fixations["unassigned_p"].mean()) if len(fixations) else 0.0
+    logger.info(
+        "session %d: attributed %d fixations (%.0f %% unassigned) in %.1f ms",
+        session_id,
+        len(fixations),
+        unassigned * 100,
+        (time.perf_counter() - started) * 1000,
+    )
+
+
+def _used_error_deg(quality: pd.DataFrame) -> float | None:
+    """Error medio de la mirada que quedó en ``gaze_refined``, o ``None`` si no se midió."""
+    if quality.empty:
+        return None
+    row = quality.iloc[0]
+    for column in ("refined_error_deg", "live_error_deg"):
+        value = row[column]
+        if value is not None and not pd.isna(value):
+            return float(value)
+    return None
 
 
 def summary(results: AnalysisResults) -> str:
