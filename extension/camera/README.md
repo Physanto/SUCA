@@ -179,6 +179,7 @@ Se guarda en `chrome.storage.local` (`screen_setup`, `common/screen-setup.js`) y
 | `blink_threshold` | 0.45 | Parpadeo de MediaPipe desde el que un cuadro es `blink` y no entrena |
 | `off_screen_margin_px` | 120 | Distancia fuera de la ventana desde la que la mirada es `off_screen` |
 | `head_range_margin_deg` | 12 | Grados que la cabeza puede salir del rango calibrado antes de `off_screen` |
+| `gaze_hybrid` | true | Combinar geométrico y apariencia según la postura (`hybrid`). En `false` se usa solo el de menor error de validación cruzada; sirve para comparar ambos modos con el banco de pruebas mientras el híbrido no esté validado con cámara real |
 | `filter_min_cutoff_hz`, `filter_beta` | 0.5, 0.003 | Filtro One Euro: reducen el temblor de una fijación ~60 % y siguen un salto de 600 px en ~66 ms |
 | `drift_check_between_tasks` | true | El panel pide una comprobación de deriva al terminar cada tarea guiada, salvo la última |
 | `drift_correction` | true | Si las comprobaciones corrigen; en `false` solo miden (sesiones del banco de pruebas) |
@@ -253,8 +254,8 @@ El tramo se marca `neutral_baseline` (contratos 1.7.0), mientras la captura
 facial continúa. No se añade al entrenamiento ni a la evaluación de mirada.
 El análisis facial exige esa marca y no inventa una para sesiones anteriores.
 
-Si entrenaron tanto apariencia como geometría y se registró la pose, el motor
-informa `hybrid`. Cerca de la mediana de la postura calibrada combina ambos
+Si `camera.gaze_hybrid` está activo, entrenaron tanto apariencia como geometría
+y se registró la pose, el motor informa `hybrid`. Cerca de la mediana de la postura calibrada combina ambos
 puntos con pesos inversos al cuadrado de sus errores de validación cruzada.
 El peso de apariencia decrece de forma gaussiana según el cambio de yaw,
 pitch y distancia normalizado por la dispersión central de la calibración.

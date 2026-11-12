@@ -63,6 +63,7 @@
       "blink_threshold": 0.45,
       "off_screen_margin_px": 120.0,
       "head_range_margin_deg": 12.0,
+      "gaze_hybrid": true,
       "filter_min_cutoff_hz": 0.5,
       "filter_beta": 0.003,
       "drift_check_between_tasks": true,

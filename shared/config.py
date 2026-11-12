@@ -138,6 +138,10 @@ class CameraConfig:
         head_range_margin_deg: Grados que la cabeza puede salir del rango de
             giro visto en la calibración antes de considerar que mira fuera de
             la pantalla. Dentro del margen, la muestra tiene confianza baja.
+        gaze_hybrid: Si el motor combina los estimadores geométrico y de
+            apariencia según la postura cuando ambos entrenaron. En ``false``
+            usa solo el de menor error de validación cruzada, para comparar
+            ambos modos en el banco de pruebas.
         filter_min_cutoff_hz: Frecuencia de corte mínima del filtro One Euro:
             más baja suaviza más las fijaciones.
         filter_beta: Cuánto sube el corte con la velocidad de la mirada en el
@@ -167,6 +171,7 @@ class CameraConfig:
     blink_threshold: float
     off_screen_margin_px: float
     head_range_margin_deg: float
+    gaze_hybrid: bool
     filter_min_cutoff_hz: float
     filter_beta: float
     drift_check_between_tasks: bool

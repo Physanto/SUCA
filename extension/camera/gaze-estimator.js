@@ -26,11 +26,13 @@
    *
    * @param {Object<string, object>} candidates - Estimadores por nombre (`gaze_estimator` del
    *   contrato). Cada uno tiene `add`, `clear`, `fit`, `predict` e `isFitted`.
-   * @param {object} [options] - Límites de extrapolación de la pose.
+   * @param {object} [options] - Modo de combinación y límites de extrapolación de la pose.
    * @param {number} [options.headMarginDeg=12] - Margen fuera de los ángulos calibrados.
+   * @param {boolean} [options.hybrid=true] - Si combina geométrico y apariencia según la
+   *   postura. En `false` usa siempre el candidato de menor error de validación cruzada.
    * @returns {object} Estimador con `add`, `clear`, `fit`, `predict`, `isFitted` y `chosen`.
    */
-  function createGazeEstimator(candidates, { headMarginDeg = 12 } = {}) {
+  function createGazeEstimator(candidates, { headMarginDeg = 12, hybrid: allowHybrid = true } = {}) {
     const names = Object.keys(candidates);
     if (names.length === 0) {
       throw new Error('the gaze estimator needs at least one candidate');
@@ -129,7 +131,7 @@
             return [key, { center: quantile(.5), low: values[0], high: values.at(-1),
               scale: Math.max(1, (quantile(.9) - quantile(.1)) / 2) }];
           }));
-          hybrid = usable.includes('geometric') && usable.includes('appearance');
+          hybrid = allowHybrid && usable.includes('geometric') && usable.includes('appearance');
           if (hybrid) {
             const geoError = Math.max(1, results.geometric.cv_error_px);
             const appError = Math.max(1, results.appearance.cv_error_px);

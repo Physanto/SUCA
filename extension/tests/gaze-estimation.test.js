@@ -207,6 +207,23 @@ test('the hybrid estimator weights appearance near the calibrated pose and geome
   assert.equal(estimator.predict(features), null);
 });
 
+test('without the hybrid mode the estimator keeps the candidate with the lowest error', () => {
+  const candidate = (error, point) => ({
+    add() {}, clear() {}, fit: () => ({ ok: true, cv_error_px: error }), predict: () => point,
+  });
+  const estimator = UX.createGazeEstimator({
+    geometric: candidate(20, { x: 100, y: 100 }),
+    appearance: candidate(10, { x: 200, y: 200 }),
+  }, { hybrid: false });
+  const features = { geometric: { yaw: 0, pitch: 0, distance: 60 }, appearance: [1] };
+  estimator.add(features, 100, 100, 0);
+  const result = estimator.fit({});
+  assert.equal(result.estimator, 'appearance');
+  assert.equal(result.cv_error_px, 10);
+  assert.equal(estimator.chosen(), 'appearance');
+  assert.deepEqual(estimator.predict(features), { x: 200, y: 200 });
+});
+
 test('Levenberg-Marquardt fits a nonlinear curve', () => {
   const xs = [0, 0.5, 1, 1.5, 2, 2.5, 3];
   const ys = xs.map((x) => 2.5 * Math.exp(-1.3 * x) + 0.4);
