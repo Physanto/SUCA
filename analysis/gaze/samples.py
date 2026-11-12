@@ -157,6 +157,9 @@ def target_samples(
     numbers = events(targets)
     parts = []
     for index, target in targets.iterrows():
+        # La línea base facial no valida ni entrena el estimador de mirada.
+        if target["phase"] == "neutral_baseline":
+            continue
         start = float(target["t"]) + (pursuit_skip_ms if target["phase"] == PURSUIT else 0)
         inside = (times >= start) & (times <= float(target["t_end"])) & ok.to_numpy()
         if not inside.any():

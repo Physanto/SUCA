@@ -40,6 +40,7 @@
       pursuitIntro:
         'Ahora un punto se va a mover por la pantalla. Síguelo con la vista, sin mover la cabeza, hasta que se detenga.',
       pursuitHint: 'Sigue el punto con la vista',
+      neutralBaselineHint: 'Mira el centro durante 10 segundos con el rostro relajado y sin hablar.',
       headIntro:
         'Ahora mira el punto del centro sin dejar de mirarlo, y mueve la cabeza despacio: un poco a la izquierda, a la derecha, arriba, abajo, y acércate y aléjate de la pantalla.',
       headHint: 'Sin dejar de mirar el punto, mueve la cabeza despacio en todas direcciones',

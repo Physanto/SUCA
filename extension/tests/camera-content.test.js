@@ -473,7 +473,7 @@ test('initial calibration trains on 13 clicked points, a moving point and head m
   assert.equal(link.requests[14][1].points.length, 3);
   assert.equal(link.requests[15][1].phase, 'head');
   // 8 puntos de validación y el del regreso del teclado, todos sin clic.
-  assert.equal(ui.shown.filter(([kind, mode]) => kind === 'point' && mode === 'look').length, 1 + 9);
+  assert.equal(ui.shown.filter(([kind, mode]) => kind === 'point' && mode === 'look').length, 2 + 9);
   const deg = (px) => Math.round(UX.calibrationMath.pxToDeg(px, CAMERA) * 100) / 100;
   assert.deepEqual(record, {
     t: 777,
@@ -493,7 +493,7 @@ test('initial calibration trains on 13 clicked points, a moving point and head m
   assert.deepEqual(results, [record]);
   assert.deepEqual(
     targets.map((target) => target.phase),
-    [...Array(13).fill('points'), 'pursuit', 'head', ...Array(8).fill('validation'), 'look_away'],
+    ['neutral_baseline', ...Array(13).fill('points'), 'pursuit', 'head', ...Array(8).fill('validation'), 'look_away'],
   );
   assert.ok(targets.every((target) => target.calibration_type === 'initial' && target.viewport_width === 1000));
 });
@@ -815,7 +815,7 @@ test('the calibration module runs on request, reports the result and pauses gaze
   assert.deepEqual(pauses, [true, false]);
   const calibration = batches.filter(([type]) => type === 'calibration');
   assert.equal(calibration.length, 1);
-  assert.equal(batches.filter(([type]) => type === 'gaze_target').length, 13 + 2 + 9);
+  assert.equal(batches.filter(([type]) => type === 'gaze_target').length, 1 + 13 + 2 + 9);
   assert.deepEqual(sent, [['calibration.result', { error_px: 20, error_deg: calibration[0][1].error_deg, accepted: true }]]);
   module.stop();
   assert.equal(handlers['calibration.request'], undefined);

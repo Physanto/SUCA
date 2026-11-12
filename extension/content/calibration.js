@@ -675,6 +675,15 @@
         for (;;) {
           let fit = null;
           if (type === 'initial') {
+            // La línea base facial se registra antes de entrenar la mirada; no aporta
+            // muestras al modelo. El rostro sigue capturándose mientras la mirada está pausada.
+            const { width, height } = ui.viewport();
+            ui.point(width / 2, height / 2, 'look', strings.neutralBaselineHint);
+            const baselineStart = clock.now();
+            await wait(10000);
+            target(type, 'neutral_baseline', 0, baselineStart, clock.now(), [
+              { t: baselineStart, x: width / 2, y: height / 2 },
+            ]);
             fit = await train(camera);
             if (fit === null) {
               if ((await ui.message(strings.noFace, ['repeat', 'cancel'])) === 'repeat') {
