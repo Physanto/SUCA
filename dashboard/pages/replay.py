@@ -7,9 +7,10 @@ pantallas e incidentes), cada señal con su color, en el tiempo en que pasó.
 
 import math
 
-import pandas as pd
 import streamlit as st
 
+from analysis.gaze import GazeSettings
+from analysis.parameters import load_parameters
 from dashboard import replay, ui
 from shared.config import load_config
 
@@ -36,7 +37,10 @@ with ui.selected_data() as data:
     session_id = ui.session_selector(sessions)
     session = data.get_session(session_id)
     events = data.get_events(session_id)
-    gaze = data.get_gaze(session_id)
+    gaze_source = st.selectbox("Mirada", ["Reprocesada", "En vivo"], key="replay_gaze_source")
+    prefer_refined = gaze_source == "Reprocesada"
+    gaze = data.get_gaze(session_id, refined=prefer_refined)
+    gaze_fixations = data.get_gaze_fixations(session_id) if prefer_refined else None
     tasks = data.get_session_tasks(session_id)
     frames = data.get_session_frames(session_id)
     windows = [("Toda la sesión", None), *replay.task_windows(tasks)]
@@ -54,9 +58,15 @@ with ui.selected_data() as data:
         data.get_screen_captures(study_id),
         frames,
         window,
+        fixations=gaze_fixations,
     )
     calibrations = data.get_calibrations(session_id)
 
+if not gaze.empty:
+    st.caption("Mirada mostrada: " + (
+        "reprocesada; atribución calculada solo con mirada y secuencia."
+        if gaze["source"].iloc[0] == "refined" else "en vivo."
+    ))
 if payload["frames"]:
     if len(payload["frames"]) > MANY_FRAMES:
         st.caption(
@@ -95,14 +105,11 @@ if summary["with_gaze"] == 0:
     )
     st.stop()
 
-camera = load_config().camera
-measured = (
-    calibrations["viewing_distance_cm"].dropna()
-    if not calibrations.empty
-    else pd.Series(dtype=float)
+settings = GazeSettings.from_config(load_config().camera, load_parameters().gaze).for_session(
+    calibrations
 )
-distance_cm = float(measured.iloc[0]) if len(measured) else camera.viewing_distance_cm
-median_deg = math.degrees(math.atan(summary["median_px"] / camera.css_px_per_cm / distance_cm))
+distance_cm = settings.viewing_distance_cm
+median_deg = math.degrees(math.atan(summary["median_px"] / settings.css_px_per_cm / distance_cm))
 with_gaze, median, near = st.columns(3)
 with_gaze.metric("Clics con mirada", f"{summary['with_gaze']} de {summary['clicks']}")
 median.metric(
