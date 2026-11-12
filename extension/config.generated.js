@@ -74,7 +74,7 @@
 
   /** Versión de los contratos y valores permitidos de cada enumeración. */
   UX.contracts = deepFreeze({
-    "version": "1.6.0",
+    "version": "1.7.0",
     "enums": {
       "batch_type": [
         "events",
@@ -210,7 +210,8 @@
       ],
       "gaze_estimator": [
         "geometric",
-        "appearance"
+        "appearance",
+        "hybrid"
       ],
       "gaze_target_phase": [
         "points",
@@ -218,7 +219,8 @@
         "head",
         "validation",
         "look_away",
-        "drift_check"
+        "drift_check",
+        "neutral_baseline"
       ],
       "camera_status": [
         "active",

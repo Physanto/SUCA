@@ -86,3 +86,18 @@ Las pruebas validan todos los ejemplos (los inválidos deben fallar con el error
 | Nuevo mensaje | Agregarlo a `message_type` y documentarlo en `extension-messages.md` |
 
 Las pruebas fallan si falta alguna de estas piezas. Todo cambio actualiza la versión de los contratos según las reglas de `extension-messages.md`.
+
+## Cambios compatibles en 1.7.0
+
+- `gaze_target_phase` agrega `neutral_baseline`: 10 s de rostro relajado mirando
+  el centro antes de la calibración inicial. Se conserva la estructura de
+  `gaze_target`, sin cambios en tablas. Este tramo sirve al análisis facial;
+  no entrena ni valida la mirada.
+- `gaze_estimator` agrega `hybrid`: combinación de apariencia y geometría según
+  la distancia a la postura calibrada. Los errores de cada candidato se miden
+  por separado; no se presenta su mínimo como error validado de la combinación.
+
+Después de actualizar contratos, genera `extension/config.generated.js` y
+recarga la extensión. El servidor acepta versiones de la misma versión mayor;
+los registros anteriores sin línea base siguen siendo válidos, pero no sirven
+para calcular desviaciones faciales respecto de una postura neutra marcada.

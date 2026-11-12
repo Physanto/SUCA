@@ -134,12 +134,12 @@
       "enum": ["on_screen", "low_confidence", "off_screen", "blink", "no_face", "uncalibrated"]
     },
     "gaze_estimator": {
-      "description": "Estimador de mirada elegido en la calibración: 'geometric' combina la pose de la cabeza con la posición del iris en un modelo geométrico; 'appearance' es una regresión sobre la imagen reducida de los ojos.",
-      "enum": ["geometric", "appearance"]
+      "description": "Estimador de mirada elegido en la calibración: 'geometric' combina la pose de la cabeza con la posición del iris en un modelo geométrico; 'appearance' es una regresión sobre la imagen reducida de los ojos; 'hybrid' combina ambos según la distancia a la postura calibrada, con menor peso de apariencia al alejarse.",
+      "enum": ["geometric", "appearance", "hybrid"]
     },
     "gaze_target_phase": {
-      "description": "Parte de la calibración en que se mostró un objetivo de mirada: 'points' puntos fijos con clic; 'pursuit' un punto en movimiento que se sigue con la vista; 'head' un punto fijo mientras la cabeza se mueve; 'validation' puntos de validación; 'look_away' el punto de validación que se mira al volver de mirar el teclado; 'drift_check' puntos de una comprobación de deriva.",
-      "enum": ["points", "pursuit", "head", "validation", "look_away", "drift_check"]
+      "description": "Parte de la calibración en que se mostró un objetivo de mirada: 'points' puntos fijos con clic; 'pursuit' un punto en movimiento que se sigue con la vista; 'head' un punto fijo mientras la cabeza se mueve; 'validation' puntos de validación; 'look_away' el punto de validación que se mira al volver de mirar el teclado; 'drift_check' puntos de una comprobación de deriva; 'neutral_baseline' 10 s de rostro relajado mirando el centro, sin entrenar la mirada.",
+      "enum": ["points", "pursuit", "head", "validation", "look_away", "drift_check", "neutral_baseline"]
     },
     "camera_status": {
       "description": "Estado de la cámara que el módulo de cámara informa al panel lateral.",
