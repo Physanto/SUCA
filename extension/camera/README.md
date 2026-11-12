@@ -69,7 +69,7 @@ El documento offscreen no puede mostrar el aviso de permiso de Chrome. Por eso:
 | `gaze` | A `camera.gaze_hz` (30 Hz), salvo durante la calibración | `x`, `y` en la ventana; `scroll_x`, `scroll_y`; `element_selector`; `zone`; `valid`; `state` y `confidence` del monitor |
 | `gaze_features` | A `camera.gaze_hz`, **también durante la calibración**, si `camera.record_gaze_features` | Pose de la cabeza, distancia, punto medio de los ojos en la imagen, posición de cada iris y apertura de los párpados, parpadeo, estado, confianza y punto antes del filtro (`raw_x`, `raw_y`). Solo números de la zona de los ojos: ni imágenes ni la malla del rostro |
 | `face` | A `camera.face_hz` (15 Hz) | Los valores de `face_value` (entre 0 y 1), `head_yaw` y `head_pitch` en grados, `face_detected` |
-| `calibration` | Al terminar cada calibración, validación o comprobación de deriva | `type` (`initial`, `final`, `drift_check`), `error_px`, `error_deg`, `accepted`, `viewing_distance_cm`, `precision_deg`, `return_error_deg`, `estimator`, `camera_delay_ms`; en `drift_check`, `corrected` y la corrección acumulada |
+| `calibration` | Al terminar cada calibración, validación o comprobación de deriva | `type` (`initial`, `final`, `drift_check`), `error_px`, `error_deg`, `accepted`, `viewing_distance_cm`, `css_px_per_cm`, `precision_deg`, `return_error_deg`, `estimator`, `camera_delay_ms`; en `drift_check`, `corrected` y la corrección acumulada |
 | `gaze_target` | Por cada punto mostrado en la capa | Tramo de tiempo, procedimiento, fase (`points`, `pursuit`, `head`, `validation`, `look_away`, `drift_check`) y posición (el recorrido, en el punto en movimiento) |
 | `events` (`camera_gap`) | Cuando vuelven los datos, o al cerrar la sesión | Inicio (`t`), fin (`data.t_end`, `null` si no volvieron) y motivo (`navigation`, `no_permission`, `error`) |
 
@@ -154,6 +154,15 @@ Se envía `calibration.result` al panel y el registro `calibration` al servidor.
 
 Durante la calibración la mirada no se registra, y los clics, el movimiento del cursor y la rueda sobre la capa no llegan a la captura de eventos: la capa los intercepta en `window`, antes que los oyentes de `document`. La rueda y las teclas de desplazamiento (espacio, flechas, Re Pág, Av Pág, Inicio, Fin) no mueven la página que está debajo. Si la sesión se cierra en medio de una calibración, la capa se quita y ese intento no registra nada.
 
+## Pantalla y distancia de cada equipo
+
+Las pantallas no son iguales. `config/shared.json` trae la del laboratorio; en otro equipo se ajusta en la **página de opciones** de la extensión (clic derecho en el ícono de SUCA → Opciones, o `chrome://extensions` → Detalles → Opciones de extensión), abierta **en la pantalla donde se hará la prueba**:
+
+- **Tamaño:** la diagonal en pulgadas (con botones para los tamaños comunes) o, más exacto, el ancho visible medido con regla. La página calcula `css_px_per_cm` con el tamaño de la pantalla en píxeles CSS y dibuja una barra que debe medir 10 cm.
+- **Distancia:** la habitual y el rango aceptado (con valores típicos de portátil y de monitor). La cámara mide la distancia real en cada cuadro; estos valores son la referencia y el rango del encuadre.
+
+Se guarda en `chrome.storage.local` (`screen_setup`, `common/screen-setup.js`) y vale para ese navegador hasta que se cambie o se vuelva a los valores por defecto. La calibración inicial lo muestra antes de empezar, lo pasa al motor (`calibration.reset` con `css_px_per_cm`) y lo registra en cada calibración (`css_px_per_cm`). El análisis usa la pantalla y la mediana de las distancias medidas de cada sesión, no las de la configuración.
+
 ## Configuración (`camera` en `config/shared.json`)
 
 | Clave | Valor | Para qué |
@@ -161,10 +170,10 @@ Durante la calibración la mirada no se registra, y los clics, el movimiento del
 | `gaze_hz` | 30 | Frecuencia máxima de análisis y de muestras de mirada |
 | `face_hz` | 15 | Frecuencia de muestras faciales |
 | `video_width`, `video_height` | 1920, 1080 | Resolución que se pide a la webcam. La que entrega de verdad se ve en `stats.video` |
-| `viewing_distance_cm` | 60 | Distancia de referencia: la que usa `error_deg` si la calibración no pudo medir la del participante |
-| `css_px_per_cm` | 55.7 | Píxeles CSS por centímetro de la pantalla. Se mide una vez por pantalla: ancho de la ventana en píxeles CSS (`innerWidth` con el navegador maximizado) dividido por el ancho visible en cm. 55.7 es el portátil del laboratorio (1920 px en 34,5 cm); 37.8 sería una pantalla de 96 píxeles por pulgada. El estimador geométrico la usa para pasar centímetros a píxeles |
+| `viewing_distance_cm` | 50 | Distancia de referencia: la que usa `error_deg` si la calibración no pudo medir la del participante. Se cambia por equipo en las opciones (ver "Pantalla y distancia de cada equipo") |
+| `css_px_per_cm` | 36.22 | Píxeles CSS por centímetro de la pantalla: ancho de la pantalla en píxeles CSS (`screen.width`) dividido por su ancho visible en cm. **No** `innerWidth`: con el panel lateral o las herramientas de desarrollo abiertas da la mitad y los grados salen inflados. 36.22 es el monitor del laboratorio (1920 px en 53 cm). El estimador geométrico la usa para pasar centímetros a píxeles. Se cambia por equipo en las opciones |
 | `distance_scale` | 1.24 | Corrección de la distancia a la cámara, propia de cada webcam (ver "Encuadre") |
-| `min_distance_cm`, `max_distance_cm` | 35, 75 | Distancias aceptables a la cámara antes de calibrar. Provisionales |
+| `min_distance_cm`, `max_distance_cm` | 35, 75 | Distancias aceptables a la cámara antes de calibrar. Se cambian por equipo en las opciones |
 | `calibration_max_error_deg` | 5.0 | Umbral para aceptar una calibración. **Provisional:** se ajusta en el piloto |
 | `lock_exposure` | true | Fijar exposición, foco y balance de blancos 3 s después de abrir la webcam, si lo permite (`stats.exposure_locked`) |
 | `blink_threshold` | 0.45 | Parpadeo de MediaPipe desde el que un cuadro es `blink` y no entrena |
@@ -190,7 +199,7 @@ Es interna de la cámara: una conexión `chrome.runtime.connect({ name: 'camera'
 
 | De la pestaña al motor (`kind: 'request'`, con `id`) | Datos | Respuesta |
 |---|---|---|
-| `calibration.reset` | `viewport` (`{width, height}`) | `ok` |
+| `calibration.reset` | `viewport` (`{width, height}`) y, opcional, `css_px_per_cm` (pantalla de este equipo) | `ok` |
 | `calibration.point` | `x`, `y`, `t_start`, `t_end`, `group`, `phase` (`points` o `head`) | `samples`: cuadros usados |
 | `calibration.pursuit` | `points` (recorrido `[{t, x, y}]`), `t_start`, `t_end` | `samples` |
 | `calibration.fit` | — | `ok`, `estimator`, `samples`, `groups`, `lambda`, `cv_error_px`, `candidates` (error de cada estimador), `camera_delay_ms` |

@@ -1,7 +1,8 @@
 /**
  * @file Textos de la cámara que ven el participante y el evaluador, en español:
- * la capa de calibración (en la pestaña evaluada) y la página del permiso de
- * cámara. Ningún otro archivo de la cámara escribe textos visibles.
+ * la capa de calibración (en la pestaña evaluada), la página del permiso de
+ * cámara y la página de opciones con la pantalla y las distancias. Ningún otro
+ * archivo de la cámara escribe textos visibles.
  *
  * Están aparte de `panel/strings.js` porque se cargan en la pestaña evaluada y
  * en páginas de la extensión que no son el panel.
@@ -65,6 +66,12 @@
         ready: 'Todo bien: puedes comenzar.',
         adjust: 'Acomódate hasta que la figura quede verde, dentro del óvalo.',
       },
+      screenSummary: (camera) =>
+        `Pantalla: ${camera.css_px_per_cm} píxeles por centímetro; distancia habitual ${camera.viewing_distance_cm} cm ` +
+        `(de ${camera.min_distance_cm} a ${camera.max_distance_cm} cm). ` +
+        (camera.screen_setup === 'local'
+          ? 'Ajustada en este equipo.'
+          : 'Son los valores por defecto: si esta pantalla es otra, el evaluador los cambia en las opciones de la extensión (clic derecho en el ícono de SUCA → Opciones).'),
       clickHint: 'Mira el punto y haz clic sobre él',
       lookHint: 'Mira el punto',
       validating: 'Ahora solo mira cada punto, sin hacer clic.',
@@ -94,6 +101,19 @@
       denied:
         'Chrome no dio el permiso. Para cambiarlo, haz clic en el ícono de la cámara de la barra de direcciones (o en Configuración del sitio) y elige "Permitir"; luego vuelve a presionar el botón.',
       noCamera: 'No se encontró una cámara conectada.',
+    },
+    screenSetup: {
+      detected: (width, height, ratio) =>
+        `Esta pantalla mide ${width} × ${height} píxeles CSS (escala del sistema ${ratio}).`,
+      density: (pxPerCm) => `${pxPerCm} píxeles por centímetro`,
+      needSize: 'Escribe la diagonal en pulgadas o el ancho visible en centímetros.',
+      saved: 'Guardado. Se usa desde la próxima calibración.',
+      reset: 'Se volvió a los valores por defecto del laboratorio.',
+      fromConfig: 'Ahora se usan los valores por defecto del laboratorio.',
+      fromLocal: (date) => `Ahora se usan los ajustes de este equipo (guardados el ${date}).`,
+      otherScreen: (width, height) =>
+        `Los ajustes guardados son de una pantalla de ${width} × ${height} píxeles: si cambiaste de monitor, revísalos.`,
+      invalid: 'Revisa los valores: la distancia habitual debe quedar entre la mínima y la máxima, y todos deben ser razonables (pantalla de 10 a 150 píxeles por cm; distancias de 20 a 150 cm).',
     },
   });
 })(globalThis);

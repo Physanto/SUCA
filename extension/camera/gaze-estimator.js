@@ -52,6 +52,20 @@
         }
       },
 
+      /**
+       * Pasa los datos de la pantalla a los candidatos que los usan (el geométrico).
+       *
+       * @param {{cssPxPerCm: number}} screen - Píxeles CSS por centímetro de la pantalla.
+       * @returns {void}
+       */
+      configure(screen) {
+        for (const name of names) {
+          if (typeof candidates[name].configure === 'function') {
+            candidates[name].configure(screen);
+          }
+        }
+      },
+
       /** Borra las muestras y los modelos de todos los candidatos. */
       clear() {
         names.forEach((name) => candidates[name].clear());

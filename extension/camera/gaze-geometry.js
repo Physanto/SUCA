@@ -162,16 +162,34 @@
    *
    * @param {object} options - Opciones.
    * @param {number} options.cssPxPerCm - Píxeles CSS por centímetro de la pantalla.
-   * @returns {object} Estimador con `add`, `clear`, `fit`, `predict`, `count`, `isFitted` y `params`.
+   * @returns {object} Estimador con `configure`, `add`, `clear`, `fit`, `predict`, `count`,
+   *   `isFitted` y `params`.
    */
   function createGeometricModel({ cssPxPerCm }) {
-    if (!(cssPxPerCm > 0)) {
-      throw new Error(`cssPxPerCm must be positive, got ${cssPxPerCm}`);
+    /** Falla si los píxeles por centímetro no son un número positivo. */
+    function checked(value) {
+      if (!(value > 0)) {
+        throw new Error(`cssPxPerCm must be positive, got ${value}`);
+      }
+      return value;
     }
+    // Puede cambiar entre calibraciones: cada equipo tiene su pantalla (`common/screen-setup.js`).
+    let pxPerCm = checked(cssPxPerCm);
     let samples = [];
     let fitted = null;
 
     return Object.freeze({
+      /**
+       * Cambia la pantalla para el próximo ajuste. El modelo ya ajustado conserva
+       * la suya hasta que se ajuste de nuevo.
+       *
+       * @param {{cssPxPerCm: number}} screen - Píxeles CSS por centímetro de la pantalla.
+       * @returns {void}
+       */
+      configure({ cssPxPerCm: value }) {
+        pxPerCm = checked(value);
+      },
+
       /**
        * Agrega una muestra de entrenamiento.
        *
@@ -206,8 +224,8 @@
           fitted = null;
           return { ok: false, ...summary, lambda: null, cv_error_px: null };
         }
-        const prior = priors(viewport, cssPxPerCm);
-        const context = { cssPxPerCm, openRef: median(samples.map((s) => s.f.open)), prior };
+        const prior = priors(viewport, pxPerCm);
+        const context = { cssPxPerCm: pxPerCm, openRef: median(samples.map((s) => s.f.open)), prior };
         const params = fitParams(samples, context, prior.mean);
         // Error de cada opción de residuo, promediando cada objetivo dejado fuera por igual.
         const errors = RESIDUAL_LAMBDAS.map(() => 0);

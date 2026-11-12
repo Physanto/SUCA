@@ -40,6 +40,7 @@
         "common/messages.js",
         "common/session.js",
         "common/batcher.js",
+        "common/screen-setup.js",
         "common/modules.js",
         "content/capture.js",
         "content/camera/zones.js",
@@ -52,5 +53,9 @@
         "content/bootstrap.js"
       ]
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  }
 }

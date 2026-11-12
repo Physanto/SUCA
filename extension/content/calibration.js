@@ -424,11 +424,13 @@
     /**
      * Entrena el estimador: puntos fijos, punto en movimiento y movimiento de cabeza.
      *
+     * @param {object} camera - Sección `camera` de la configuración, con la pantalla de este equipo.
      * @returns {Promise<(object|null)>} Resultado del ajuste del motor si pudo entrenar, si no `null`.
      */
-    async function train() {
+    async function train(camera) {
       const viewport = ui.viewport();
-      await link.request('calibration.reset', { viewport });
+      // El motor solo conoce la configuración compartida: se le pasa la pantalla de este equipo.
+      await link.request('calibration.reset', { viewport, css_px_per_cm: camera.css_px_per_cm });
       await clickPoints('initial', 'points', shuffle(CALIBRATION_POINTS, random), 'calibration.point');
       if (!(await pursue('initial')) || !(await moveHead('initial'))) {
         return null;
@@ -623,6 +625,8 @@
         error_deg: round(errorDeg, 2),
         accepted: errorDeg <= camera.calibration_max_error_deg,
         viewing_distance_cm: measured.distanceCm,
+        // La pantalla con que se pasaron los píxeles a grados: el análisis usa la misma.
+        css_px_per_cm: camera.css_px_per_cm,
         precision_deg: toDeg(measured.precisionPx),
         return_error_deg: toDeg(measured.returnErrorPx),
         ...extra,
@@ -671,7 +675,7 @@
         for (;;) {
           let fit = null;
           if (type === 'initial') {
-            fit = await train();
+            fit = await train(camera);
             if (fit === null) {
               if ((await ui.message(strings.noFace, ['repeat', 'cancel'])) === 'repeat') {
                 continue;
@@ -1002,7 +1006,9 @@
        */
       async intro(type, framing = null, camera = null) {
         title = strings.title[type];
-        showCard(title, strings.intro[type], ['start', 'cancel']);
+        // Antes de calibrar se muestra qué pantalla y distancias se suponen, para notar si no son las de este equipo.
+        const screen = type === 'initial' && camera ? ` ${strings.screenSummary(camera)}` : '';
+        showCard(title, `${strings.intro[type]}${screen}`, ['start', 'cancel']);
         if (framing === null) {
           return (await waitFor(['start', 'cancel'])).action;
         }
@@ -1146,6 +1152,9 @@
    * @param {function(): object} deps.createUi - Crea la capa visual.
    * @param {object} deps.strings - Textos (`UX.cameraStrings.calibration`).
    * @param {function(number): Promise<void>} [deps.wait] - Espera.
+   * @param {function(object): Promise<object>} [deps.screenCamera] - Sección `camera` con
+   *   la pantalla y las distancias de este equipo (`UX.screenSetup`); por defecto, la
+   *   configuración tal cual.
    * @returns {{name: string, start: function(object): void, stop: function(): void}} Módulo.
    */
   function createCalibrationModule({
@@ -1153,6 +1162,7 @@
     createUi,
     strings,
     wait = (ms) => new Promise((resolve) => root.setTimeout(resolve, ms)),
+    screenCamera = async (camera) => camera,
   }) {
     let ctx = null;
     let off = null;
@@ -1196,7 +1206,7 @@
       link.pauseGaze(true);
       ownUi.open();
       try {
-        await procedure.run(type, context.config.camera);
+        await procedure.run(type, await screenCamera(context.config.camera));
       } catch (error) {
         // Tras `stop`, los pedidos al motor fallan porque la conexión se cerró: no es un error.
         if (error.name !== 'CalibrationCancelled' && stillRunning()) {
@@ -1275,6 +1285,8 @@
         link: UX.cameraLink,
         strings,
         createUi: () => createOverlay({ page: root, strings, clock: UX.clock }),
+        screenCamera: async (camera) =>
+          UX.screenSetup.apply(camera, await UX.screenSetup.load(UX.platform.storage('local'))),
       }),
     );
   }

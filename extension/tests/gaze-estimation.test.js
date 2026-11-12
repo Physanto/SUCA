@@ -284,3 +284,20 @@ test('coming back from a blink does not count as coming back from looking away',
 
   assert.deepEqual(monitor.assess(looking(66)), { state: 'on_screen', confidence: 1 });
 });
+
+test('the combined estimator passes the screen only to the candidates that use it', () => {
+  const screens = [];
+  const geometric = { ...UX.createGazeModel(), configure: (screen) => screens.push(screen) };
+  const estimator = UX.createGazeEstimator({ geometric, appearance: UX.createGazeModel() });
+
+  estimator.configure({ cssPxPerCm: 40 });
+
+  assert.deepEqual(screens, [{ cssPxPerCm: 40 }]);
+});
+
+test('the geometric model refuses a screen without a positive density', () => {
+  const model = UX.createGeometricModel({ cssPxPerCm: 36 });
+
+  assert.throws(() => model.configure({ cssPxPerCm: 0 }), /cssPxPerCm must be positive/);
+  model.configure({ cssPxPerCm: 50 });
+});

@@ -463,7 +463,8 @@ test('initial calibration trains on 13 clicked points, a moving point and head m
 
   const actions = link.requests.map(([action]) => action);
   const points = link.requests.filter(([action, p]) => action === 'calibration.point' && p.phase === 'points');
-  assert.deepEqual(link.requests[0], ['calibration.reset', { viewport: { width: 1000, height: 600 } }]);
+  // El motor recibe la pantalla de este equipo junto con la ventana.
+  assert.deepEqual(link.requests[0], ['calibration.reset', { viewport: { width: 1000, height: 600 }, css_px_per_cm: 37.8 }]);
   assert.equal(points.length, 13);
   assert.equal(new Set(points.map(([, p]) => `${p.x},${p.y}`)).size, 13, 'every calibration point is different');
   assert.equal(points[0][1].t_end - points[0][1].t_start, 1100);
@@ -482,6 +483,7 @@ test('initial calibration trains on 13 clicked points, a moving point and head m
     accepted: true,
     // Sin encuadre en los cuadros no hay distancia medida: el error usa la de la configuración.
     viewing_distance_cm: null,
+    css_px_per_cm: 37.8,
     // Las muestras de cada punto son idénticas: no hay temblor.
     precision_deg: 0,
     return_error_deg: deg(20),
@@ -525,6 +527,7 @@ test('a drift check clicks three points, lets the engine correct and records the
     error_deg: Math.round(UX.calibrationMath.pxToDeg(80, CAMERA) * 100) / 100,
     accepted: true,
     viewing_distance_cm: null,
+    css_px_per_cm: 37.8,
     precision_deg: null,
     return_error_deg: null,
     estimator: 'geometric',
@@ -863,4 +866,14 @@ test('a calibration interrupted by the end of the session reports nothing afterw
   // `stop` cerró la capa y reanudó la mirada una sola vez; el intento no las vuelve a tocar.
   assert.deepEqual(pauses, [true, false]);
   assert.equal(closes, 1);
+});
+
+test('the intro of the initial calibration says which screen and distances it assumes', () => {
+  const local = strings.screenSummary({ ...CAMERA, screen_setup: 'local' });
+  const fallback = strings.screenSummary({ ...CAMERA, screen_setup: 'config' });
+
+  assert.match(local, /37\.8 píxeles por centímetro/);
+  assert.match(local, /de 35 a 75 cm/);
+  assert.match(local, /Ajustada en este equipo/);
+  assert.match(fallback, /Opciones/);
 });

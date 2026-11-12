@@ -8,6 +8,7 @@ Captura lo que hace el participante en la aplicación evaluada, muestra las tare
 |---|---|---|
 | Content scripts | `content/`: los módulos (`capture.js`, `frames.js`, `camera.js`, `calibration.js`, `task-end.js`) y `bootstrap.js` | En la pestaña evaluada. Solo arrancan sus módulos si su pestaña es la de la sesión |
 | Panel lateral | `panel/` | Panel lateral de Chrome; persiste al navegar |
+| Opciones | `options/` | Página de opciones de la extensión (clic derecho en el ícono → Opciones): tamaño de la pantalla y distancias de este equipo. Detalle en `camera/README.md`, "Pantalla y distancia de cada equipo" |
 | Service worker | `worker.js` | Segundo plano: mediador entre panel y pestaña, y envío al servidor |
 | Motor de la cámara | `camera/`: `engine.html` (documento *offscreen*), `permission.html` y sus scripts | Documento oculto de la extensión que abre la webcam y persiste al navegar; detalle en `camera/README.md` |
 | Librerías de la cámara | `lib/` | MediaPipe Face Landmarker y su modelo; versiones y licencias en `lib/README.md` |
@@ -34,6 +35,7 @@ JSON no admite comentarios, así que el manifiesto se explica aquí.
 | | Orden: configuración, utilidades comunes (con `common/modules.js` al final), módulos (`capture`; `content/camera/zones.js` y `content/layout.js`, que usan `frames` y la cámara; `frames`; `camera/strings.js`; `camera`, `calibration`, `task-end`) y al final `bootstrap.js` | Cada archivo usa lo que cargaron los anteriores: los módulos se registran en `UX.modules` y `bootstrap.js` los arranca |
 | `web_accessible_resources` | — (no se declara) | Las librerías de `lib/` solo las carga el motor de la cámara, que es una página de la extensión. Ninguna página web necesita leerlas |
 | `minimum_chrome_version` | `116` | Primera versión con `sidePanel.setPanelBehavior` |
+| `options_ui` | `options/options.html`, en una pestaña | Pantalla y distancias de cada equipo |
 
 ## Utilidades comunes (`UX`)
 
@@ -50,6 +52,7 @@ Cada archivo de `common/` agrega una pieza al espacio de nombres global `UX`. De
 | `UX.createSendQueue` | Cola de envío pura con reintentos | Worker |
 | `UX.api` | Una función por endpoint del servidor, con el token | Worker y panel |
 | `UX.config`, `UX.contracts` | Configuración (`server`, `sending`, `capture`, `camera`) y enumeraciones del contrato | Todos |
+| `UX.screenSetup` | Pantalla y distancias de este equipo (`chrome.storage.local`, clave `screen_setup`): `cssPxPerCm(tamaño, pantalla)`, `problems(ajustes)`, `apply(camera, ajustes)` y `load(storage)` | Content scripts y opciones |
 
 Reglas:
 

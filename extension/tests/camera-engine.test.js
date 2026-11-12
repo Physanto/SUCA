@@ -306,3 +306,32 @@ test('reports frame rate, processing delay and face ratio', () => {
   assert.equal(stats.delay_ms, 20);
   assert.ok(Math.abs(stats.face_ratio - 2 / 3) < 1e-9);
 });
+
+test('a calibration reset passes the screen of this computer to the estimator', () => {
+  const screens = [];
+  const spy = {
+    configure: (screen) => screens.push(screen),
+    clear: () => {},
+    add: () => {},
+    fit: () => ({ ok: false }),
+    predict: () => null,
+    isFitted: () => false,
+  };
+  const engine = UX.createCameraEngine({
+    clock: { now: () => 1000 },
+    estimator: spy,
+    monitor: UX.createGazeMonitor({ blinkThreshold: 0.45, headMarginDeg: 12, offScreenMarginPx: 120 }),
+    filter: UX.createOneEuroFilter({ minCutoff: 1e6, beta: 0 }),
+    blinkThreshold: 0.45,
+    onStatus: () => {},
+    info: () => ({}),
+  });
+  const received = [];
+  const link = engine.connect({ post: (message) => received.push(message) });
+
+  link.receive({ kind: 'request', id: 1, action: 'calibration.reset', viewport: VIEWPORT, css_px_per_cm: 36.2 });
+  link.receive({ kind: 'request', id: 2, action: 'calibration.reset', viewport: VIEWPORT });
+
+  // Sin la pantalla en el pedido, el estimador conserva la que tenía.
+  assert.deepEqual(screens, [{ cssPxPerCm: 36.2 }]);
+});

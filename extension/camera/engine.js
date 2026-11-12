@@ -302,6 +302,10 @@
     function handle(action, request) {
       switch (action) {
         case 'calibration.reset': {
+          // La pestaña manda la pantalla de este equipo: la configuración del motor es la compartida.
+          if (request.css_px_per_cm > 0 && typeof estimator.configure === 'function') {
+            estimator.configure({ cssPxPerCm: request.css_px_per_cm });
+          }
           estimator.clear();
           monitor.reset();
           filter.reset();
