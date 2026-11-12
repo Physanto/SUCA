@@ -1,21 +1,61 @@
-"""Página Índice: índice de usabilidad conductual (IUC), sus componentes y su relación con SUS."""
+"""Página Índice: IUC, sus componentes, el SUS interpretado y la relación entre ambos."""
 
 import pandas as pd
 import streamlit as st
 
-from dashboard import charts, ui
+from dashboard import charts, sus, ui
 
 ui.page_header(
     "Índice",
-    "IUC de cada sesión y sus cuatro componentes, por versión, y su relación con el SUS: el IUC "
-    "complementa al cuestionario, no lo reemplaza.",
+    "IUC de cada sesión y sus cuatro componentes, por versión, el SUS interpretado y la relación "
+    "entre ambos: el IUC complementa al cuestionario, no lo reemplaza.",
 )
 
+
+def show_sus(answers: pd.DataFrame) -> None:
+    """El SUS por versión con su calificación, y qué ítems restaron más."""
+    st.subheader("SUS")
+    overall = sus.summarize(list(answers["score"]))
+    if overall["rating"] is None:
+        st.caption(overall["warning"])
+        return
+    groups = [("Todas", answers), *answers.groupby("version", sort=True)]
+    for column, (name, group) in zip(st.columns(len(groups)), groups, strict=True):
+        reading = sus.summarize(list(group["score"]))
+        rating = reading["rating"]
+        column.metric(
+            f"SUS · {name}",
+            ui.number(reading["mean"], 0),
+            delta=f"{rating.label} ({rating.grade}) · {reading['mean'] - sus.AVERAGE_SUS:+.0f}",
+            delta_color="off",
+            help=f"{rating.versus_average} {reading['warning']}".strip(),
+        )
+    if overall["warning"]:
+        st.caption(overall["warning"])
+    st.caption(
+        "Calificación según la literatura: Pobre (menos de 51), Aceptable, Bueno (desde 71) y "
+        "Excelente (desde 86); el promedio histórico es 68. Debajo de la cifra: la calificación, "
+        "la nota (A a F) y la diferencia con el promedio."
+    )
+    breakdown = sus.item_breakdown(answers)
+    if not breakdown.empty:
+        st.caption("Qué ítems restaron más (aporte medio de 0 a 4; 4 es lo mejor)")
+        st.bar_chart(
+            breakdown.assign(item=lambda t: t["item"].astype(str) + ". " + t["text"]).set_index(
+                "item"
+            )["mean"],
+            horizontal=True,
+        )
+
+
 with ui.selected_data() as data:
-    index = data.get_usability_index(ui.selected_study(data))
+    study_id = ui.selected_study(data)
+    index = data.get_usability_index(study_id)
+    answers = data.get_sus_answers(study_id)
 
 if index.empty:
     st.caption("Todavía no hay índices: analiza las sesiones guiadas.")
+    show_sus(answers)
     st.stop()
 
 means = index.groupby("version")["bui"].mean()
@@ -41,3 +81,5 @@ with right:
         st.caption("Ninguna sesión tiene SUS todavía.")
 
 ui.show_table(index)
+
+show_sus(answers)
