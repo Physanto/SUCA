@@ -70,6 +70,20 @@ class RepeatedSearchParams:
 
 
 @dataclass(frozen=True)
+class SilentFailureParams:
+    """Fallo silencioso de un formulario.
+
+    Attributes:
+        retry_window_ms: Tiempo, tras un envío, en que corregir un campo ya
+            llenado cuenta como reintento. Pasado ese tiempo, volver a editar el
+            campo se toma como un uso nuevo del formulario (por ejemplo, un
+            segundo mensaje en un chat).
+    """
+
+    retry_window_ms: int
+
+
+@dataclass(frozen=True)
 class GazeParams:
     """Medición y reprocesamiento de la mirada después de la sesión.
 
@@ -156,6 +170,7 @@ class Parameters:
         navigation_loop_window: Últimas pantallas en las que se busca el patrón
             A → B → A.
         repeated_search: Umbrales de las búsquedas repetidas.
+        silent_failure: Umbrales de los fallos silenciosos de formularios.
         task_overtime_factor: Veces el tiempo de la referencia a partir de las
             cuales una tarea está excedida.
         friction_i_max: Incidentes por minuto de tarea con los que la fricción
@@ -172,6 +187,7 @@ class Parameters:
     hesitation_ms: int
     navigation_loop_window: int
     repeated_search: RepeatedSearchParams
+    silent_failure: SilentFailureParams
     task_overtime_factor: float
     friction_i_max: float | None
     camera_delay_ms: float = field(metadata=_ALLOW_ZERO)

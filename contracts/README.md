@@ -101,3 +101,15 @@ Después de actualizar contratos, genera `extension/config.generated.js` y
 recarga la extensión. El servidor acepta versiones de la misma versión mayor;
 los registros anteriores sin línea base siguen siendo válidos, pero no sirven
 para calcular desviaciones faciales respecto de una postura neutra marcada.
+
+## Cambios compatibles en 1.8.0
+
+- `incident_type` agrega `silent_failure`: un envío de formulario tras el cual la
+  persona sigue en la misma pantalla, sin un error de validación registrado, y
+  corrige un campo que ya había llenado. Detecta el fallo por el comportamiento,
+  aunque el sitio muestre su mensaje de error de una forma que la captura no
+  reconoce (por ejemplo, un aviso general sin vínculo con el campo). No cambia
+  los lotes ni las tablas.
+
+Después de actualizar contratos, genera `extension/config.generated.js` y recarga
+la extensión.

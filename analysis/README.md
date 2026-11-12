@@ -99,6 +99,18 @@ Los umbrales y los valores del índice están en `parameters.yaml`, con un comen
 
 `version` se guarda con cada índice calculado. **Si cambias un umbral, cambia también la versión.**
 
+### Fallo silencioso (`silent_failure`)
+
+Un envío de formulario tras el cual la persona **sigue en la misma pantalla**, sin que se haya registrado un error de validación, y **corrige un campo que ya había llenado** dentro de `silent_failure.retry_window_ms` (20 s). Detecta el fallo por el comportamiento, no por el marcado del sitio.
+
+La captura solo registra un error de formulario si el navegador lo marca (validación nativa), si el campo pasa a `aria-invalid="true"` o si un mensaje está vinculado al campo con `aria-describedby` o `aria-errormessage`. Un aviso general (por ejemplo, "Usuario o contraseña incorrectos" en un banner sin vínculo con el campo) no produce `form_error`; sí produce `silent_failure`.
+
+- **Quedan fuera:** las búsquedas (las cubre `repeated_search`), editar un campo nuevo tras el envío (un formulario de varios pasos) y volver a pulsar enviar sin cambiar nada (lo cubren los clics sin respuesta y los de frustración).
+- **Requiere un `<form>`:** el envío se registra con el evento `submit` del navegador. Un formulario de React con `onSubmit` lo produce, aunque el sitio cancele el envío; un inicio de sesión hecho con un botón sin `<form>` no, y ahí no hay `silent_failure`.
+- **Falsos positivos posibles:** formularios que se vacían y se reutilizan en la misma pantalla (chat, comentarios). El umbral se ajusta con el piloto; el evaluador confirma cada hallazgo en la reproducción.
+- **Inicio de sesión:** un intento seguido de otro en la misma visita se reporta con `outcome` `failed` en el episodio, no `success`; solo el último intento puede dar acceso.
+- **No es una prueba de accesibilidad:** señala que el error no llegó de una forma que la captura reconozca. Qué mensaje vio la persona se revisa en la reproducción.
+
 El análisis extrae pasos y propone condiciones finales a partir de URL, textos y roles registrados. En sesiones guiadas alinea rutas alternativas y exige los pasos obligatorios de una misma referencia para decidir el éxito. Repetir pasos no es desvío; `deviation_step` indica la posición esperada desde 0 y `off_path_ms` suma el tiempo hasta retomar la ruta o terminar.
 
 | Componente (0–100; mayor es mejor) | Cálculo |

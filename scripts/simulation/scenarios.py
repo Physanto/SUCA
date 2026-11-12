@@ -474,7 +474,9 @@ def guided_v2(context: StudyContext) -> SimulatedSession:
 def free_v1(context: StudyContext) -> SimulatedSession:
     """Sesión libre en V1: navega la tienda y encuentra varios problemas.
 
-    Busca con errores de escritura (8), hace clic en la imagen que parece botón
+    Inicia sesión: el primer intento falla sin un aviso que la captura reconozca
+    (un aviso general, sin vínculo con el campo) y corrige la contraseña. Luego
+    busca con errores de escritura (8), hace clic en la imagen que parece botón
     (1), insiste en el botón lento (2), va y vuelve de Ofertas, se queda
     pensando y abandona el formulario del boletín.
 
@@ -487,7 +489,9 @@ def free_v1(context: StudyContext) -> SimulatedSession:
     return (
         _builder(context, 4, participant_id="P04", version="V1", mode="free")
         .with_calibration("initial", 1.7)
-        .on_screen(HOME)
+        .on_screen(LOGIN)
+        .with_silent_failure(1)
+        .do(LOGIN_ACTION)
         .with_repeated_search(
             SEARCH, [results("audfonos"), results("audifonos inlambricos")], problem=8
         )
